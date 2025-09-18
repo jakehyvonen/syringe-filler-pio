@@ -12,6 +12,8 @@
 
 // ---- Limit switch wiring (RAMPS 1.4 endstop) ----
 #define limitPin 9            // green 'S' wire from the endstop
+#define raisedPin 12   //  "toolhead raised" switch
+
 #define HOME_DIR LOW          // set the direction that *moves toward* the switch (LOW or HIGH)
 #define DISABLE_LEVEL HIGH    // A4988/DRV8825: ENABLE pin is active-LOW. Use HIGH to disable.
 #define ENABLE_LEVEL  LOW     // Use LOW to enable the driver.
@@ -87,6 +89,13 @@ static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
 // Updates the global currentPositionSteps on EACH full step edge-pair.
 static void moveSteps(long steps) {
   if (steps == 0) return;
+
+
+  // Safety check
+  if (!isToolheadRaised()) {
+    Serial.println("Error: Toolhead not raised. Movement blocked.");
+    return;
+  }
 
   bool dirHigh = (steps > 0);
   long todo = labs(steps);
@@ -305,6 +314,10 @@ void HomeAxis() {
   motorEnabled = false;
 }
 
+bool isToolheadRaised() {
+  return (digitalRead(raisedPin) == LOW);  // LOW means pressed
+}
+
 
 // Function to set servo pulse directly in microseconds
 void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
@@ -376,6 +389,8 @@ void setup() {
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 
   pinMode(limitPin, INPUT_PULLUP);  // switch = LOW when pressed
+  pinMode(raisedPin, INPUT_PULLUP);  // pressed = LOW
+
 
   digitalWrite(enablePin, HIGH); // Start disabled
   digitalWrite(dirPin, HIGH);    // Set direction
