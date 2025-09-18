@@ -28,8 +28,6 @@ const long MAX_POS_STEPS = (long)(200.0f * STEPS_PER_MM);  // e.g. 200 mm travel
 volatile long currentPositionSteps = 0;  // signed, increases with DIR=HIGH (see below)
 volatile long currentPositionSteps2 = 0;
 volatile long currentPositionSteps3 = 0;
-// Pulse width for STEP high (us). 2–5us is typical for A4988/DRV8825.
-#define STEP_PULSE_US 4
 
 // Shared speed for simultaneous moves of 2 & 3 (steps/sec)
 static long speed23_sps = 800;             // default
@@ -65,21 +63,8 @@ static inline void stepOnceTimed() {
   localStepState = !localStepState;
   digitalWrite(stepPin, localStepState ? HIGH : LOW);
 }
-// One timed toggle on a given step pin (uses its own timer)
-static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
-  static unsigned long last2 = 0, last3 = 0;
-  static bool state2 = false, state3 = false;
 
-  unsigned long &last = (pin == STEP2_PIN) ? last2 : last3;
-  bool &state         = (pin == STEP2_PIN) ? state2 : state3;
 
-  unsigned long now;
-  do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
-  last = now;
-
-  state = !state;
-  digitalWrite(pin, state ? HIGH : LOW);
-}
 
 
 // Move a signed number of steps at the current stepInterval (blocking).
@@ -109,6 +94,21 @@ static void moveSteps(long steps) {
   }
 }
 
+// One timed toggle on a given step pin (uses its own timer)
+static inline void stepOnceTimedOnPin(uint8_t stepPin, unsigned long interval_us) {
+  static unsigned long last2 = 0, last3 = 0;
+  static bool state2 = false, state3 = false;
+
+  unsigned long &last = (stepPin == STEP2_PIN) ? last2 : last3;
+  bool &state = (stepPin == STEP2_PIN) ? state2 : state3;
+
+  unsigned long now;
+  do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
+  last = now;
+
+  state = !state;
+  digitalWrite(stepPin, state ? HIGH : LOW);
+}
 
 // Blocking move of N steps on motor #2
 static void moveSteps2(long steps) {
@@ -146,6 +146,7 @@ static void moveSteps3(long steps) {
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 }
 
+
 // Convenience: absolute move to target position in steps (blocking)
 static void moveToSteps(long targetSteps) {
 #ifdef CHECK_SOFT_LIMITS
@@ -154,75 +155,6 @@ static void moveToSteps(long targetSteps) {
 #endif
   long delta = targetSteps - currentPositionSteps;
   moveSteps(delta);
-}
-
-
-// Simultaneous blocking move for motors 2 & 3
-// steps2 and steps3 can be positive or negative; motion is proportional.
-static void moveStepsSync23(long steps2, long steps3) {
-  long a = labs(steps2);
-  long b = labs(steps3);
-  if (a == 0 && b == 0) return;
-
-  bool dir2High = (steps2 >= 0);
-  bool dir3High = (steps3 >= 0);
-
-  // Direction & enable
-  digitalWrite(EN2_PIN, ENABLE_LEVEL);
-  digitalWrite(EN3_PIN, ENABLE_LEVEL);
-  digitalWrite(DIR2_PIN, dir2High ? HIGH : LOW);
-  digitalWrite(DIR3_PIN, dir3High ? HIGH : LOW);
-
-  // Bresenham-style DDA
-  long n = (a > b) ? a : b;
-  long acc2 = 0, acc3 = 0;
-
-  unsigned long last = micros();
-  for (long i = 0; i < n; i++) {
-    // Wait until the next slot
-    unsigned long now;
-    do { now = micros(); } while ((unsigned long)(now - last) < interval23_us);
-    last = now;
-
-    bool do2 = false, do3 = false;
-    acc2 += a;
-    if (acc2 >= n) { acc2 -= n; do2 = true; }
-    acc3 += b;
-    if (acc3 >= n) { acc3 -= n; do3 = true; }
-
-    // Rising edge(s)
-    if (do2) digitalWrite(STEP2_PIN, HIGH);
-    if (do3) digitalWrite(STEP3_PIN, HIGH);
-
-    delayMicroseconds(STEP_PULSE_US);
-
-    // Falling edge(s)
-    if (do2) {
-      digitalWrite(STEP2_PIN, LOW);
-      currentPositionSteps2 += dir2High ? +1 : -1;
-    }
-    if (do3) {
-      digitalWrite(STEP3_PIN, LOW);
-      currentPositionSteps3 += dir3High ? +1 : -1;
-    }
-  }
-
-  // Disable after motion
-  digitalWrite(EN2_PIN, DISABLE_LEVEL);
-  digitalWrite(EN3_PIN, DISABLE_LEVEL);
-}
-
-// Set shared speed for sync moves (steps/sec)
-void setSpeed23SPS(long sps) {
-  if (sps < 1) sps = 1;
-  if (sps > 20000) sps = 20000;
-  speed23_sps = sps;
-  interval23_us = (unsigned long)(1000000.0 / (2.0 * (double)sps)); // 2 toggles per full step
-  Serial.print("speed23 set to ");
-  Serial.print(speed23_sps);
-  Serial.print(" sps (interval=");
-  Serial.print(interval23_us);
-  Serial.println(" us)");
 }
 
 void HomeAxis() {
@@ -535,63 +467,6 @@ else if (input.startsWith("servoslow ")) {
   } else {
     Serial.println("Usage: servoslow <channel> <angle 0-180> [delay_ms]");
   }
-}
-
-// Single-axis moves
-else if (input.startsWith("move2 ")) {
-  long s = input.substring(6).toInt();
-  moveSteps2(s);
-  Serial.println("OK move2");
-}
-else if (input.startsWith("move3 ")) {
-  long s = input.substring(6).toInt();
-  moveSteps3(s);
-  Serial.println("OK move3");
-}
-
-// Set shared speed for simultaneous motion
-else if (input.startsWith("speed23 ")) {
-  long sps = input.substring(8).toInt();
-  setSpeed23SPS(sps);
-}
-
-// Simultaneous move with arbitrary step counts
-// Example: m23 1600 1600  (both same way)
-//          m23 1600 -1600 (opposite directions)
-else if (input.startsWith("m23 ")) {
-  int sp = input.indexOf(' ', 4);
-  if (sp > 0) {
-    long s2 = input.substring(4, sp).toInt();
-    long s3 = input.substring(sp + 1).toInt();
-    moveStepsSync23(s2, s3);
-    Serial.println("OK m23");
-  } else {
-    Serial.println("Usage: m23 <steps2> <steps3>");
-  }
-}
-
-// Convenience: LINK = equal & opposite steps (paint transfer)
-// Example: link 2000  -> #2 +2000, #3 -2000
-else if (input.startsWith("link ")) {
-  long s = input.substring(5).toInt();
-  moveStepsSync23(s, -s);
-  Serial.println("OK link");
-}
-
-// Position readouts
-else if (input == "pos2") {
-  float mm = currentPositionSteps2 / STEPS_PER_MM;
-  Serial.print("POS2 steps=");
-  Serial.print(currentPositionSteps2);
-  Serial.print("  mm=");
-  Serial.println(mm, 3);
-}
-else if (input == "pos3") {
-  float mm = currentPositionSteps3 / STEPS_PER_MM;
-  Serial.print("POS3 steps=");
-  Serial.print(currentPositionSteps3);
-  Serial.print("  mm=");
-  Serial.println(mm, 3);
 }
 
       
