@@ -52,6 +52,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 // Servo calibration (these are typical; adjust to your servos)
 #define SERVO_MIN  150  // pulse length out of 4096 for ~0°
 #define SERVO_MAX  600  // pulse length out of 4096 for ~180°
+#define raisedPos 99    // servo 3 position that is calibrated to activate the limit switch
 
 
 
@@ -341,6 +342,10 @@ void setServoAngle(uint8_t channel, int angle) {
   Serial.println(" deg");
 }
 
+void raiseToolhead(){
+      setServoAngle(3, raisedPos);
+}
+
 // Slowly sweep servo from its current position to target
 void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   static int currentAngles[16] = {90}; // store last commanded angle per channel (default 90°)
@@ -525,7 +530,9 @@ else if (input.startsWith("servo ")) {
     Serial.println("Usage: servo <channel 0-15> <angle 0-180>");
   }
 }
-
+else if (input.startsWith("raise")) {
+  raiseToolhead();
+}
 else if (input.startsWith("servoslow ")) {
   // Usage: servoslow <channel> <angle> [delay_ms]
   int firstSpace = input.indexOf(' ', 10);
