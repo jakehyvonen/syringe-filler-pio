@@ -10,6 +10,24 @@
 #define DIR3_PIN    10
 #define EN3_PIN     11
 
+#include <EEPROM.h>   // for optional persistence
+
+#define NUM_BASES 5   // number of base syringes
+
+// Default/calibrated positions (in steps). Edit these once;
+// or set them at runtime and save to EEPROM.
+long basePos[NUM_BASES] = {
+  3330, // 1
+  3330, // 2
+  3330, // 3
+  3330, // 4
+  3330  // 5
+};
+
+// Where in EEPROM we store them (each long = 4 bytes)
+const int EEPROM_BASE_ADDR = 0; // uses 4*NUM_BASES bytes starting here
+
+
 // ---- Limit switch wiring (RAMPS 1.4 endstop) ----
 #define limitPin 9            // green 'S' wire from the endstop
 #define raisedPin 12   //  "toolhead raised" switch
@@ -318,6 +336,10 @@ void setSpeed23SPS(long sps) {
   Serial.println(" us)");
 }
 
+
+
+
+
 void HomeAxis() {
 
   // SAFETY: must be raised before homing moves
@@ -403,6 +425,55 @@ void HomeAxis() {
   // Disable if you like:
   digitalWrite(enablePin, DISABLE_LEVEL);
   motorEnabled = false;
+}
+
+
+
+
+
+// Bounds-checking accessor (1-indexed for UI; returns -1 if invalid)
+long getBasePos(uint8_t idx1) {
+  if (idx1 == 0 || idx1 > NUM_BASES) return -1;
+  return basePos[idx1 - 1];
+}
+
+// Set by value (1-indexed). Returns false if out of range.
+bool baseSet(uint8_t idx1, long steps) {
+  if (idx1 == 0 || idx1 > NUM_BASES) return false;
+  basePos[idx1 - 1] = steps;
+  return true;
+}
+
+// Set from current axis position (1-indexed). Returns false if out of range.
+bool baseSetHere(uint8_t idx1) {
+  if (idx1 == 0 || idx1 > NUM_BASES) return false;
+  basePos[idx1 - 1] = currentPositionSteps;
+  return true;
+}
+
+// Move to a base syringe position (1-indexed).
+// Wraps your moveToSteps() which already enforces soft limits and toolhead-raise safety.
+bool goToBase(uint8_t idx1) {
+  long tgt = getBasePos(idx1);
+  if (tgt < 0) {
+    Serial.println("ERROR: base index out of range.");
+    return false;
+  }
+#ifdef CHECK_SOFT_LIMITS
+  if (tgt < MIN_POS_STEPS || tgt > MAX_POS_STEPS) {
+    Serial.println("ERROR: base target outside soft limits.");
+    return false;
+  }
+#endif
+  digitalWrite(enablePin, ENABLE_LEVEL);
+  moveToSteps(tgt);
+  digitalWrite(enablePin, DISABLE_LEVEL);
+  Serial.print("At Base #");
+  Serial.print(idx1);
+  Serial.print(" (steps=");
+  Serial.print(tgt);
+  Serial.println(")");
+  return true;
 }
 
 
