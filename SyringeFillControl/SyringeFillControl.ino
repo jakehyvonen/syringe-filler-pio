@@ -18,7 +18,7 @@
 // or set them at runtime and save to EEPROM.
 long basePos[NUM_BASES] = {
   3330, // 1
-  3330, // 2
+  5480, // 2
   3330, // 3
   3330, // 4
   3330  // 5
@@ -29,7 +29,7 @@ const int EEPROM_BASE_ADDR = 0; // uses 4*NUM_BASES bytes starting here
 
 
 // ---- Limit switch wiring (RAMPS 1.4 endstop) ----
-#define limitPin 9            // green 'S' wire from the endstop
+#define limitPin 9     // green 'S' wire from the endstop
 #define raisedPin 12   //  "toolhead raised" switch
 
 #define HOME_DIR LOW          // set the direction that *moves toward* the switch (LOW or HIGH)
@@ -62,6 +62,10 @@ unsigned long stepInterval = 1000;  // microseconds between steps (500 steps/sec
 bool motorEnabled = false;
 bool stepState = false;
 
+
+
+///// START SERVO SECTION ///////
+
 #include <Adafruit_PWMServoDriver.h>
 
 // --- PCA9685 servo driver ---
@@ -70,9 +74,21 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 // Servo calibration (these are typical; adjust to your servos)
 #define SERVO_MIN  150  // pulse length out of 4096 for ~0°
 #define SERVO_MAX  600  // pulse length out of 4096 for ~180°
-#define raisedPos 99    // servo 3 position that is calibrated to activate the limit switch
+#define raisedPos 99    // toolhead vertical servo (3) position that is calibrated to activate the limit switch
+#define couplingPos1 129 // position of toolhead servo before rotary servo is activated
 
-///// START SERVO SECTION ///////
+
+// Track commanded angles so slow sweeps can start from last setpoint.
+static int currentAngles[16];
+static bool currentAnglesInit = false;
+
+static inline void _ensureAnglesInit() {
+  if (!currentAnglesInit) {
+    for (int i = 0; i < 16; ++i) currentAngles[i] = 90; // default
+    currentAnglesInit = true;
+  }
+}
+
 
 bool isToolheadRaised() {
   return (digitalRead(raisedPin) == LOW);  // LOW means pressed
@@ -109,14 +125,15 @@ void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
 }
 
 void setServoAngle(uint8_t channel, int angle) {
+  _ensureAnglesInit();
   if (angle < 0) angle = 0;
   if (angle > 180) angle = 180;
 
-  // map angle to PCA9685 pulse
   uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
-
   pwm.setPWM(channel, 0, pulselen);
 
+  currentAngles[channel] = angle;  // <-- keep state
+  // (optional) comment out prints if you want it quieter
   Serial.print("Servo ");
   Serial.print(channel);
   Serial.print(" -> ");
@@ -130,24 +147,21 @@ void raiseToolhead(){
 
 // Slowly sweep servo from its current position to target
 void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
-  static int currentAngles[16] = {90}; // store last commanded angle per channel (default 90°)
-  
+  _ensureAnglesInit();
   if (targetAngle < 0) targetAngle = 0;
   if (targetAngle > 180) targetAngle = 180;
 
   int startAngle = currentAngles[channel];
-  int step = (targetAngle > startAngle) ? 1 : -1;
+  if (startAngle == targetAngle) return;
 
+  int step = (targetAngle > startAngle) ? 1 : -1;
   for (int angle = startAngle; angle != targetAngle; angle += step) {
     uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
     pwm.setPWM(channel, 0, pulselen);
-    delay(stepDelay); // ms between increments
+    delay(stepDelay);
   }
-
-  // Ensure exact target at the end
   uint16_t pulselen = map(targetAngle, 0, 180, SERVO_MIN, SERVO_MAX);
   pwm.setPWM(channel, 0, pulselen);
-
   currentAngles[channel] = targetAngle;
 
   Serial.print("Servo ");
@@ -156,6 +170,98 @@ void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   Serial.print(targetAngle);
   Serial.println(" deg");
 }
+
+// Move two servos simultaneously to their targets (blocking).
+// Each servo has its own step delay (ms per step) and step size (deg per step).
+// Example: setServoAnglesDual(0, 150, 1, 60, 10, 20);  // ch0 fast, ch1 slower
+void setServoAnglesDual(uint8_t chA, int tgtA,
+                        uint8_t chB, int tgtB,
+                        uint16_t stepDelayA = 20, uint16_t stepDelayB = 20,
+                        uint8_t stepSizeA = 1,  uint8_t stepSizeB = 1)
+{
+  _ensureAnglesInit();
+
+  // clamp & sanitize
+  if (tgtA < 0) tgtA = 0; if (tgtA > 180) tgtA = 180;
+  if (tgtB < 0) tgtB = 0; if (tgtB > 180) tgtB = 180;
+  if (stepDelayA == 0) stepDelayA = 1;
+  if (stepDelayB == 0) stepDelayB = 1;
+  if (stepSizeA == 0)  stepSizeA  = 1;
+  if (stepSizeB == 0)  stepSizeB  = 1;
+
+  int curA = currentAngles[chA];
+  int curB = currentAngles[chB];
+
+  // quick exit if nothing to do
+  if (curA == tgtA && curB == tgtB) return;
+
+  // direction (sign)
+  int dirA = (tgtA > curA) ? +1 : -1;
+  int dirB = (tgtB > curB) ? +1 : -1;
+  if (tgtA == curA) dirA = 0;
+  if (tgtB == curB) dirB = 0;
+
+  unsigned long lastA = millis();
+  unsigned long lastB = millis();
+
+  auto writeA = [&](int a){
+    uint16_t p = map(a, 0, 180, SERVO_MIN, SERVO_MAX);
+    pwm.setPWM(chA, 0, p);
+  };
+  auto writeB = [&](int b){
+    uint16_t p = map(b, 0, 180, SERVO_MIN, SERVO_MAX);
+    pwm.setPWM(chB, 0, p);
+  };
+
+  // initial write to ensure consistent start
+  writeA(curA);
+  writeB(curB);
+
+  while (true) {
+    unsigned long now = millis();
+    bool progressed = false;
+
+    // A due?
+    if (dirA != 0 && (now - lastA) >= stepDelayA) {
+      lastA = now;
+      // step toward target with bounded step size
+      int nextA = curA + dirA * (int)stepSizeA;
+      if ((dirA > 0 && nextA > tgtA) || (dirA < 0 && nextA < tgtA)) nextA = tgtA;
+      if (nextA != curA) {
+        curA = nextA;
+        writeA(curA);
+        progressed = true;
+      }
+      if (curA == tgtA) dirA = 0;
+    }
+
+    // B due?
+    if (dirB != 0 && (now - lastB) >= stepDelayB) {
+      lastB = now;
+      int nextB = curB + dirB * (int)stepSizeB;
+      if ((dirB > 0 && nextB > tgtB) || (dirB < 0 && nextB < tgtB)) nextB = tgtB;
+      if (nextB != curB) {
+        curB = nextB;
+        writeB(curB);
+        progressed = true;
+      }
+      if (curB == tgtB) dirB = 0;
+    }
+
+    if (dirA == 0 && dirB == 0) break;   // both done
+    if (!progressed) delay(1);           // yield a bit
+  }
+
+  currentAngles[chA] = curA;
+  currentAngles[chB] = curB;
+
+  Serial.print("Servos ");
+  Serial.print(chA); Serial.print("->"); Serial.print(tgtA);
+  Serial.print(", ");
+  Serial.print(chB); Serial.print("->"); Serial.print(tgtB);
+  Serial.println(" (dual slow)");
+}
+
 
 //////// END SERVO SECTION ////////
 
@@ -717,6 +823,73 @@ void handleSerial() {
           Serial.println("Usage: servoslow <channel> <angle 0-180> [delay_ms]");
         }
       }
+
+      else if (input.startsWith("servodual ")) {
+        // servodual <chA> <tgtA> <chB> <tgtB> [delayA_ms] [delayB_ms] [stepA_deg] [stepB_deg]
+        // Examples:
+        //   servodual 0 150 1 60
+        //   servodual 2 30  4 120 10 25
+        //   servodual 3 99  5 10  15 30 1 2
+        String rest = getArg(input, 9);
+        // tokenization
+        int p1 = rest.indexOf(' '); if (p1 < 0) { Serial.println("Usage: servodual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]"); }
+        else {
+          String t1 = rest.substring(0, p1); rest = rest.substring(p1 + 1); rest.trim();
+          int p2 = rest.indexOf(' '); if (p2 < 0) { Serial.println("Usage: servodual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]"); }
+          else {
+            String t2 = rest.substring(0, p2); rest = rest.substring(p2 + 1); rest.trim();
+            int p3 = rest.indexOf(' '); if (p3 < 0) { Serial.println("Usage: servodual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]"); }
+            else {
+              String t3 = rest.substring(0, p3); rest = rest.substring(p3 + 1); rest.trim();
+              int p4 = rest.indexOf(' ');
+              String t4, tail;
+              if (p4 < 0) { t4 = rest; tail = ""; }
+              else { t4 = rest.substring(0, p4); tail = rest.substring(p4 + 1); tail.trim(); }
+
+              int chA = t1.toInt();
+              int tgtA = t2.toInt();
+              int chB = t3.toInt();
+              int tgtB = t4.toInt();
+
+              // defaults
+              uint16_t dA = 20, dB = 20;
+              uint8_t  sA = 1,  sB = 1;
+
+              // parse optional tail: up to 4 ints
+              if (tail.length() > 0) {
+                // split by spaces
+                int q1 = tail.indexOf(' ');
+                if (q1 < 0) { dA = tail.toInt(); }
+                else {
+                  String u1 = tail.substring(0, q1); tail = tail.substring(q1 + 1); tail.trim();
+                  dA = u1.toInt();
+                  int q2 = tail.indexOf(' ');
+                  if (q2 < 0) { dB = tail.toInt(); }
+                  else {
+                    String u2 = tail.substring(0, q2); tail = tail.substring(q2 + 1); tail.trim();
+                    dB = u2.toInt();
+                    int q3 = tail.indexOf(' ');
+                    if (q3 < 0) { sA = (uint8_t)tail.toInt(); }
+                    else {
+                      String u3 = tail.substring(0, q3); tail = tail.substring(q3 + 1); tail.trim();
+                      sA = (uint8_t)u3.toInt();
+                      if (tail.length() > 0) sB = (uint8_t)tail.toInt();
+                    }
+                  }
+                }
+              }
+
+              // bounds checking
+              if (chA < 0 || chA > 15 || chB < 0 || chB > 15) {
+                Serial.println("Error: channel must be 0–15");
+              } else {
+                setServoAnglesDual((uint8_t)chA, tgtA, (uint8_t)chB, tgtB, dA, dB, sA, sB);
+              }
+            }
+          }
+        }
+      }
+
 
       // ===================== STEPPERS 2 & 3 =======================
       else if (input.startsWith("move2 ")) {
