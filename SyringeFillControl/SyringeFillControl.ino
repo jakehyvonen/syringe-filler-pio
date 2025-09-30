@@ -54,6 +54,92 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_MAX  600  // pulse length out of 4096 for ~180°
 #define raisedPos 99    // servo 3 position that is calibrated to activate the limit switch
 
+///// START SERVO SECTION ///////
+
+bool isToolheadRaised() {
+  return (digitalRead(raisedPin) == LOW);  // LOW means pressed
+}
+
+// Try to ensure the toolhead is physically raised.
+// Returns true if raised (already or after trying), false if it failed within timeout.
+bool ensureToolheadRaised(uint16_t timeout_ms = 1200) {
+  if (isToolheadRaised()) return true;
+
+  // Attempt to raise
+  setServoAngle(3, raisedPos);  // quick command; you could use setServoAngleSlow if you prefer
+
+  unsigned long start = millis();
+  while (!isToolheadRaised() && (millis() - start) < timeout_ms) {
+    // Nudge again just in case the first command hit a deadband
+    // (won't hurt servos at 60Hz; this simply reasserts the target)
+    setServoAngle(3, raisedPos);
+    delay(100);
+  }
+
+  if (!isToolheadRaised()) {
+    Serial.println("ERROR: Toolhead not raised (timeout). Movement blocked.");
+    return false;
+  }
+  return true;
+}
+
+
+// Function to set servo pulse directly in microseconds
+void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
+  // pulseLength is in microseconds, e.g. 1500 = neutral
+  pwm.writeMicroseconds(servoNum, pulseLength);
+}
+
+void setServoAngle(uint8_t channel, int angle) {
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
+
+  // map angle to PCA9685 pulse
+  uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
+
+  pwm.setPWM(channel, 0, pulselen);
+
+  Serial.print("Servo ");
+  Serial.print(channel);
+  Serial.print(" -> ");
+  Serial.print(angle);
+  Serial.println(" deg");
+}
+
+void raiseToolhead(){
+      setServoAngle(3, raisedPos);
+}
+
+// Slowly sweep servo from its current position to target
+void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
+  static int currentAngles[16] = {90}; // store last commanded angle per channel (default 90°)
+  
+  if (targetAngle < 0) targetAngle = 0;
+  if (targetAngle > 180) targetAngle = 180;
+
+  int startAngle = currentAngles[channel];
+  int step = (targetAngle > startAngle) ? 1 : -1;
+
+  for (int angle = startAngle; angle != targetAngle; angle += step) {
+    uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
+    pwm.setPWM(channel, 0, pulselen);
+    delay(stepDelay); // ms between increments
+  }
+
+  // Ensure exact target at the end
+  uint16_t pulselen = map(targetAngle, 0, 180, SERVO_MIN, SERVO_MAX);
+  pwm.setPWM(channel, 0, pulselen);
+
+  currentAngles[channel] = targetAngle;
+
+  Serial.print("Servo ");
+  Serial.print(channel);
+  Serial.print(" slowly moved to ");
+  Serial.print(targetAngle);
+  Serial.println(" deg");
+}
+
+//////// END SERVO SECTION ////////
 
 
 // Block until a step pulse at the current stepInterval elapses, then toggle STEP.
@@ -92,11 +178,8 @@ static void moveSteps(long steps) {
   if (steps == 0) return;
 
 
-  // Safety check
-  if (!isToolheadRaised()) {
-    Serial.println("Error: Toolhead not raised. Movement blocked.");
-    return;
-  }
+  // SAFETY: make sure we're raised (try to raise; error out if we can't)
+  if (!ensureToolheadRaised()) return;
 
   bool dirHigh = (steps > 0);
   long todo = labs(steps);
@@ -236,6 +319,13 @@ void setSpeed23SPS(long sps) {
 }
 
 void HomeAxis() {
+
+  // SAFETY: must be raised before homing moves
+  if (!ensureToolheadRaised()) {
+    Serial.println("HOMING ABORTED: toolhead not raised.");
+    return;
+  }
+
   digitalWrite(enablePin, ENABLE_LEVEL);
   motorEnabled = true;
 
@@ -313,66 +403,6 @@ void HomeAxis() {
   // Disable if you like:
   digitalWrite(enablePin, DISABLE_LEVEL);
   motorEnabled = false;
-}
-
-bool isToolheadRaised() {
-  return (digitalRead(raisedPin) == LOW);  // LOW means pressed
-}
-
-
-// Function to set servo pulse directly in microseconds
-void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
-  // pulseLength is in microseconds, e.g. 1500 = neutral
-  pwm.writeMicroseconds(servoNum, pulseLength);
-}
-
-void setServoAngle(uint8_t channel, int angle) {
-  if (angle < 0) angle = 0;
-  if (angle > 180) angle = 180;
-
-  // map angle to PCA9685 pulse
-  uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
-
-  pwm.setPWM(channel, 0, pulselen);
-
-  Serial.print("Servo ");
-  Serial.print(channel);
-  Serial.print(" -> ");
-  Serial.print(angle);
-  Serial.println(" deg");
-}
-
-void raiseToolhead(){
-      setServoAngle(3, raisedPos);
-}
-
-// Slowly sweep servo from its current position to target
-void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
-  static int currentAngles[16] = {90}; // store last commanded angle per channel (default 90°)
-  
-  if (targetAngle < 0) targetAngle = 0;
-  if (targetAngle > 180) targetAngle = 180;
-
-  int startAngle = currentAngles[channel];
-  int step = (targetAngle > startAngle) ? 1 : -1;
-
-  for (int angle = startAngle; angle != targetAngle; angle += step) {
-    uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
-    pwm.setPWM(channel, 0, pulselen);
-    delay(stepDelay); // ms between increments
-  }
-
-  // Ensure exact target at the end
-  uint16_t pulselen = map(targetAngle, 0, 180, SERVO_MIN, SERVO_MAX);
-  pwm.setPWM(channel, 0, pulselen);
-
-  currentAngles[channel] = targetAngle;
-
-  Serial.print("Servo ");
-  Serial.print(channel);
-  Serial.print(" slowly moved to ");
-  Serial.print(targetAngle);
-  Serial.println(" deg");
 }
 
 
