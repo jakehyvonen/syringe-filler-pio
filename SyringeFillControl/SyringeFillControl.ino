@@ -143,6 +143,7 @@ void setServoAngle(uint8_t channel, int angle) {
 
 void raiseToolhead(){
       setServoAngle(3, raisedPos);
+      setServoAngle(5, 23);
 }
 
 // Slowly sweep servo from its current position to target
@@ -174,6 +175,7 @@ void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
 // Move two servos simultaneously to their targets (blocking).
 // Each servo has its own step delay (ms per step) and step size (deg per step).
 // Example: setServoAnglesDual(0, 150, 1, 60, 10, 20);  // ch0 fast, ch1 slower
+// working on calibrating: servoslowdual 3 130 5 150 61 11
 void setServoAnglesDual(uint8_t chA, int tgtA,
                         uint8_t chB, int tgtB,
                         uint16_t stepDelayA = 20, uint16_t stepDelayB = 20,
