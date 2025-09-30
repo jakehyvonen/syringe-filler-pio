@@ -76,6 +76,8 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_MAX  600  // pulse length out of 4096 for ~180°
 #define raisedPos 99    // toolhead vertical servo (3) position that is calibrated to activate the limit switch
 #define couplingPos1 129 // position of toolhead servo before rotary servo is activated
+#define TOOLHEAD_SERVO 3 
+#define COUPLING_SERVO 5
 
 
 // Track commanded angles so slow sweeps can start from last setpoint.
@@ -263,6 +265,18 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
   Serial.print(chB); Serial.print("->"); Serial.print(tgtB);
   Serial.println(" (dual slow)");
 }
+
+void coupleSyringes(){
+  setServoAngle(TOOLHEAD_SERVO, couplingPos1);
+  setServoAngle(COUPLING_SERVO, 151);
+  delay(11);
+  setServoPulseRaw(TOOLHEAD_SERVO, 0); //depower servo - make this into a method!
+  delay(11);
+  setServoAngle(COUPLING_SERVO, 11);  
+}
+
+
+
 
 
 //////// END SERVO SECTION ////////
@@ -713,6 +727,23 @@ else if (input.startsWith("gotomm ")) { // absolute, mm
   digitalWrite(enablePin, DISABLE_LEVEL);
   Serial.println("OK");
 }
+
+else if (input.startsWith("gobase ")) {
+  // gobase <idx 1..NUM_BASES>
+  // Example: gobase 3
+  long idx = input.substring(7).toInt(); // after "gobase "
+  if (idx < 1 || idx > NUM_BASES) {
+    Serial.print("Usage: gobase <1..");
+    Serial.print(NUM_BASES);
+    Serial.println(">");
+  } else {
+    if (!goToBase((uint8_t)idx)) {
+      Serial.println("ERROR: failed to move to base (see above).");
+    }
+  }
+}
+
+
 else if (input.startsWith("servopulse")) {
   int servoNum = input.substring(10, 11).toInt();  // e.g. "SERVOPULSE 0 1500"
   int pulseLen = input.substring(12).toInt();
@@ -852,6 +883,11 @@ else if (input.startsWith("servoslowdual ")) {
       }
     }
   }
+}
+
+else if (input == "couple" || input == "couplesyringes") {
+  coupleSyringes();
+  Serial.println("OK coupleSyringes");
 }
 
 
