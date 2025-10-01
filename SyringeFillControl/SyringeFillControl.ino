@@ -697,6 +697,65 @@ float getPotPercent(uint8_t idx) {
 }
 
 
+// Move stepper #2 until A0 reaches target ADC (0..1023).
+// sps = steps per second. Direction is chosen automatically.
+// Returns true on success, false on timeout.
+bool move2UntilPot_simple(uint16_t target_adc, long sps) {
+  if (sps < 1) sps = 1;
+  if (sps > 20000) sps = 20000;
+
+  const unsigned long interval_us = (unsigned long)(1000000.0 / (2.0 * (double)sps)); // 2 toggles/step
+  const uint8_t hysteresis = 3;                 // small stop band
+  const unsigned long timeout_ms = 20000UL;     // safety
+
+  // Seed reading and pick direction
+  uint16_t pot = analogRead(A0);
+  bool dirHigh = (target_adc > pot);
+
+  digitalWrite(EN2_PIN, ENABLE_LEVEL);
+  digitalWrite(DIR2_PIN, dirHigh ? HIGH : LOW);
+
+  unsigned long last = micros();
+  unsigned long startMs = millis();
+
+  while (true) {
+    // timeout guard
+    if (timeout_ms && (millis() - startMs) > timeout_ms) {
+      digitalWrite(EN2_PIN, DISABLE_LEVEL);
+      Serial.println("move2UntilPot: TIMEOUT");
+      return false;
+    }
+
+    // wait until next toggle slot
+    unsigned long now;
+    do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
+    last = now;
+
+    // one full step on STEP2_PIN
+    digitalWrite(STEP2_PIN, HIGH);
+    delayMicroseconds(STEP_PULSE_US);
+    digitalWrite(STEP2_PIN, LOW);
+
+    currentPositionSteps2 += dirHigh ? +1 : -1;
+
+    // sample A0
+    pot = analogRead(A0);
+
+    // stop condition with hysteresis
+    if (dirHigh) {
+      if (pot >= (uint16_t)(target_adc - hysteresis)) break;
+    } else {
+      if (pot <= (uint16_t)(target_adc + hysteresis)) break;
+    }
+  }
+
+  digitalWrite(EN2_PIN, DISABLE_LEVEL);
+  Serial.print("pot[0]="); Serial.println(pot);
+  return true;
+}
+
+
+
 void setup() {
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
@@ -905,105 +964,6 @@ void handleSerial() {
         }
       }
 
-      else if (input.startsWith("servoslowdual ")) {
-        // servoslowdual <chA> <tgtA> <chB> <tgtB> [delayA_ms] [delayB_ms] [stepA_deg] [stepB_deg]
-        // Examples:
-        //   servoslowdual 0 150 1 60
-        //   servoslowdual 2 30  4 120 10 25
-        //   servoslowdual 3 99  5 10  15 30 1 2
-
-        String rest = input.substring(14);  // after "servoslowdual "
-        rest.trim();
-
-        int p1 = rest.indexOf(' ');
-        if (p1 < 0) {
-          Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]");
-        } else {
-          String t1 = rest.substring(0, p1);
-          rest = rest.substring(p1 + 1);
-          rest.trim();
-
-          int p2 = rest.indexOf(' ');
-          if (p2 < 0) {
-            Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]");
-          } else {
-            String t2 = rest.substring(0, p2);
-            rest = rest.substring(p2 + 1);
-            rest.trim();
-
-            int p3 = rest.indexOf(' ');
-            if (p3 < 0) {
-              Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]");
-            } else {
-              String t3 = rest.substring(0, p3);
-              rest = rest.substring(p3 + 1);
-              rest.trim();
-
-              // t4 is either the last token or followed by optional tail
-              int p4 = rest.indexOf(' ');
-              String t4, tail;
-              if (p4 < 0) {
-                t4 = rest;
-                tail = "";
-              } else {
-                t4 = rest.substring(0, p4);
-                tail = rest.substring(p4 + 1);
-                tail.trim();
-              }
-
-              int chA = t1.toInt();
-              int tgtA = t2.toInt();
-              int chB = t3.toInt();
-              int tgtB = t4.toInt();
-
-              // Defaults for optional params
-              uint16_t dA = 20, dB = 20;
-              uint8_t sA = 1, sB = 1;
-
-              // Parse up to four optional numbers from 'tail'
-              if (tail.length() > 0) {
-                int q1 = tail.indexOf(' ');
-                if (q1 < 0) {
-                  dA = (uint16_t)tail.toInt();
-                } else {
-                  String u1 = tail.substring(0, q1);
-                  tail = tail.substring(q1 + 1);
-                  tail.trim();
-                  dA = (uint16_t)u1.toInt();
-
-                  int q2 = tail.indexOf(' ');
-                  if (q2 < 0) {
-                    dB = (uint16_t)tail.toInt();
-                  } else {
-                    String u2 = tail.substring(0, q2);
-                    tail = tail.substring(q2 + 1);
-                    tail.trim();
-                    dB = (uint16_t)u2.toInt();
-
-                    int q3 = tail.indexOf(' ');
-                    if (q3 < 0) {
-                      sA = (uint8_t)tail.toInt();
-                    } else {
-                      String u3 = tail.substring(0, q3);
-                      tail = tail.substring(q3 + 1);
-                      tail.trim();
-                      sA = (uint8_t)u3.toInt();
-                      if (tail.length() > 0) sB = (uint8_t)tail.toInt();
-                    }
-                  }
-                }
-              }
-
-              // Bounds check channels
-              if (chA < 0 || chA > 15 || chB < 0 || chB > 15) {
-                Serial.println("Error: channel must be 0–15");
-              } else {
-                setServoAnglesDual((uint8_t)chA, tgtA, (uint8_t)chB, tgtB, dA, dB, sA, sB);
-              }
-            }
-          }
-        }
-      }
 
       else if (input == "couple" || input == "couplesyringes") {
         coupleSyringes();
@@ -1065,6 +1025,21 @@ void handleSerial() {
         Serial.print("  mm=");
         Serial.println(mm, 3);
       }
+
+      else if (input.startsWith("potmove ")) {
+      // Usage: potmove <target_adc 0-1023> <sps>
+      int sp = input.indexOf(' ', 8);
+      if (sp < 0) {
+        Serial.println("Usage: potmove <target_adc 0-1023> <sps>");
+      } else {
+        uint16_t target = (uint16_t)input.substring(8, sp).toInt();
+        long sps = input.substring(sp + 1).toInt();
+        bool ok = move2UntilPot_simple(target, sps);
+        if (ok) Serial.println("OK potmove");
+        else    Serial.println("ERR potmove");
+      }
+    }
+
 
 
       else {
