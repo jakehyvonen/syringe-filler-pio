@@ -696,26 +696,32 @@ float getPotPercent(uint8_t idx) {
   return (pot_filtered[idx] * 100.0f) / 1023.0f;
 }
 
-
 // Move stepper #2 until A0 reaches target ADC (0..1023).
-// sps = steps per second. Direction is chosen automatically.
-// Returns true on success, false on timeout.
+// sps = steps per second. Direction chosen automatically.
+// Updates global pot_* arrays on every A0 read so "pots" shows fresh data.
 bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
 
-  const unsigned long interval_us = (unsigned long)(1000000.0 / (2.0 * (double)sps)); // 2 toggles/step
-  const uint8_t hysteresis = 3;                 // small stop band
-  const unsigned long timeout_ms = 20000UL;     // safety
+  const unsigned long interval_us   = (unsigned long)(1000000.0 / (2.0 * (double)sps)); // 2 toggles/step
+  const uint8_t       hysteresis    = 3;              // small stop band
+  const unsigned long timeout_ms    = 20000UL;        // safety
 
-  // Seed reading and pick direction
-  uint16_t pot = analogRead(A0);
-  bool dirHigh = (target_adc > pot);
+  // Make sure pot arrays are initialized
+  if (!pots_inited) initPots();
+
+  // Seed reading and pick direction (seed both raw & filtered)
+  uint16_t raw0 = analogRead(A0);
+  pot_raw[0] = raw0;
+  // nudge filtered toward the new raw value a bit (same spirit as your poll)
+  pot_filtered[0] += (int16_t(raw0) - int16_t(pot_filtered[0])) >> POT_EMA_SHIFT;
+
+  bool dirHigh = (target_adc > pot_filtered[0]);
 
   digitalWrite(EN2_PIN, ENABLE_LEVEL);
   digitalWrite(DIR2_PIN, dirHigh ? HIGH : LOW);
 
-  unsigned long last = micros();
+  unsigned long last    = micros();
   unsigned long startMs = millis();
 
   while (true) {
@@ -738,10 +744,26 @@ bool move2UntilPot_simple(uint16_t target_adc, long sps) {
 
     currentPositionSteps2 += dirHigh ? +1 : -1;
 
-    // sample A0
-    pot = analogRead(A0);
+    // --- sample A0 and update global arrays ---
+    raw0 = analogRead(A0);
+    pot_raw[0] = raw0;
+    pot_filtered[0] += (int16_t(raw0) - int16_t(pot_filtered[0])) >> POT_EMA_SHIFT;
 
-    // stop condition with hysteresis
+    Serial.print("pot[0]="); Serial.println(pot_filtered[0]);
+
+
+    // Only update "last_reported" when change exceeds hysteresis,
+    // so your periodic prints remain consistent if you use them elsewhere.
+    int diff = int(pot_filtered[0]) - int(pot_last_reported[0]);
+    if (diff < 0) diff = -diff;
+    if (diff >= POT_REPORT_HYST) {
+      pot_last_reported[0] = pot_filtered[0];
+      // Optional debug print; comment out if too chatty
+      // Serial.print("pot[0]="); Serial.println(pot_filtered[0]);
+    }
+
+    // stop condition with hysteresis, using the filtered value
+    uint16_t pot = pot_filtered[0];
     if (dirHigh) {
       if (pot >= (uint16_t)(target_adc - hysteresis)) break;
     } else {
@@ -750,9 +772,11 @@ bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   }
 
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
-  Serial.print("pot[0]="); Serial.println(pot);
+
+  Serial.print("pot[0]="); Serial.println(pot_filtered[0]);
   return true;
 }
+
 
 
 
@@ -798,14 +822,6 @@ void loop() {
 
 
   handleSerial();
-
-  // Poll potentiometers at ~50 Hz
-  static unsigned long lastPotMs = 0;
-  unsigned long nowMs = millis();
-  if (nowMs - lastPotMs >= 20) {
-    lastPotMs = nowMs;
-    pollPots();
-  }
 
 
   if (motorEnabled) {
@@ -1025,6 +1041,17 @@ void handleSerial() {
         Serial.print("  mm=");
         Serial.println(mm, 3);
       }
+
+      else if (input == "pots" || input == "potlist") {
+      for (uint8_t i = 0; i < NUM_POTS; ++i) {
+        Serial.print("pot["); Serial.print(i); Serial.print("] raw=");
+        Serial.print(getPotRaw(i));
+        Serial.print(" filt=");
+        Serial.print(getPotFiltered(i));
+        Serial.print(" pct=");
+        Serial.println(getPotPercent(i), 1);
+      }
+    }
 
       else if (input.startsWith("potmove ")) {
       // Usage: potmove <target_adc 0-1023> <sps>
