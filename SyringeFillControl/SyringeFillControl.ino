@@ -2,46 +2,62 @@
 #define stepPin 3
 #define enablePin 8
 
-#define STEP2_PIN   4
-#define DIR2_PIN    5
-#define EN2_PIN     6
+#define STEP2_PIN 4
+#define DIR2_PIN 5
+#define EN2_PIN 6
 
-#define STEP3_PIN   7
-#define DIR3_PIN    10
-#define EN3_PIN     11
+#define STEP3_PIN 7
+#define DIR3_PIN 10
+#define EN3_PIN 11
 
-#include <EEPROM.h>   // for optional persistence
+#include <EEPROM.h>  // for optional persistence
 
-#define NUM_BASES 5   // number of base syringes
+#define NUM_BASES 5  // number of base syringes
 
 // Default/calibrated positions (in steps). Edit these once;
 // or set them at runtime and save to EEPROM.
 long basePos[NUM_BASES] = {
-  3330, // 1
-  5480, // 2
-  3330, // 3
-  3330, // 4
-  3330  // 5
+  3330,  // 1
+  5480,  // 2
+  3330,  // 3
+  3330,  // 4
+  3330   // 5
 };
 
 // Where in EEPROM we store them (each long = 4 bytes)
-const int EEPROM_BASE_ADDR = 0; // uses 4*NUM_BASES bytes starting here
+const int EEPROM_BASE_ADDR = 0;  // uses 4*NUM_BASES bytes starting here
+
+// ===== Potentiometers (A0..A5) =====
+#define NUM_POTS 1
+const uint8_t POT_PINS[NUM_POTS] = { A0 };
+
+//const uint8_t POT_PINS[NUM_POTS] = { A0, A1, A2, A3, A4, A5 };
+
+// Exponential moving average strength and print hysteresis
+const uint8_t POT_EMA_SHIFT = 3;    // 1/8 new sample each poll
+const uint8_t POT_REPORT_HYST = 3;  // print only if change >= this many ADC counts
+
+static uint16_t pot_raw[NUM_POTS];
+static uint16_t pot_filtered[NUM_POTS];
+static uint16_t pot_last_reported[NUM_POTS];
+static bool pots_inited = false;
+
 
 
 // ---- Limit switch wiring (RAMPS 1.4 endstop) ----
-#define limitPin 9     // green 'S' wire from the endstop
-#define raisedPin 12   //  "toolhead raised" switch
+#define limitPin 9    // green 'S' wire from the endstop
+#define raisedPin 12  //  "toolhead raised" switch
 
-#define HOME_DIR LOW          // set the direction that *moves toward* the switch (LOW or HIGH)
-#define DISABLE_LEVEL HIGH    // A4988/DRV8825: ENABLE pin is active-LOW. Use HIGH to disable.
-#define ENABLE_LEVEL  LOW     // Use LOW to enable the driver.
+#define HOME_DIR LOW        // set the direction that *moves toward* the switch (LOW or HIGH)
+#define DISABLE_LEVEL HIGH  // A4988/DRV8825: ENABLE pin is active-LOW. Use HIGH to disable.
+#define ENABLE_LEVEL LOW    // Use LOW to enable the driver.
 
 // Steps/mm helps print pretty units and enforce soft limits (tune this!)
-const float STEPS_PER_MM = 80.0f; // <- EXAMPLE for 1/16 microstep + GT2(20T) belt, change to your machine
+const float STEPS_PER_MM = 80.0f;  // <- EXAMPLE for 1/16 microstep + GT2(20T) belt, change to your machine
 
 // Soft limits (in steps). Comment out CHECK_SOFT_LIMITS to disable.
 #define CHECK_SOFT_LIMITS
-const long MIN_POS_STEPS = 0;             // home at 0
+const long MIN_POS_STEPS = 0;                              // home at 0
 const long MAX_POS_STEPS = (long)(200.0f * STEPS_PER_MM);  // e.g. 200 mm travel
 
 //stepper Position state
@@ -52,8 +68,8 @@ volatile long currentPositionSteps3 = 0;
 #define STEP_PULSE_US 4
 
 // Shared speed for simultaneous moves of 2 & 3 (steps/sec)
-static long speed23_sps = 800;             // default
-static unsigned long interval23_us = 1000000UL / (2UL * 800UL); // µs between toggles
+static long speed23_sps = 800;                                   // default
+static unsigned long interval23_us = 1000000UL / (2UL * 800UL);  // µs between toggles
 
 bool homed = false;
 
@@ -72,13 +88,13 @@ bool stepState = false;
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // Servo calibration (these are typical; adjust to your servos)
-#define SERVO_MIN  150  // pulse length out of 4096 for ~0°
-#define SERVO_MAX  600  // pulse length out of 4096 for ~180°
-#define raisedPos 99    // toolhead vertical servo (3) position that is calibrated to activate the limit switch
-#define couplingPos1 129 // position of toolhead servo before rotary servo is activated
-#define coupledPos 11 // position of coupling servo when syringes are coupled
-#define decoupledPos 151 // position of coupling servo when syringes are decoupled
-#define TOOLHEAD_SERVO 3 
+#define SERVO_MIN 150     // pulse length out of 4096 for ~0°
+#define SERVO_MAX 600     // pulse length out of 4096 for ~180°
+#define raisedPos 99      // toolhead vertical servo (3) position that is calibrated to activate the limit switch
+#define couplingPos1 129  // position of toolhead servo before rotary servo is activated
+#define coupledPos 11     // position of coupling servo when syringes are coupled
+#define decoupledPos 151  // position of coupling servo when syringes are decoupled
+#define TOOLHEAD_SERVO 3
 #define COUPLING_SERVO 5
 
 
@@ -88,7 +104,7 @@ static bool currentAnglesInit = false;
 
 static inline void _ensureAnglesInit() {
   if (!currentAnglesInit) {
-    for (int i = 0; i < 16; ++i) currentAngles[i] = 90; // default
+    for (int i = 0; i < 16; ++i) currentAngles[i] = 90;  // default
     currentAnglesInit = true;
   }
 }
@@ -150,10 +166,10 @@ void setServoAngle(uint8_t channel, int angle) {
   Serial.println(" deg");
 }
 
-void raiseToolhead(){
-      setServoAngle(TOOLHEAD_SERVO, raisedPos);
-      delay(100);
-      setServoAngle(COUPLING_SERVO, decoupledPos);
+void raiseToolhead() {
+  setServoAngle(TOOLHEAD_SERVO, raisedPos);
+  delay(100);
+  setServoAngle(COUPLING_SERVO, decoupledPos);
 }
 
 // Slowly sweep servo from its current position to target
@@ -189,17 +205,18 @@ void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
 void setServoAnglesDual(uint8_t chA, int tgtA,
                         uint8_t chB, int tgtB,
                         uint16_t stepDelayA = 20, uint16_t stepDelayB = 20,
-                        uint8_t stepSizeA = 1,  uint8_t stepSizeB = 1)
-{
+                        uint8_t stepSizeA = 1, uint8_t stepSizeB = 1) {
   _ensureAnglesInit();
 
   // clamp & sanitize
-  if (tgtA < 0) tgtA = 0; if (tgtA > 180) tgtA = 180;
-  if (tgtB < 0) tgtB = 0; if (tgtB > 180) tgtB = 180;
+  if (tgtA < 0) tgtA = 0;
+  if (tgtA > 180) tgtA = 180;
+  if (tgtB < 0) tgtB = 0;
+  if (tgtB > 180) tgtB = 180;
   if (stepDelayA == 0) stepDelayA = 1;
   if (stepDelayB == 0) stepDelayB = 1;
-  if (stepSizeA == 0)  stepSizeA  = 1;
-  if (stepSizeB == 0)  stepSizeB  = 1;
+  if (stepSizeA == 0) stepSizeA = 1;
+  if (stepSizeB == 0) stepSizeB = 1;
 
   int curA = currentAngles[chA];
   int curB = currentAngles[chB];
@@ -216,11 +233,11 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
   unsigned long lastA = millis();
   unsigned long lastB = millis();
 
-  auto writeA = [&](int a){
+  auto writeA = [&](int a) {
     uint16_t p = map(a, 0, 180, SERVO_MIN, SERVO_MAX);
     pwm.setPWM(chA, 0, p);
   };
-  auto writeB = [&](int b){
+  auto writeB = [&](int b) {
     uint16_t p = map(b, 0, 180, SERVO_MIN, SERVO_MAX);
     pwm.setPWM(chB, 0, p);
   };
@@ -260,28 +277,32 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
       if (curB == tgtB) dirB = 0;
     }
 
-    if (dirA == 0 && dirB == 0) break;   // both done
-    if (!progressed) delay(1);           // yield a bit
+    if (dirA == 0 && dirB == 0) break;  // both done
+    if (!progressed) delay(1);          // yield a bit
   }
 
   currentAngles[chA] = curA;
   currentAngles[chB] = curB;
 
   Serial.print("Servos ");
-  Serial.print(chA); Serial.print("->"); Serial.print(tgtA);
+  Serial.print(chA);
+  Serial.print("->");
+  Serial.print(tgtA);
   Serial.print(", ");
-  Serial.print(chB); Serial.print("->"); Serial.print(tgtB);
+  Serial.print(chB);
+  Serial.print("->");
+  Serial.print(tgtB);
   Serial.println(" (dual slow)");
 }
 
-void coupleSyringes(){
+void coupleSyringes() {
   setServoAngle(TOOLHEAD_SERVO, couplingPos1);
   delay(71);
   setServoAngle(COUPLING_SERVO, 151);
   delay(71);
-  setServoPulseRaw(TOOLHEAD_SERVO, 0); //depower servo - make this into a method!
+  setServoPulseRaw(TOOLHEAD_SERVO, 0);  //depower servo - make this into a method!
   delay(71);
-  setServoAngle(COUPLING_SERVO, 11);  
+  setServoAngle(COUPLING_SERVO, 11);
 }
 
 
@@ -309,7 +330,7 @@ static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
   static bool state2 = false, state3 = false;
 
   unsigned long &last = (pin == STEP2_PIN) ? last2 : last3;
-  bool &state         = (pin == STEP2_PIN) ? state2 : state3;
+  bool &state = (pin == STEP2_PIN) ? state2 : state3;
 
   unsigned long now;
   do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
@@ -362,9 +383,9 @@ static void moveSteps2(long steps) {
   digitalWrite(DIR2_PIN, dirHigh ? HIGH : LOW);
 
   for (long i = 0; i < todo; i++) {
-    stepOnceTimedOnPin(STEP2_PIN, interval23_us); // reuse interval23_us for simplicity
+    stepOnceTimedOnPin(STEP2_PIN, interval23_us);  // reuse interval23_us for simplicity
     currentPositionSteps2 += dirHigh ? +1 : -1;
-    stepOnceTimedOnPin(STEP2_PIN, interval23_us); // complete pulse
+    stepOnceTimedOnPin(STEP2_PIN, interval23_us);  // complete pulse
   }
 
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
@@ -428,9 +449,15 @@ static void moveStepsSync23(long steps2, long steps3) {
 
     bool do2 = false, do3 = false;
     acc2 += a;
-    if (acc2 >= n) { acc2 -= n; do2 = true; }
+    if (acc2 >= n) {
+      acc2 -= n;
+      do2 = true;
+    }
     acc3 += b;
-    if (acc3 >= n) { acc3 -= n; do3 = true; }
+    if (acc3 >= n) {
+      acc3 -= n;
+      do3 = true;
+    }
 
     // Rising edge(s)
     if (do2) digitalWrite(STEP2_PIN, HIGH);
@@ -459,7 +486,7 @@ void setSpeed23SPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
   speed23_sps = sps;
-  interval23_us = (unsigned long)(1000000.0 / (2.0 * (double)sps)); // 2 toggles per full step
+  interval23_us = (unsigned long)(1000000.0 / (2.0 * (double)sps));  // 2 toggles per full step
   Serial.print("speed23 set to ");
   Serial.print(speed23_sps);
   Serial.print(" sps (interval=");
@@ -485,7 +512,7 @@ void HomeAxis() {
   // If sitting on switch, back off first
   if (digitalRead(limitPin) == LOW) {
     digitalWrite(dirPin, !HOME_DIR);
-    for (int i = 0; i < 800; i++) stepOnceTimed(); // ~1–2 mm, adjust
+    for (int i = 0; i < 800; i++) stepOnceTimed();  // ~1–2 mm, adjust
     // Update position (we moved away from HOME_DIR)
     currentPositionSteps -= 800;
   }
@@ -514,14 +541,14 @@ void HomeAxis() {
     digitalWrite(dirPin, !HOME_DIR);
     for (int i = 0; i < backOff; i++) {
       stepOnceTimed();
-      currentPositionSteps += (HOME_DIR == HIGH) ? -1 : +1; // opposite direction
+      currentPositionSteps += (HOME_DIR == HIGH) ? -1 : +1;  // opposite direction
     }
   }
   delay(10);
 
   // Slow re-approach
   unsigned long savedInterval = stepInterval;
-  stepInterval = savedInterval * 3;   // slower for precision
+  stepInterval = savedInterval * 3;  // slower for precision
   digitalWrite(dirPin, HOME_DIR);
   start = millis();
   while (digitalRead(limitPin) == HIGH) {
@@ -542,7 +569,7 @@ void HomeAxis() {
 
   // Optionally release the switch slightly while keeping position consistent
   {
-    const int releaseSteps = 5; // tiny nudge off the switch
+    const int releaseSteps = 5;  // tiny nudge off the switch
     digitalWrite(dirPin, !HOME_DIR);
     for (int i = 0; i < releaseSteps; i++) {
       stepOnceTimed();
@@ -607,6 +634,67 @@ bool goToBase(uint8_t idx1) {
   return true;
 }
 
+void initPots() {
+  for (uint8_t i = 0; i < NUM_POTS; ++i) {
+    pinMode(POT_PINS[i], INPUT);
+    uint16_t r = analogRead(POT_PINS[i]);
+    pot_raw[i] = r;
+    pot_filtered[i] = r;
+  }
+  // quick settle to a reasonable starting value
+  for (uint8_t k = 0; k < 8; ++k) {
+    for (uint8_t i = 0; i < NUM_POTS; ++i) {
+      uint16_t r = analogRead(POT_PINS[i]);
+      pot_filtered[i] = (pot_filtered[i] + r) >> 1;
+    }
+    delay(2);
+  }
+  for (uint8_t i = 0; i < NUM_POTS; ++i) {
+    pot_last_reported[i] = pot_filtered[i];
+    Serial.print("pot[");
+    Serial.print(i);
+    Serial.print("](init)=");
+    Serial.println(pot_filtered[i]);
+  }
+  pots_inited = true;
+}
+
+// Poll all pots once; call this periodically (e.g. every 20 ms)
+void pollPots() {
+  if (!pots_inited) initPots();
+
+  for (uint8_t i = 0; i < NUM_POTS; ++i) {
+    uint16_t r = analogRead(POT_PINS[i]);
+    pot_raw[i] = r;
+
+    // EMA: filt += (new - filt) / 2^shift
+    pot_filtered[i] += (int16_t(r) - int16_t(pot_filtered[i])) >> POT_EMA_SHIFT;
+
+    int diff = int(pot_filtered[i]) - int(pot_last_reported[i]);
+    if (diff < 0) diff = -diff;
+    if (diff >= POT_REPORT_HYST) {
+      pot_last_reported[i] = pot_filtered[i];
+      Serial.print("pot[");
+      Serial.print(i);
+      Serial.print("]=");
+      Serial.println(pot_filtered[i]);  // 0..1023 on AVR
+    }
+  }
+}
+
+// Accessors
+uint16_t getPotRaw(uint8_t idx) {
+  if (idx >= NUM_POTS) return 0;
+  return pot_raw[idx];
+}
+uint16_t getPotFiltered(uint8_t idx) {
+  if (idx >= NUM_POTS) return 0;
+  return pot_filtered[idx];
+}
+float getPotPercent(uint8_t idx) {
+  if (idx >= NUM_POTS) return 0.0f;
+  return (pot_filtered[idx] * 100.0f) / 1023.0f;
+}
 
 
 void setup() {
@@ -625,18 +713,20 @@ void setup() {
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 
-  pinMode(limitPin, INPUT_PULLUP);  // switch = LOW when pressed
+  pinMode(limitPin, INPUT_PULLUP);   // switch = LOW when pressed
   pinMode(raisedPin, INPUT_PULLUP);  // pressed = LOW
 
 
-  digitalWrite(enablePin, HIGH); // Start disabled
-  digitalWrite(dirPin, HIGH);    // Set direction
+  digitalWrite(enablePin, HIGH);  // Start disabled
+  digitalWrite(dirPin, HIGH);     // Set direction
 
   Serial.begin(115200);
   Serial.println("Commands: on, off, speed <steps/sec>, dir <0|1>");
 
+  initPots();
+
   pwm.begin();
-  pwm.setPWMFreq(60); // standard analog servos ~60 Hz
+  pwm.setPWMFreq(60);  // standard analog servos ~60 Hz
   delay(100);
   if (!ensureToolheadRaised()) {
     Serial.println("I'm STUCK");
@@ -646,16 +736,25 @@ void setup() {
 
 
 void loop() {
-  
+
 
   handleSerial();
+
+  // Poll potentiometers at ~50 Hz
+  static unsigned long lastPotMs = 0;
+  unsigned long nowMs = millis();
+  if (nowMs - lastPotMs >= 20) {
+    lastPotMs = nowMs;
+    pollPots();
+  }
+
 
   if (motorEnabled) {
     unsigned long now = micros();
     if (now - lastStepTime >= stepInterval) {
       lastStepTime = now;
       digitalWrite(stepPin, HIGH);
-      delayMicroseconds(2);      // Short pulse
+      delayMicroseconds(2);  // Short pulse
       digitalWrite(stepPin, LOW);
     }
   }
@@ -679,7 +778,7 @@ void handleSerial() {
         digitalWrite(enablePin, HIGH);
         Serial.println("Motor OFF");
       } else if (input.startsWith("speed ")) {
-        int sps = input.substring(6).toInt(); // steps per second
+        int sps = input.substring(6).toInt();  // steps per second
         if (sps > 0) {
           stepInterval = 1000000UL / sps;
           Serial.print("Speed set to ");
@@ -690,278 +789,284 @@ void handleSerial() {
         int d = input.substring(4).toInt();
         digitalWrite(dirPin, d ? HIGH : LOW);
         Serial.print("Direction set to ");
-        Serial.println(d);        
+        Serial.println(d);
       } else if (input == "home") {
         Serial.println("Homing...");
         HomeAxis();
-      } 
-      else if (input == "pos") {
-  float mm = currentPositionSteps / STEPS_PER_MM;
-  Serial.print("POS steps=");
-  Serial.print(currentPositionSteps);
-  Serial.print("  mm=");
-  Serial.println(mm, 3);
-}
-else if (input.startsWith("move ")) {  // relative, in steps
-  long steps = input.substring(5).toInt();
-  digitalWrite(enablePin, ENABLE_LEVEL);
-  moveSteps(steps);
-  digitalWrite(enablePin, DISABLE_LEVEL);
-  Serial.println("OK");
-}
-else if (input.startsWith("movemm ")) { // relative, in mm
-  float mm = input.substring(7).toFloat();
-  long steps = (long)lround(mm * STEPS_PER_MM);
-  digitalWrite(enablePin, ENABLE_LEVEL);
-  moveSteps(steps);
-  digitalWrite(enablePin, DISABLE_LEVEL);
-  Serial.println("OK");
-}
-else if (input.startsWith("goto ")) { // absolute, steps
-  long tgt = input.substring(5).toInt();
+      } else if (input == "pos") {
+        float mm = currentPositionSteps / STEPS_PER_MM;
+        Serial.print("POS steps=");
+        Serial.print(currentPositionSteps);
+        Serial.print("  mm=");
+        Serial.println(mm, 3);
+      } else if (input.startsWith("move ")) {  // relative, in steps
+        long steps = input.substring(5).toInt();
+        digitalWrite(enablePin, ENABLE_LEVEL);
+        moveSteps(steps);
+        digitalWrite(enablePin, DISABLE_LEVEL);
+        Serial.println("OK");
+      } else if (input.startsWith("movemm ")) {  // relative, in mm
+        float mm = input.substring(7).toFloat();
+        long steps = (long)lround(mm * STEPS_PER_MM);
+        digitalWrite(enablePin, ENABLE_LEVEL);
+        moveSteps(steps);
+        digitalWrite(enablePin, DISABLE_LEVEL);
+        Serial.println("OK");
+      } else if (input.startsWith("goto ")) {  // absolute, steps
+        long tgt = input.substring(5).toInt();
 #ifdef CHECK_SOFT_LIMITS
-  if (tgt < MIN_POS_STEPS) tgt = MIN_POS_STEPS;
-  if (tgt > MAX_POS_STEPS) tgt = MAX_POS_STEPS;
+        if (tgt < MIN_POS_STEPS) tgt = MIN_POS_STEPS;
+        if (tgt > MAX_POS_STEPS) tgt = MAX_POS_STEPS;
 #endif
-  digitalWrite(enablePin, ENABLE_LEVEL);
-  moveToSteps(tgt);
-  digitalWrite(enablePin, DISABLE_LEVEL);
-  Serial.println("OK");
-}
-else if (input.startsWith("gotomm ")) { // absolute, mm
-  float mm = input.substring(7).toFloat();
-  long tgt = (long)lround(mm * STEPS_PER_MM);
+        digitalWrite(enablePin, ENABLE_LEVEL);
+        moveToSteps(tgt);
+        digitalWrite(enablePin, DISABLE_LEVEL);
+        Serial.println("OK");
+      } else if (input.startsWith("gotomm ")) {  // absolute, mm
+        float mm = input.substring(7).toFloat();
+        long tgt = (long)lround(mm * STEPS_PER_MM);
 #ifdef CHECK_SOFT_LIMITS
-  if (tgt < MIN_POS_STEPS) tgt = MIN_POS_STEPS;
-  if (tgt > MAX_POS_STEPS) tgt = MAX_POS_STEPS;
+        if (tgt < MIN_POS_STEPS) tgt = MIN_POS_STEPS;
+        if (tgt > MAX_POS_STEPS) tgt = MAX_POS_STEPS;
 #endif
-  digitalWrite(enablePin, ENABLE_LEVEL);
-  moveToSteps(tgt);
-  digitalWrite(enablePin, DISABLE_LEVEL);
-  Serial.println("OK");
-}
+        digitalWrite(enablePin, ENABLE_LEVEL);
+        moveToSteps(tgt);
+        digitalWrite(enablePin, DISABLE_LEVEL);
+        Serial.println("OK");
+      }
 
-else if (input.startsWith("gobase ")) {
-  // gobase <idx 1..NUM_BASES>
-  // Example: gobase 3
-  long idx = input.substring(7).toInt(); // after "gobase "
-  if (idx < 1 || idx > NUM_BASES) {
-    Serial.print("Usage: gobase <1..");
-    Serial.print(NUM_BASES);
-    Serial.println(">");
-  } else {
-    if (!goToBase((uint8_t)idx)) {
-      Serial.println("ERROR: failed to move to base (see above).");
-    }
-  }
-}
-
-
-else if (input.startsWith("servopulse")) {
-  int servoNum = input.substring(10, 11).toInt();  // e.g. "SERVOPULSE 0 1500"
-  int pulseLen = input.substring(12).toInt();
-  setServoPulseRaw(servoNum, pulseLen);
-  Serial.print("Servo ");
-  Serial.print(servoNum);
-  Serial.print(" set to raw pulse length ");
-  Serial.println(pulseLen);
-}
+      else if (input.startsWith("gobase ")) {
+        // gobase <idx 1..NUM_BASES>
+        // Example: gobase 3
+        long idx = input.substring(7).toInt();  // after "gobase "
+        if (idx < 1 || idx > NUM_BASES) {
+          Serial.print("Usage: gobase <1..");
+          Serial.print(NUM_BASES);
+          Serial.println(">");
+        } else {
+          if (!goToBase((uint8_t)idx)) {
+            Serial.println("ERROR: failed to move to base (see above).");
+          }
+        }
+      }
 
 
-else if (input.startsWith("servo ")) {
-  // Expecting: "servo <channel> <angle>"
-  int firstSpace = input.indexOf(' ', 6);
-  if (firstSpace > 0) {
-    int channel = input.substring(6, firstSpace).toInt();
-    int angle   = input.substring(firstSpace + 1).toInt();
+      else if (input.startsWith("servopulse")) {
+        int servoNum = input.substring(10, 11).toInt();  // e.g. "SERVOPULSE 0 1500"
+        int pulseLen = input.substring(12).toInt();
+        setServoPulseRaw(servoNum, pulseLen);
+        Serial.print("Servo ");
+        Serial.print(servoNum);
+        Serial.print(" set to raw pulse length ");
+        Serial.println(pulseLen);
+      }
 
-    if (channel < 0 || channel > 15) {
-      Serial.println("Error: channel must be 0–15");
-    } else {
-      setServoAngle(channel, angle);
-    }
-  } else {
-    Serial.println("Usage: servo <channel 0-15> <angle 0-180>");
-  }
-}
-else if (input.startsWith("raise")) {
-  raiseToolhead();
-}
-else if (input.startsWith("servoslow ")) {
-  // Usage: servoslow <channel> <angle> [delay_ms]
-  int firstSpace = input.indexOf(' ', 10);
-  if (firstSpace > 0) {
-    int channel = input.substring(10, firstSpace).toInt();
-    String rest = input.substring(firstSpace + 1);
-    int secondSpace = rest.indexOf(' ');
-    int angle, delayMs;
-    if (secondSpace > 0) {
-      angle = rest.substring(0, secondSpace).toInt();
-      delayMs = rest.substring(secondSpace + 1).toInt();
-    } else {
-      angle = rest.toInt();
-      delayMs = 15; // default
-    }
 
-    if (channel < 0 || channel > 15) {
-      Serial.println("Error: channel must be 0–15");
-    } else {
-      setServoAngleSlow(channel, angle, delayMs);
-    }
-  } else {
-    Serial.println("Usage: servoslow <channel> <angle 0-180> [delay_ms]");
-  }
-}
+      else if (input.startsWith("servo ")) {
+        // Expecting: "servo <channel> <angle>"
+        int firstSpace = input.indexOf(' ', 6);
+        if (firstSpace > 0) {
+          int channel = input.substring(6, firstSpace).toInt();
+          int angle = input.substring(firstSpace + 1).toInt();
 
-else if (input.startsWith("servoslowdual ")) {
-  // servoslowdual <chA> <tgtA> <chB> <tgtB> [delayA_ms] [delayB_ms] [stepA_deg] [stepB_deg]
-  // Examples:
-  //   servoslowdual 0 150 1 60
-  //   servoslowdual 2 30  4 120 10 25
-  //   servoslowdual 3 99  5 10  15 30 1 2
-
-  String rest = input.substring(14); // after "servoslowdual "
-  rest.trim();
-
-  int p1 = rest.indexOf(' ');
-  if (p1 < 0) { Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]"); }
-  else {
-    String t1 = rest.substring(0, p1);
-    rest = rest.substring(p1 + 1); rest.trim();
-
-    int p2 = rest.indexOf(' ');
-    if (p2 < 0) { Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]"); }
-    else {
-      String t2 = rest.substring(0, p2);
-      rest = rest.substring(p2 + 1); rest.trim();
-
-      int p3 = rest.indexOf(' ');
-      if (p3 < 0) { Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]"); }
-      else {
-        String t3 = rest.substring(0, p3);
-        rest = rest.substring(p3 + 1); rest.trim();
-
-        // t4 is either the last token or followed by optional tail
-        int p4 = rest.indexOf(' ');
-        String t4, tail;
-        if (p4 < 0) { t4 = rest; tail = ""; }
-        else { t4 = rest.substring(0, p4); tail = rest.substring(p4 + 1); tail.trim(); }
-
-        int chA = t1.toInt();
-        int tgtA = t2.toInt();
-        int chB = t3.toInt();
-        int tgtB = t4.toInt();
-
-        // Defaults for optional params
-        uint16_t dA = 20, dB = 20;
-        uint8_t  sA = 1,  sB = 1;
-
-        // Parse up to four optional numbers from 'tail'
-        if (tail.length() > 0) {
-          int q1 = tail.indexOf(' ');
-          if (q1 < 0) {
-            dA = (uint16_t)tail.toInt();
+          if (channel < 0 || channel > 15) {
+            Serial.println("Error: channel must be 0–15");
           } else {
-            String u1 = tail.substring(0, q1);
-            tail = tail.substring(q1 + 1); tail.trim();
-            dA = (uint16_t)u1.toInt();
+            setServoAngle(channel, angle);
+          }
+        } else {
+          Serial.println("Usage: servo <channel 0-15> <angle 0-180>");
+        }
+      } else if (input.startsWith("raise")) {
+        raiseToolhead();
+      } else if (input.startsWith("servoslow ")) {
+        // Usage: servoslow <channel> <angle> [delay_ms]
+        int firstSpace = input.indexOf(' ', 10);
+        if (firstSpace > 0) {
+          int channel = input.substring(10, firstSpace).toInt();
+          String rest = input.substring(firstSpace + 1);
+          int secondSpace = rest.indexOf(' ');
+          int angle, delayMs;
+          if (secondSpace > 0) {
+            angle = rest.substring(0, secondSpace).toInt();
+            delayMs = rest.substring(secondSpace + 1).toInt();
+          } else {
+            angle = rest.toInt();
+            delayMs = 15;  // default
+          }
 
-            int q2 = tail.indexOf(' ');
-            if (q2 < 0) {
-              dB = (uint16_t)tail.toInt();
+          if (channel < 0 || channel > 15) {
+            Serial.println("Error: channel must be 0–15");
+          } else {
+            setServoAngleSlow(channel, angle, delayMs);
+          }
+        } else {
+          Serial.println("Usage: servoslow <channel> <angle 0-180> [delay_ms]");
+        }
+      }
+
+      else if (input.startsWith("servoslowdual ")) {
+        // servoslowdual <chA> <tgtA> <chB> <tgtB> [delayA_ms] [delayB_ms] [stepA_deg] [stepB_deg]
+        // Examples:
+        //   servoslowdual 0 150 1 60
+        //   servoslowdual 2 30  4 120 10 25
+        //   servoslowdual 3 99  5 10  15 30 1 2
+
+        String rest = input.substring(14);  // after "servoslowdual "
+        rest.trim();
+
+        int p1 = rest.indexOf(' ');
+        if (p1 < 0) {
+          Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]");
+        } else {
+          String t1 = rest.substring(0, p1);
+          rest = rest.substring(p1 + 1);
+          rest.trim();
+
+          int p2 = rest.indexOf(' ');
+          if (p2 < 0) {
+            Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]");
+          } else {
+            String t2 = rest.substring(0, p2);
+            rest = rest.substring(p2 + 1);
+            rest.trim();
+
+            int p3 = rest.indexOf(' ');
+            if (p3 < 0) {
+              Serial.println("Usage: servoslowdual <chA> <tgtA> <chB> <tgtB> [dA] [dB] [sA] [sB]");
             } else {
-              String u2 = tail.substring(0, q2);
-              tail = tail.substring(q2 + 1); tail.trim();
-              dB = (uint16_t)u2.toInt();
+              String t3 = rest.substring(0, p3);
+              rest = rest.substring(p3 + 1);
+              rest.trim();
 
-              int q3 = tail.indexOf(' ');
-              if (q3 < 0) {
-                sA = (uint8_t)tail.toInt();
+              // t4 is either the last token or followed by optional tail
+              int p4 = rest.indexOf(' ');
+              String t4, tail;
+              if (p4 < 0) {
+                t4 = rest;
+                tail = "";
               } else {
-                String u3 = tail.substring(0, q3);
-                tail = tail.substring(q3 + 1); tail.trim();
-                sA = (uint8_t)u3.toInt();
-                if (tail.length() > 0) sB = (uint8_t)tail.toInt();
+                t4 = rest.substring(0, p4);
+                tail = rest.substring(p4 + 1);
+                tail.trim();
+              }
+
+              int chA = t1.toInt();
+              int tgtA = t2.toInt();
+              int chB = t3.toInt();
+              int tgtB = t4.toInt();
+
+              // Defaults for optional params
+              uint16_t dA = 20, dB = 20;
+              uint8_t sA = 1, sB = 1;
+
+              // Parse up to four optional numbers from 'tail'
+              if (tail.length() > 0) {
+                int q1 = tail.indexOf(' ');
+                if (q1 < 0) {
+                  dA = (uint16_t)tail.toInt();
+                } else {
+                  String u1 = tail.substring(0, q1);
+                  tail = tail.substring(q1 + 1);
+                  tail.trim();
+                  dA = (uint16_t)u1.toInt();
+
+                  int q2 = tail.indexOf(' ');
+                  if (q2 < 0) {
+                    dB = (uint16_t)tail.toInt();
+                  } else {
+                    String u2 = tail.substring(0, q2);
+                    tail = tail.substring(q2 + 1);
+                    tail.trim();
+                    dB = (uint16_t)u2.toInt();
+
+                    int q3 = tail.indexOf(' ');
+                    if (q3 < 0) {
+                      sA = (uint8_t)tail.toInt();
+                    } else {
+                      String u3 = tail.substring(0, q3);
+                      tail = tail.substring(q3 + 1);
+                      tail.trim();
+                      sA = (uint8_t)u3.toInt();
+                      if (tail.length() > 0) sB = (uint8_t)tail.toInt();
+                    }
+                  }
+                }
+              }
+
+              // Bounds check channels
+              if (chA < 0 || chA > 15 || chB < 0 || chB > 15) {
+                Serial.println("Error: channel must be 0–15");
+              } else {
+                setServoAnglesDual((uint8_t)chA, tgtA, (uint8_t)chB, tgtB, dA, dB, sA, sB);
               }
             }
           }
         }
+      }
 
-        // Bounds check channels
-        if (chA < 0 || chA > 15 || chB < 0 || chB > 15) {
-          Serial.println("Error: channel must be 0–15");
+      else if (input == "couple" || input == "couplesyringes") {
+        coupleSyringes();
+        Serial.println("OK coupleSyringes");
+      }
+
+
+      // Single-axis moves
+      else if (input.startsWith("move2 ")) {
+        long s = input.substring(6).toInt();
+        moveSteps2(s);
+        Serial.println("OK move2");
+      } else if (input.startsWith("move3 ")) {
+        long s = input.substring(6).toInt();
+        moveSteps3(s);
+        Serial.println("OK move3");
+      }
+
+      // Set shared speed for simultaneous motion
+      else if (input.startsWith("speed23 ")) {
+        long sps = input.substring(8).toInt();
+        setSpeed23SPS(sps);
+      }
+
+      // Simultaneous move with arbitrary step counts
+      // Example: m23 1600 1600  (both same way)
+      //          m23 1600 -1600 (opposite directions)
+      else if (input.startsWith("m23 ")) {
+        int sp = input.indexOf(' ', 4);
+        if (sp > 0) {
+          long s2 = input.substring(4, sp).toInt();
+          long s3 = input.substring(sp + 1).toInt();
+          moveStepsSync23(s2, s3);
+          Serial.println("OK m23");
         } else {
-          setServoAnglesDual((uint8_t)chA, tgtA, (uint8_t)chB, tgtB, dA, dB, sA, sB);
+          Serial.println("Usage: m23 <steps2> <steps3>");
         }
       }
-    }
-  }
-}
 
-else if (input == "couple" || input == "couplesyringes") {
-  coupleSyringes();
-  Serial.println("OK coupleSyringes");
-}
+      // Convenience: LINK = equal & opposite steps (paint transfer)
+      // Example: link 2000  -> #2 +2000, #3 -2000
+      else if (input.startsWith("link ")) {
+        long s = input.substring(5).toInt();
+        moveStepsSync23(s, -s);
+        Serial.println("OK link");
+      }
+
+      // Position readouts
+      else if (input == "pos2") {
+        float mm = currentPositionSteps2 / STEPS_PER_MM;
+        Serial.print("POS2 steps=");
+        Serial.print(currentPositionSteps2);
+        Serial.print("  mm=");
+        Serial.println(mm, 3);
+      } else if (input == "pos3") {
+        float mm = currentPositionSteps3 / STEPS_PER_MM;
+        Serial.print("POS3 steps=");
+        Serial.print(currentPositionSteps3);
+        Serial.print("  mm=");
+        Serial.println(mm, 3);
+      }
 
 
-// Single-axis moves
-else if (input.startsWith("move2 ")) {
-  long s = input.substring(6).toInt();
-  moveSteps2(s);
-  Serial.println("OK move2");
-}
-else if (input.startsWith("move3 ")) {
-  long s = input.substring(6).toInt();
-  moveSteps3(s);
-  Serial.println("OK move3");
-}
-
-// Set shared speed for simultaneous motion
-else if (input.startsWith("speed23 ")) {
-  long sps = input.substring(8).toInt();
-  setSpeed23SPS(sps);
-}
-
-// Simultaneous move with arbitrary step counts
-// Example: m23 1600 1600  (both same way)
-//          m23 1600 -1600 (opposite directions)
-else if (input.startsWith("m23 ")) {
-  int sp = input.indexOf(' ', 4);
-  if (sp > 0) {
-    long s2 = input.substring(4, sp).toInt();
-    long s3 = input.substring(sp + 1).toInt();
-    moveStepsSync23(s2, s3);
-    Serial.println("OK m23");
-  } else {
-    Serial.println("Usage: m23 <steps2> <steps3>");
-  }
-}
-
-// Convenience: LINK = equal & opposite steps (paint transfer)
-// Example: link 2000  -> #2 +2000, #3 -2000
-else if (input.startsWith("link ")) {
-  long s = input.substring(5).toInt();
-  moveStepsSync23(s, -s);
-  Serial.println("OK link");
-}
-
-// Position readouts
-else if (input == "pos2") {
-  float mm = currentPositionSteps2 / STEPS_PER_MM;
-  Serial.print("POS2 steps=");
-  Serial.print(currentPositionSteps2);
-  Serial.print("  mm=");
-  Serial.println(mm, 3);
-}
-else if (input == "pos3") {
-  float mm = currentPositionSteps3 / STEPS_PER_MM;
-  Serial.print("POS3 steps=");
-  Serial.print(currentPositionSteps3);
-  Serial.print("  mm=");
-  Serial.println(mm, 3);
-}
-
-      
       else {
         Serial.println("Invalid command.");
       }
@@ -971,4 +1076,3 @@ else if (input == "pos3") {
     }
   }
 }
-
