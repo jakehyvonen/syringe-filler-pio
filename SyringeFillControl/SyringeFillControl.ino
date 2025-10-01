@@ -76,6 +76,8 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_MAX  600  // pulse length out of 4096 for ~180°
 #define raisedPos 99    // toolhead vertical servo (3) position that is calibrated to activate the limit switch
 #define couplingPos1 129 // position of toolhead servo before rotary servo is activated
+#define coupledPos 11 // position of coupling servo when syringes are coupled
+#define decoupledPos 151 // position of coupling servo when syringes are decoupled
 #define TOOLHEAD_SERVO 3 
 #define COUPLING_SERVO 5
 
@@ -101,14 +103,19 @@ bool isToolheadRaised() {
 bool ensureToolheadRaised(uint16_t timeout_ms = 1200) {
   if (isToolheadRaised()) return true;
 
+  setServoAngle(COUPLING_SERVO, decoupledPos);
+  delay(100);
+
   // Attempt to raise
-  setServoAngle(3, raisedPos);  // quick command; you could use setServoAngleSlow if you prefer
+  setServoAngle(TOOLHEAD_SERVO, raisedPos);  // quick command; you could use setServoAngleSlow if you prefer
 
   unsigned long start = millis();
   while (!isToolheadRaised() && (millis() - start) < timeout_ms) {
     // Nudge again just in case the first command hit a deadband
     // (won't hurt servos at 60Hz; this simply reasserts the target)
-    setServoAngle(3, raisedPos);
+    setServoAngle(COUPLING_SERVO, decoupledPos);
+    delay(100);
+    setServoAngle(TOOLHEAD_SERVO, raisedPos);
     delay(100);
   }
 
@@ -144,8 +151,9 @@ void setServoAngle(uint8_t channel, int angle) {
 }
 
 void raiseToolhead(){
-      setServoAngle(3, raisedPos);
-      setServoAngle(5, 23);
+      setServoAngle(TOOLHEAD_SERVO, raisedPos);
+      delay(100);
+      setServoAngle(COUPLING_SERVO, decoupledPos);
 }
 
 // Slowly sweep servo from its current position to target
@@ -268,10 +276,11 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
 
 void coupleSyringes(){
   setServoAngle(TOOLHEAD_SERVO, couplingPos1);
+  delay(71);
   setServoAngle(COUPLING_SERVO, 151);
-  delay(11);
+  delay(71);
   setServoPulseRaw(TOOLHEAD_SERVO, 0); //depower servo - make this into a method!
-  delay(11);
+  delay(71);
   setServoAngle(COUPLING_SERVO, 11);  
 }
 
@@ -628,7 +637,11 @@ void setup() {
 
   pwm.begin();
   pwm.setPWMFreq(60); // standard analog servos ~60 Hz
-  delay(10);
+  delay(100);
+  if (!ensureToolheadRaised()) {
+    Serial.println("I'm STUCK");
+    return;
+  }
 }
 
 
