@@ -1,14 +1,14 @@
-#define dirPin 2
-#define stepPin 3
-#define enablePin 8
+#define stepPin 22
+#define dirPin 23
+#define enablePin 24
 
-#define STEP2_PIN 4
-#define DIR2_PIN 5
-#define EN2_PIN 6
+#define STEP2_PIN 25
+#define DIR2_PIN 26
+#define EN2_PIN 27
 
-#define STEP3_PIN 7
-#define DIR3_PIN 10
-#define EN3_PIN 11
+#define STEP3_PIN 28
+#define DIR3_PIN 29
+#define EN3_PIN 30
 
 #include <EEPROM.h>  // for optional persistence
 
@@ -45,8 +45,8 @@ static bool pots_inited = false;
 
 
 // ---- Limit switch wiring (RAMPS 1.4 endstop) ----
-#define limitPin 9    // green 'S' wire from the endstop
-#define raisedPin 12  //  "toolhead raised" switch
+#define limitPin 39    // green 'S' wire from the endstop
+#define raisedPin 40  //  "toolhead raised" switch
 
 #define HOME_DIR LOW        // set the direction that *moves toward* the switch (LOW or HIGH)
 #define DISABLE_LEVEL HIGH  // A4988/DRV8825: ENABLE pin is active-LOW. Use HIGH to disable.
