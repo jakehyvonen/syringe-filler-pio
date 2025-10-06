@@ -14,6 +14,9 @@
 
 #define NUM_BASES 5  // number of base syringes
 
+const uint8_t BASE_EN_PINS[NUM_BASES] = {43, 45, 47, 49, 51};  
+
+
 // Default/calibrated positions (in steps). Edit these once;
 // or set them at runtime and save to EEPROM.
 long basePos[NUM_BASES] = {
@@ -91,7 +94,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 #define SERVO_MIN 150     // pulse length out of 4096 for ~0°
 #define SERVO_MAX 600     // pulse length out of 4096 for ~180°
 #define raisedPos 99      // toolhead vertical servo (3) position that is calibrated to activate the limit switch
-#define couplingPos1 129  // position of toolhead servo before rotary servo is activated
+#define couplingPos1 132  // position of toolhead servo before rotary servo is activated
 #define coupledPos 11     // position of coupling servo when syringes are coupled
 #define decoupledPos 151  // position of coupling servo when syringes are decoupled
 #define TOOLHEAD_SERVO 3
@@ -310,6 +313,38 @@ void coupleSyringes() {
 
 
 //////// END SERVO SECTION ////////
+
+
+void initBasesNoMCP() {
+  for (uint8_t i = 0; i < NUM_BASES; ++i) {
+    pinMode(BASE_EN_PINS[i], OUTPUT);
+    digitalWrite(BASE_EN_PINS[i], HIGH); // default disabled
+  }
+}
+
+void disableAllBases() {
+  for (uint8_t i = 0; i < NUM_BASES; ++i) digitalWrite(BASE_EN_PINS[i], HIGH);
+}
+
+bool selectBaseStepper(uint8_t idx1) {
+  if (idx1 == 0) { 
+    disableAllBases();
+    Serial.println("Base: none");
+    return true;
+  }
+  if (idx1 > NUM_BASES) {
+    Serial.println("ERROR: base index out of range");
+    return false;
+  }
+  // idx1 is 1–NUM_BASES, so subtract 1 for 0-indexed array
+  for (uint8_t i = 0; i < NUM_BASES; ++i)
+    digitalWrite(BASE_EN_PINS[i], (i == (idx1 - 1)) ? LOW : HIGH);
+
+  Serial.print("Base selected: "); 
+  Serial.println(idx1);
+  return true;
+}
+
 
 
 // Block until a step pulse at the current stepInterval elapses, then toggle STEP.
@@ -806,6 +841,10 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Commands: on, off, speed <steps/sec>, dir <0|1>");
 
+  initBasesNoMCP();
+  disableAllBases();  // safe default
+
+
   initPots();
 
   pwm.begin();
@@ -909,6 +948,12 @@ void handleSerial() {
         digitalWrite(enablePin, DISABLE_LEVEL);
         Serial.println("OK");
       }
+
+      else if (input.startsWith("base ")) {
+        int idx = input.substring(5).toInt(); // 0..5
+        if (!selectBaseStepper((uint8_t)idx)) Serial.println("Usage: base <0..5>");
+      }
+
 
       else if (input.startsWith("gobase ")) {
         // gobase <idx 1..NUM_BASES>
@@ -1072,6 +1117,7 @@ void handleSerial() {
       else {
         Serial.println("Invalid command.");
       }
+
       input = "";
     } else if (c != '\r') {
       input += c;
