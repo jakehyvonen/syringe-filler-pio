@@ -1,7 +1,7 @@
 // ===== Pins (adjust if needed) =====
-const uint8_t stepPin    = 22;
-const uint8_t dirPin     = 23;
-const uint8_t enablePin  = 24;
+const uint8_t stepPin    = 3;
+const uint8_t dirPin     = 4;
+const uint8_t enablePin  = 5;
 const uint8_t buttonPin  = 7;   // to GND, uses INPUT_PULLUP
 
 // ===== Driver levels (A4988/DRV8825 typical) =====
@@ -123,6 +123,8 @@ void loop() {
 
   // Press & hold to run at constant speed
   if (buttonPressed()) {
+    Serial.println("button pressed");
+
     motorEnable(true);
     stepTickIfDue();
   } else {
