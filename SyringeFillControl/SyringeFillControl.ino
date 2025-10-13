@@ -1,40 +1,40 @@
-#define stepPin 22
-#define dirPin 23
-#define enablePin 24
+// ====== ESP32 PIN REMAP (choose GPIOs that suit your board/wiring) ======
+// Original Mega pins -> ESP32 GPIOs
+#define stepPin     4    // was 22
+#define dirPin      16   // was 23
+#define enablePin   17   // was 24
 
-#define STEP2_PIN 25
-#define DIR2_PIN 26
-#define EN2_PIN 27
+#define STEP2_PIN   18   // was 25
+#define DIR2_PIN    19   // was 26
+#define EN2_PIN     5    // was 27
 
-#define STEP3_PIN 28
-#define DIR3_PIN 29
-#define EN3_PIN 30
+#define STEP3_PIN   12   // was 28
+#define DIR3_PIN    14   // was 29
+#define EN3_PIN     27   // was 30
 
-#include <EEPROM.h>  // for optional persistence
+// Base stepper ENABLE lines (5 channels)
+// Pick 5 outputs; adjust to your wiring
+#define NUM_BASES 5
+const uint8_t BASE_EN_PINS[NUM_BASES] = {23, 26, 32, 33, 15}; // was {43,45,47,49,51}
 
-#define NUM_BASES 5  // number of base syringes
+// ---- Limit switch wiring ----
+// NOTE: GPIO34/35 are input-only and have NO internal pullups on ESP32.
+// Either: (A) keep these and add external pull-ups to 3.3V, or
+//         (B) move to pullup-capable pins and keep INPUT_PULLUP below.
+#define limitPin   34    // was 39
+#define raisedPin  35    // was 40
 
-const uint8_t BASE_EN_PINS[NUM_BASES] = {43, 45, 47, 49, 51};  
+// ================== LIBS ==================
+#include <Wire.h>
+#include <EEPROM.h>                  // works on ESP32 with EEPROM.begin()
+#include <Adafruit_PWMServoDriver.h> // PCA9685
+#include <Adafruit_ADS1X15.h>        // ADS1115
 
-
-// Default/calibrated positions (in steps). Edit these once;
-// or set them at runtime and save to EEPROM.
-long basePos[NUM_BASES] = {
-  3330,  // 1
-  5480,  // 2
-  3330,  // 3
-  3330,  // 4
-  3330   // 5
-};
-
-// Where in EEPROM we store them (each long = 4 bytes)
-const int EEPROM_BASE_ADDR = 0;  // uses 4*NUM_BASES bytes starting here
-
-// ===== Potentiometers (A0..A5) =====
+// ====== ADS1115 setup (I2C) ======
+Adafruit_ADS1115 ads;     // default address 0x48
 #define NUM_POTS 1
-const uint8_t POT_PINS[NUM_POTS] = { A0 };
-
-//const uint8_t POT_PINS[NUM_POTS] = { A0, A1, A2, A3, A4, A5 };
+// Use ADS channel numbers instead of A0..A5. Keep your array API unchanged.
+const uint8_t POT_PINS[NUM_POTS] = { 0 }; // ADS1115 channel 0 == "A0" logically
 
 // Exponential moving average strength and print hysteresis
 const uint8_t POT_EMA_SHIFT = 3;    // 1/8 new sample each poll
@@ -45,110 +45,60 @@ static uint16_t pot_filtered[NUM_POTS];
 static uint16_t pot_last_reported[NUM_POTS];
 static bool pots_inited = false;
 
+// ---- motion & config (unchanged) ----
+#define HOME_DIR LOW
+#define DISABLE_LEVEL HIGH
+#define ENABLE_LEVEL  LOW
+const float STEPS_PER_MM = 80.0f;
 
-
-// ---- Limit switch wiring (RAMPS 1.4 endstop) ----
-#define limitPin 39    // green 'S' wire from the endstop
-#define raisedPin 40  //  "toolhead raised" switch
-
-#define HOME_DIR LOW        // set the direction that *moves toward* the switch (LOW or HIGH)
-#define DISABLE_LEVEL HIGH  // A4988/DRV8825: ENABLE pin is active-LOW. Use HIGH to disable.
-#define ENABLE_LEVEL LOW    // Use LOW to enable the driver.
-
-// Steps/mm helps print pretty units and enforce soft limits (tune this!)
-const float STEPS_PER_MM = 80.0f;  // <- EXAMPLE for 1/16 microstep + GT2(20T) belt, change to your machine
-
-// Soft limits (in steps). Comment out CHECK_SOFT_LIMITS to disable.
 #define CHECK_SOFT_LIMITS
-const long MIN_POS_STEPS = 0;                              // home at 0
-const long MAX_POS_STEPS = (long)(200.0f * STEPS_PER_MM);  // e.g. 200 mm travel
+const long MIN_POS_STEPS = 0;
+const long MAX_POS_STEPS = (long)(200.0f * STEPS_PER_MM);
 
-//stepper Position state
-volatile long currentPositionSteps = 0;  // signed, increases with DIR=HIGH (see below)
+volatile long currentPositionSteps  = 0;
 volatile long currentPositionSteps2 = 0;
 volatile long currentPositionSteps3 = 0;
-// Pulse width for STEP high (us). 2–5us is typical for A4988/DRV8825.
+
 #define STEP_PULSE_US 4
 
-// Shared speed for simultaneous moves of 2 & 3 (steps/sec)
-static long speed23_sps = 800;                                   // default
-static unsigned long interval23_us = 1000000UL / (2UL * 800UL);  // µs between toggles
+static long speed23_sps = 800;
+static unsigned long interval23_us = 1000000UL / (2UL * 800UL);
 
 bool homed = false;
 
 long lastStepTime = 0;
-unsigned long stepInterval = 1000;  // microseconds between steps (500 steps/sec)
+unsigned long stepInterval = 1000;  // microseconds between steps (500 sps)
 bool motorEnabled = false;
 bool stepState = false;
 
-
-
-///// START SERVO SECTION ///////
-
-#include <Adafruit_PWMServoDriver.h>
-
-// --- PCA9685 servo driver ---
+// ===== SERVO / PCA9685 (unchanged API) =====
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
-// Servo calibration (these are typical; adjust to your servos)
-#define SERVO_MIN 150     // pulse length out of 4096 for ~0°
-#define SERVO_MAX 600     // pulse length out of 4096 for ~180°
-#define raisedPos 99      // toolhead vertical servo (3) position that is calibrated to activate the limit switch
-#define couplingPos1 132  // position of toolhead servo before rotary servo is activated
-#define coupledPos 11     // position of coupling servo when syringes are coupled
-#define decoupledPos 151  // position of coupling servo when syringes are decoupled
+#define SERVO_MIN 150
+#define SERVO_MAX 600
+#define raisedPos 99
+#define couplingPos1 132
+#define coupledPos 11
+#define decoupledPos 151
 #define TOOLHEAD_SERVO 3
 #define COUPLING_SERVO 5
 
-
-// Track commanded angles so slow sweeps can start from last setpoint.
 static int currentAngles[16];
 static bool currentAnglesInit = false;
 
 static inline void _ensureAnglesInit() {
   if (!currentAnglesInit) {
-    for (int i = 0; i < 16; ++i) currentAngles[i] = 90;  // default
+    for (int i = 0; i < 16; ++i) currentAngles[i] = 90;
     currentAnglesInit = true;
   }
 }
 
-
 bool isToolheadRaised() {
-  return (digitalRead(raisedPin) == LOW);  // LOW means pressed
+  // If you kept GPIO34/35, ensure external pull-up resistor to 3.3V.
+  return (digitalRead(raisedPin) == LOW);
 }
 
-// Try to ensure the toolhead is physically raised.
-// Returns true if raised (already or after trying), false if it failed within timeout.
-bool ensureToolheadRaised(uint16_t timeout_ms = 1200) {
-  if (isToolheadRaised()) return true;
-
-  setServoAngle(COUPLING_SERVO, decoupledPos);
-  delay(100);
-
-  // Attempt to raise
-  setServoAngle(TOOLHEAD_SERVO, raisedPos);  // quick command; you could use setServoAngleSlow if you prefer
-
-  unsigned long start = millis();
-  while (!isToolheadRaised() && (millis() - start) < timeout_ms) {
-    // Nudge again just in case the first command hit a deadband
-    // (won't hurt servos at 60Hz; this simply reasserts the target)
-    setServoAngle(COUPLING_SERVO, decoupledPos);
-    delay(100);
-    setServoAngle(TOOLHEAD_SERVO, raisedPos);
-    delay(100);
-  }
-
-  if (!isToolheadRaised()) {
-    Serial.println("ERROR: Toolhead not raised (timeout). Movement blocked.");
-    return false;
-  }
-  return true;
-}
-
-
-// Function to set servo pulse directly in microseconds
 void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
-  // pulseLength is in microseconds, e.g. 1500 = neutral
   pwm.writeMicroseconds(servoNum, pulseLength);
 }
 
@@ -160,12 +110,9 @@ void setServoAngle(uint8_t channel, int angle) {
   uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
   pwm.setPWM(channel, 0, pulselen);
 
-  currentAngles[channel] = angle;  // <-- keep state
-  // (optional) comment out prints if you want it quieter
-  Serial.print("Servo ");
-  Serial.print(channel);
-  Serial.print(" -> ");
-  Serial.print(angle);
+  currentAngles[channel] = angle;
+  Serial.print("Servo "); Serial.print(channel);
+  Serial.print(" -> ");   Serial.print(angle);
   Serial.println(" deg");
 }
 
@@ -175,7 +122,6 @@ void raiseToolhead() {
   setServoAngle(COUPLING_SERVO, decoupledPos);
 }
 
-// Slowly sweep servo from its current position to target
 void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   _ensureAnglesInit();
   if (targetAngle < 0) targetAngle = 0;
@@ -194,28 +140,18 @@ void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   pwm.setPWM(channel, 0, pulselen);
   currentAngles[channel] = targetAngle;
 
-  Serial.print("Servo ");
-  Serial.print(channel);
-  Serial.print(" slowly moved to ");
-  Serial.print(targetAngle);
-  Serial.println(" deg");
+  Serial.print("Servo "); Serial.print(channel);
+  Serial.print(" slowly moved to "); Serial.println(targetAngle);
 }
 
-// Move two servos simultaneously to their targets (blocking).
-// Each servo has its own step delay (ms per step) and step size (deg per step).
-// Example: setServoAnglesDual(0, 150, 1, 60, 10, 20);  // ch0 fast, ch1 slower
-// working on calibrating: servoslowdual 3 130 5 150 61 11
 void setServoAnglesDual(uint8_t chA, int tgtA,
                         uint8_t chB, int tgtB,
                         uint16_t stepDelayA = 20, uint16_t stepDelayB = 20,
                         uint8_t stepSizeA = 1, uint8_t stepSizeB = 1) {
   _ensureAnglesInit();
 
-  // clamp & sanitize
-  if (tgtA < 0) tgtA = 0;
-  if (tgtA > 180) tgtA = 180;
-  if (tgtB < 0) tgtB = 0;
-  if (tgtB > 180) tgtB = 180;
+  if (tgtA < 0) tgtA = 0; if (tgtA > 180) tgtA = 180;
+  if (tgtB < 0) tgtB = 0; if (tgtB > 180) tgtB = 180;
   if (stepDelayA == 0) stepDelayA = 1;
   if (stepDelayB == 0) stepDelayB = 1;
   if (stepSizeA == 0) stepSizeA = 1;
@@ -224,17 +160,14 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
   int curA = currentAngles[chA];
   int curB = currentAngles[chB];
 
-  // quick exit if nothing to do
   if (curA == tgtA && curB == tgtB) return;
 
-  // direction (sign)
   int dirA = (tgtA > curA) ? +1 : -1;
   int dirB = (tgtB > curB) ? +1 : -1;
   if (tgtA == curA) dirA = 0;
   if (tgtB == curB) dirB = 0;
 
-  unsigned long lastA = millis();
-  unsigned long lastB = millis();
+  unsigned long lastA = millis(), lastB = millis();
 
   auto writeA = [&](int a) {
     uint16_t p = map(a, 0, 180, SERVO_MIN, SERVO_MAX);
@@ -245,7 +178,6 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
     pwm.setPWM(chB, 0, p);
   };
 
-  // initial write to ensure consistent start
   writeA(curA);
   writeB(curB);
 
@@ -253,48 +185,30 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
     unsigned long now = millis();
     bool progressed = false;
 
-    // A due?
     if (dirA != 0 && (now - lastA) >= stepDelayA) {
       lastA = now;
-      // step toward target with bounded step size
       int nextA = curA + dirA * (int)stepSizeA;
       if ((dirA > 0 && nextA > tgtA) || (dirA < 0 && nextA < tgtA)) nextA = tgtA;
-      if (nextA != curA) {
-        curA = nextA;
-        writeA(curA);
-        progressed = true;
-      }
+      if (nextA != curA) { curA = nextA; writeA(curA); progressed = true; }
       if (curA == tgtA) dirA = 0;
     }
-
-    // B due?
     if (dirB != 0 && (now - lastB) >= stepDelayB) {
       lastB = now;
       int nextB = curB + dirB * (int)stepSizeB;
       if ((dirB > 0 && nextB > tgtB) || (dirB < 0 && nextB < tgtB)) nextB = tgtB;
-      if (nextB != curB) {
-        curB = nextB;
-        writeB(curB);
-        progressed = true;
-      }
+      if (nextB != curB) { curB = nextB; writeB(curB); progressed = true; }
       if (curB == tgtB) dirB = 0;
     }
 
-    if (dirA == 0 && dirB == 0) break;  // both done
-    if (!progressed) delay(1);          // yield a bit
+    if (dirA == 0 && dirB == 0) break;
+    if (!progressed) delay(1);
   }
 
   currentAngles[chA] = curA;
   currentAngles[chB] = curB;
 
-  Serial.print("Servos ");
-  Serial.print(chA);
-  Serial.print("->");
-  Serial.print(tgtA);
-  Serial.print(", ");
-  Serial.print(chB);
-  Serial.print("->");
-  Serial.print(tgtB);
+  Serial.print("Servos "); Serial.print(chA); Serial.print("->"); Serial.print(tgtA);
+  Serial.print(", ");     Serial.print(chB); Serial.print("->"); Serial.print(tgtB);
   Serial.println(" (dual slow)");
 }
 
@@ -303,18 +217,12 @@ void coupleSyringes() {
   delay(71);
   setServoAngle(COUPLING_SERVO, 151);
   delay(71);
-  setServoPulseRaw(TOOLHEAD_SERVO, 0);  //depower servo - make this into a method!
+  setServoPulseRaw(TOOLHEAD_SERVO, 0);
   delay(71);
   setServoAngle(COUPLING_SERVO, 11);
 }
 
-
-
-
-
-//////// END SERVO SECTION ////////
-
-
+// ===== Bases (unchanged API) =====
 void initBasesNoMCP() {
   for (uint8_t i = 0; i < NUM_BASES; ++i) {
     pinMode(BASE_EN_PINS[i], OUTPUT);
@@ -327,7 +235,7 @@ void disableAllBases() {
 }
 
 bool selectBaseStepper(uint8_t idx1) {
-  if (idx1 == 0) { 
+  if (idx1 == 0) {
     disableAllBases();
     Serial.println("Base: none");
     return true;
@@ -336,19 +244,14 @@ bool selectBaseStepper(uint8_t idx1) {
     Serial.println("ERROR: base index out of range");
     return false;
   }
-  // idx1 is 1–NUM_BASES, so subtract 1 for 0-indexed array
   for (uint8_t i = 0; i < NUM_BASES; ++i)
     digitalWrite(BASE_EN_PINS[i], (i == (idx1 - 1)) ? LOW : HIGH);
 
-  Serial.print("Base selected: "); 
-  Serial.println(idx1);
+  Serial.print("Base selected: "); Serial.println(idx1);
   return true;
 }
 
-
-
-// Block until a step pulse at the current stepInterval elapses, then toggle STEP.
-// Uses an internal static edge state so you can call repeatedly in a loop.
+// ===== Step timing (unchanged) =====
 static inline void stepOnceTimed() {
   static bool localStepState = false;
   static unsigned long last = micros();
@@ -359,7 +262,7 @@ static inline void stepOnceTimed() {
   localStepState = !localStepState;
   digitalWrite(stepPin, localStepState ? HIGH : LOW);
 }
-// One timed toggle on a given step pin (uses its own timer)
+
 static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
   static unsigned long last2 = 0, last3 = 0;
   static bool state2 = false, state3 = false;
@@ -375,40 +278,22 @@ static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
   digitalWrite(pin, state ? HIGH : LOW);
 }
 
-
-// Move a signed number of steps at the current stepInterval (blocking).
-// Positive 'steps' moves with DIR=HIGH, negative with DIR=LOW.
-// Updates the global currentPositionSteps on EACH full step edge-pair.
+// ===== Movement (unchanged logic) =====
 static void moveSteps(long steps) {
   if (steps == 0) return;
-
-
-  // SAFETY: make sure we're raised (try to raise; error out if we can't)
   if (!ensureToolheadRaised()) return;
 
   bool dirHigh = (steps > 0);
   long todo = labs(steps);
-
   digitalWrite(dirPin, dirHigh ? HIGH : LOW);
 
-  // One full "step" for a STEP/DIR driver requires two edges (H/L),
-  // but our stepOnceTimed() already toggles. So we count *toggles* pairs.
-  // We'll update position on the rising edge only.
   for (long i = 0; i < todo; i++) {
-    // Rising edge
     stepOnceTimed();
-    // ---- Position sign convention ----
-    // By default, DIR=HIGH increments ( +1 ), DIR=LOW decrements ( -1 ).
-    // If this is opposite to your mechanical sense, flip the +/- here.
     currentPositionSteps += dirHigh ? +1 : -1;
-
-    // Falling edge (complete the pulse)
     stepOnceTimed();
   }
 }
 
-
-// Blocking move of N steps on motor #2
 static void moveSteps2(long steps) {
   if (steps == 0) return;
   bool dirHigh = (steps > 0);
@@ -418,15 +303,14 @@ static void moveSteps2(long steps) {
   digitalWrite(DIR2_PIN, dirHigh ? HIGH : LOW);
 
   for (long i = 0; i < todo; i++) {
-    stepOnceTimedOnPin(STEP2_PIN, interval23_us);  // reuse interval23_us for simplicity
+    stepOnceTimedOnPin(STEP2_PIN, interval23_us);
     currentPositionSteps2 += dirHigh ? +1 : -1;
-    stepOnceTimedOnPin(STEP2_PIN, interval23_us);  // complete pulse
+    stepOnceTimedOnPin(STEP2_PIN, interval23_us);
   }
 
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
 }
 
-// Blocking move of N steps on motor #3
 static void moveSteps3(long steps) {
   if (steps == 0) return;
   bool dirHigh = (steps > 0);
@@ -444,7 +328,6 @@ static void moveSteps3(long steps) {
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 }
 
-// Convenience: absolute move to target position in steps (blocking)
 static void moveToSteps(long targetSteps) {
 #ifdef CHECK_SOFT_LIMITS
   if (targetSteps < MIN_POS_STEPS) targetSteps = MIN_POS_STEPS;
@@ -454,88 +337,77 @@ static void moveToSteps(long targetSteps) {
   moveSteps(delta);
 }
 
-
-// Simultaneous blocking move for motors 2 & 3
-// steps2 and steps3 can be positive or negative; motion is proportional.
 static void moveStepsSync23(long steps2, long steps3) {
-  long a = labs(steps2);
-  long b = labs(steps3);
+  long a = labs(steps2), b = labs(steps3);
   if (a == 0 && b == 0) return;
 
   bool dir2High = (steps2 >= 0);
   bool dir3High = (steps3 >= 0);
 
-  // Direction & enable
   digitalWrite(EN2_PIN, ENABLE_LEVEL);
   digitalWrite(EN3_PIN, ENABLE_LEVEL);
   digitalWrite(DIR2_PIN, dir2High ? HIGH : LOW);
   digitalWrite(DIR3_PIN, dir3High ? HIGH : LOW);
 
-  // Bresenham-style DDA
   long n = (a > b) ? a : b;
   long acc2 = 0, acc3 = 0;
 
   unsigned long last = micros();
   for (long i = 0; i < n; i++) {
-    // Wait until the next slot
     unsigned long now;
     do { now = micros(); } while ((unsigned long)(now - last) < interval23_us);
     last = now;
 
     bool do2 = false, do3 = false;
-    acc2 += a;
-    if (acc2 >= n) {
-      acc2 -= n;
-      do2 = true;
-    }
-    acc3 += b;
-    if (acc3 >= n) {
-      acc3 -= n;
-      do3 = true;
-    }
+    acc2 += a; if (acc2 >= n) { acc2 -= n; do2 = true; }
+    acc3 += b; if (acc3 >= n) { acc3 -= n; do3 = true; }
 
-    // Rising edge(s)
     if (do2) digitalWrite(STEP2_PIN, HIGH);
     if (do3) digitalWrite(STEP3_PIN, HIGH);
-
     delayMicroseconds(STEP_PULSE_US);
-
-    // Falling edge(s)
-    if (do2) {
-      digitalWrite(STEP2_PIN, LOW);
-      currentPositionSteps2 += dir2High ? +1 : -1;
-    }
-    if (do3) {
-      digitalWrite(STEP3_PIN, LOW);
-      currentPositionSteps3 += dir3High ? +1 : -1;
-    }
+    if (do2) { digitalWrite(STEP2_PIN, LOW); currentPositionSteps2 += dir2High ? +1 : -1; }
+    if (do3) { digitalWrite(STEP3_PIN, LOW); currentPositionSteps3 += dir3High ? +1 : -1; }
   }
 
-  // Disable after motion
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 }
 
-// Set shared speed for sync moves (steps/sec)
 void setSpeed23SPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
   speed23_sps = sps;
-  interval23_us = (unsigned long)(1000000.0 / (2.0 * (double)sps));  // 2 toggles per full step
-  Serial.print("speed23 set to ");
-  Serial.print(speed23_sps);
-  Serial.print(" sps (interval=");
-  Serial.print(interval23_us);
+  interval23_us = (unsigned long)(1000000.0 / (2.0 * (double)sps));
+  Serial.print("speed23 set to "); Serial.print(speed23_sps);
+  Serial.print(" sps (interval=");  Serial.print(interval23_us);
   Serial.println(" us)");
 }
 
+// ===== Homing (unchanged logic) =====
+bool ensureToolheadRaised(uint16_t timeout_ms = 1200) {
+  if (isToolheadRaised()) return true;
 
+  setServoAngle(COUPLING_SERVO, decoupledPos);
+  delay(100);
 
+  setServoAngle(TOOLHEAD_SERVO, raisedPos);
 
+  unsigned long start = millis();
+  while (!isToolheadRaised() && (millis() - start) < timeout_ms) {
+    setServoAngle(COUPLING_SERVO, decoupledPos);
+    delay(100);
+    setServoAngle(TOOLHEAD_SERVO, raisedPos);
+    delay(100);
+  }
+
+  if (!isToolheadRaised()) {
+    Serial.println("ERROR: Toolhead not raised (timeout). Movement blocked.");
+    return false;
+  }
+  return true;
+}
 
 void HomeAxis() {
-
-  // SAFETY: must be raised before homing moves
   if (!ensureToolheadRaised()) {
     Serial.println("HOMING ABORTED: toolhead not raised.");
     return;
@@ -544,21 +416,17 @@ void HomeAxis() {
   digitalWrite(enablePin, ENABLE_LEVEL);
   motorEnabled = true;
 
-  // If sitting on switch, back off first
   if (digitalRead(limitPin) == LOW) {
     digitalWrite(dirPin, !HOME_DIR);
-    for (int i = 0; i < 800; i++) stepOnceTimed();  // ~1–2 mm, adjust
-    // Update position (we moved away from HOME_DIR)
+    for (int i = 0; i < 800; i++) stepOnceTimed();
     currentPositionSteps -= 800;
   }
 
-  // Fast approach
   digitalWrite(dirPin, HOME_DIR);
   unsigned long start = millis();
   const unsigned long timeoutMs = 15000;
   while (digitalRead(limitPin) == HIGH) {
     stepOnceTimed();
-    // We’re moving toward HOME_DIR -> decrement or increment?
     currentPositionSteps += (HOME_DIR == HIGH) ? +1 : -1;
 
     if ((millis() - start) > timeoutMs) {
@@ -570,20 +438,18 @@ void HomeAxis() {
   }
   Serial.println("Switch hit (fast).");
 
-  // Back off to clear switch
   {
     const int backOff = 600;
     digitalWrite(dirPin, !HOME_DIR);
     for (int i = 0; i < backOff; i++) {
       stepOnceTimed();
-      currentPositionSteps += (HOME_DIR == HIGH) ? -1 : +1;  // opposite direction
+      currentPositionSteps += (HOME_DIR == HIGH) ? -1 : +1;
     }
   }
   delay(10);
 
-  // Slow re-approach
   unsigned long savedInterval = stepInterval;
-  stepInterval = savedInterval * 3;  // slower for precision
+  stepInterval = savedInterval * 3;
   digitalWrite(dirPin, HOME_DIR);
   start = millis();
   while (digitalRead(limitPin) == HIGH) {
@@ -598,13 +464,11 @@ void HomeAxis() {
     }
   }
 
-  // We are ON the switch: define this exact electrical edge as 0.
   currentPositionSteps = 0;
   homed = true;
 
-  // Optionally release the switch slightly while keeping position consistent
   {
-    const int releaseSteps = 5;  // tiny nudge off the switch
+    const int releaseSteps = 5;
     digitalWrite(dirPin, !HOME_DIR);
     for (int i = 0; i < releaseSteps; i++) {
       stepOnceTimed();
@@ -615,37 +479,28 @@ void HomeAxis() {
   stepInterval = savedInterval;
   Serial.println("HOMING COMPLETE. pos=0");
 
-  // Disable if you like:
   digitalWrite(enablePin, DISABLE_LEVEL);
   motorEnabled = false;
 }
 
-
-
-
-
-// Bounds-checking accessor (1-indexed for UI; returns -1 if invalid)
+// ===== Bases helpers (unchanged) =====
 long getBasePos(uint8_t idx1) {
   if (idx1 == 0 || idx1 > NUM_BASES) return -1;
   return basePos[idx1 - 1];
 }
 
-// Set by value (1-indexed). Returns false if out of range.
 bool baseSet(uint8_t idx1, long steps) {
   if (idx1 == 0 || idx1 > NUM_BASES) return false;
   basePos[idx1 - 1] = steps;
   return true;
 }
 
-// Set from current axis position (1-indexed). Returns false if out of range.
 bool baseSetHere(uint8_t idx1) {
   if (idx1 == 0 || idx1 > NUM_BASES) return false;
   basePos[idx1 - 1] = currentPositionSteps;
   return true;
 }
 
-// Move to a base syringe position (1-indexed).
-// Wraps your moveToSteps() which already enforces soft limits and toolhead-raise safety.
 bool goToBase(uint8_t idx1) {
   long tgt = getBasePos(idx1);
   if (tgt < 0) {
@@ -661,63 +516,66 @@ bool goToBase(uint8_t idx1) {
   digitalWrite(enablePin, ENABLE_LEVEL);
   moveToSteps(tgt);
   digitalWrite(enablePin, DISABLE_LEVEL);
-  Serial.print("At Base #");
-  Serial.print(idx1);
-  Serial.print(" (steps=");
-  Serial.print(tgt);
+  Serial.print("At Base #"); Serial.print(idx1);
+  Serial.print(" (steps=");   Serial.print(tgt);
   Serial.println(")");
   return true;
 }
 
+// ======== ADS1115 helper: read single-ended channel -> 0..1023 ========
+static inline uint16_t readPotADC(uint8_t potIndex) {
+  // potIndex maps to ADS channel via POT_PINS[]
+  int ch = POT_PINS[potIndex];
+  int16_t v = ads.readADC_SingleEnded(ch); // signed
+  if (v < 0) v = 0;                        // floor at 0 for single-ended
+  // ADS1115 full-scale at GAIN_ONE is +/-4.096V => 0..32767 counts for 0..+FS
+  // Scale to 0..1023 for compatibility with your prints/math
+  uint32_t scaled = (uint32_t)v * 1023UL / 32767UL;
+  if (scaled > 1023UL) scaled = 1023UL;
+  return (uint16_t)scaled;
+}
+
+// ===== Pots (same API; ADC source swapped) =====
 void initPots() {
   for (uint8_t i = 0; i < NUM_POTS; ++i) {
-    pinMode(POT_PINS[i], INPUT);
-    uint16_t r = analogRead(POT_PINS[i]);
+    uint16_t r = readPotADC(i);
     pot_raw[i] = r;
     pot_filtered[i] = r;
   }
-  // quick settle to a reasonable starting value
   for (uint8_t k = 0; k < 8; ++k) {
     for (uint8_t i = 0; i < NUM_POTS; ++i) {
-      uint16_t r = analogRead(POT_PINS[i]);
+      uint16_t r = readPotADC(i);
       pot_filtered[i] = (pot_filtered[i] + r) >> 1;
     }
     delay(2);
   }
   for (uint8_t i = 0; i < NUM_POTS; ++i) {
     pot_last_reported[i] = pot_filtered[i];
-    Serial.print("pot[");
-    Serial.print(i);
-    Serial.print("](init)=");
+    Serial.print("pot["); Serial.print(i); Serial.print("](init)=");
     Serial.println(pot_filtered[i]);
   }
   pots_inited = true;
 }
 
-// Poll all pots once; call this periodically (e.g. every 20 ms)
 void pollPots() {
   if (!pots_inited) initPots();
 
   for (uint8_t i = 0; i < NUM_POTS; ++i) {
-    uint16_t r = analogRead(POT_PINS[i]);
+    uint16_t r = readPotADC(i);
     pot_raw[i] = r;
 
-    // EMA: filt += (new - filt) / 2^shift
     pot_filtered[i] += (int16_t(r) - int16_t(pot_filtered[i])) >> POT_EMA_SHIFT;
 
     int diff = int(pot_filtered[i]) - int(pot_last_reported[i]);
     if (diff < 0) diff = -diff;
     if (diff >= POT_REPORT_HYST) {
       pot_last_reported[i] = pot_filtered[i];
-      Serial.print("pot[");
-      Serial.print(i);
-      Serial.print("]=");
-      Serial.println(pot_filtered[i]);  // 0..1023 on AVR
+      Serial.print("pot["); Serial.print(i); Serial.print("]=");
+      Serial.println(pot_filtered[i]);  // now 0..1023-equivalent
     }
   }
 }
 
-// Accessors
 uint16_t getPotRaw(uint8_t idx) {
   if (idx >= NUM_POTS) return 0;
   return pot_raw[idx];
@@ -731,24 +589,19 @@ float getPotPercent(uint8_t idx) {
   return (pot_filtered[idx] * 100.0f) / 1023.0f;
 }
 
-// Move stepper #2 until A0 reaches target ADC (0..1023).
-// sps = steps per second. Direction chosen automatically.
-// Updates global pot_* arrays on every A0 read so "pots" shows fresh data.
+// ===== Pot-driven move (ADC source swapped, behavior same) =====
 bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
 
-  const unsigned long interval_us   = (unsigned long)(1000000.0 / (2.0 * (double)sps)); // 2 toggles/step
-  const uint8_t       hysteresis    = 3;              // small stop band
-  const unsigned long timeout_ms    = 20000UL;        // safety
+  const unsigned long interval_us   = (unsigned long)(1000000.0 / (2.0 * (double)sps));
+  const uint8_t       hysteresis    = 3;
+  const unsigned long timeout_ms    = 20000UL;
 
-  // Make sure pot arrays are initialized
   if (!pots_inited) initPots();
 
-  // Seed reading and pick direction (seed both raw & filtered)
-  uint16_t raw0 = analogRead(A0);
+  uint16_t raw0 = readPotADC(0);
   pot_raw[0] = raw0;
-  // nudge filtered toward the new raw value a bit (same spirit as your poll)
   pot_filtered[0] += (int16_t(raw0) - int16_t(pot_filtered[0])) >> POT_EMA_SHIFT;
 
   bool dirHigh = (target_adc > pot_filtered[0]);
@@ -760,44 +613,34 @@ bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   unsigned long startMs = millis();
 
   while (true) {
-    // timeout guard
     if (timeout_ms && (millis() - startMs) > timeout_ms) {
       digitalWrite(EN2_PIN, DISABLE_LEVEL);
       Serial.println("move2UntilPot: TIMEOUT");
       return false;
     }
 
-    // wait until next toggle slot
     unsigned long now;
     do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
     last = now;
 
-    // one full step on STEP2_PIN
     digitalWrite(STEP2_PIN, HIGH);
     delayMicroseconds(STEP_PULSE_US);
     digitalWrite(STEP2_PIN, LOW);
 
     currentPositionSteps2 += dirHigh ? +1 : -1;
 
-    // --- sample A0 and update global arrays ---
-    raw0 = analogRead(A0);
+    raw0 = readPotADC(0);
     pot_raw[0] = raw0;
     pot_filtered[0] += (int16_t(raw0) - int16_t(pot_filtered[0])) >> POT_EMA_SHIFT;
 
     Serial.print("pot[0]="); Serial.println(pot_filtered[0]);
 
-
-    // Only update "last_reported" when change exceeds hysteresis,
-    // so your periodic prints remain consistent if you use them elsewhere.
     int diff = int(pot_filtered[0]) - int(pot_last_reported[0]);
     if (diff < 0) diff = -diff;
     if (diff >= POT_REPORT_HYST) {
       pot_last_reported[0] = pot_filtered[0];
-      // Optional debug print; comment out if too chatty
-      // Serial.print("pot[0]="); Serial.println(pot_filtered[0]);
     }
 
-    // stop condition with hysteresis, using the filtered value
     uint16_t pot = pot_filtered[0];
     if (dirHigh) {
       if (pot >= (uint16_t)(target_adc - hysteresis)) break;
@@ -807,15 +650,22 @@ bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   }
 
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
-
   Serial.print("pot[0]="); Serial.println(pot_filtered[0]);
   return true;
 }
 
+// ===== Defaults/calibration/EEPROM (unchanged structs) =====
+long basePos[NUM_BASES] = { 3330, 5480, 3330, 3330, 3330 };
+const int EEPROM_BASE_ADDR = 0;
 
-
-
+// ===== Setup / Loop / Serial (minor ESP32 notes inline) =====
 void setup() {
+  // I2C for PCA9685 + ADS1115
+  Wire.begin(21, 22);               // SDA, SCL (change if you wired differently)
+
+  // EEPROM emulation on ESP32 needs begin()
+  EEPROM.begin(512);
+
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
   pinMode(enablePin, OUTPUT);
@@ -831,9 +681,9 @@ void setup() {
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 
-  pinMode(limitPin, INPUT_PULLUP);   // switch = LOW when pressed
-  pinMode(raisedPin, INPUT_PULLUP);  // pressed = LOW
-
+  // Limit switches: if using GPIO34/35 you MUST provide external pull-ups to 3.3V.
+  pinMode(limitPin, INPUT);   // was INPUT_PULLUP
+  pinMode(raisedPin, INPUT);  // was INPUT_PULLUP
 
   digitalWrite(enablePin, HIGH);  // Start disabled
   digitalWrite(dirPin, HIGH);     // Set direction
@@ -842,13 +692,19 @@ void setup() {
   Serial.println("Commands: on, off, speed <steps/sec>, dir <0|1>");
 
   initBasesNoMCP();
-  disableAllBases();  // safe default
+  disableAllBases();
 
+  // ADS1115 init
+  if (!ads.begin(0x48)) { // change if your ADS has a different address
+    Serial.println("ERROR: ADS1115 not found!");
+  }
+  ads.setGain(GAIN_ONE);   // +/-4.096V FS (good headroom for 0..~3.2V pots)
 
   initPots();
 
+  // PCA9685 init
   pwm.begin();
-  pwm.setPWMFreq(60);  // standard analog servos ~60 Hz
+  pwm.setPWMFreq(60);
   delay(100);
   if (!ensureToolheadRaised()) {
     Serial.println("I'm STUCK");
@@ -856,23 +712,21 @@ void setup() {
   }
 }
 
-
 void loop() {
-
-
   handleSerial();
-
 
   if (motorEnabled) {
     unsigned long now = micros();
     if (now - lastStepTime >= stepInterval) {
       lastStepTime = now;
       digitalWrite(stepPin, HIGH);
-      delayMicroseconds(2);  // Short pulse
+      delayMicroseconds(2);
       digitalWrite(stepPin, LOW);
     }
   }
 }
+
+// ================= SERIAL COMMANDS (unchanged) =================
 
 
 void handleSerial() {
