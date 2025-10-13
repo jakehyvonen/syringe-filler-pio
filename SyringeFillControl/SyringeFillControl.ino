@@ -1,3 +1,4 @@
+
 // ====== ESP32 PIN REMAP (choose GPIOs that suit your board/wiring) ======
 // Original Mega pins -> ESP32 GPIOs
 #define stepPin     4    // was 22
@@ -15,7 +16,7 @@
 // Base stepper ENABLE lines (5 channels)
 // Pick 5 outputs; adjust to your wiring
 #define NUM_BASES 5
-const uint8_t BASE_EN_PINS[NUM_BASES] = {23, 26, 32, 33, 15}; // was {43,45,47,49,51}
+const uint8_t BASE_EN_PINS[NUM_BASES] = {23, 26, 32, 33, 13}; // was {43,45,47,49,51}
 
 // ---- Limit switch wiring ----
 // NOTE: GPIO34/35 are input-only and have NO internal pullups on ESP32.
@@ -29,6 +30,21 @@ const uint8_t BASE_EN_PINS[NUM_BASES] = {23, 26, 32, 33, 15}; // was {43,45,47,4
 #include <EEPROM.h>                  // works on ESP32 with EEPROM.begin()
 #include <Adafruit_PWMServoDriver.h> // PCA9685
 #include <Adafruit_ADS1X15.h>        // ADS1115
+#include "esp_log.h"
+
+
+// === forward declarations ===
+bool ensureToolheadRaised(uint16_t timeout_ms = 1200);
+bool isToolheadRaised();
+bool goToBase(uint8_t idx1);
+long getBasePos(uint8_t idx1);
+bool baseSet(uint8_t idx1, long steps);
+bool baseSetHere(uint8_t idx1);
+
+
+// ===== Defaults/calibration/EEPROM (unchanged structs) =====
+long basePos[NUM_BASES] = { 3330, 5480, 3330, 3330, 3330 };
+const int EEPROM_BASE_ADDR = 0;
 
 // ====== ADS1115 setup (I2C) ======
 Adafruit_ADS1115 ads;     // default address 0x48
@@ -71,6 +87,27 @@ unsigned long stepInterval = 1000;  // microseconds between steps (500 sps)
 bool motorEnabled = false;
 bool stepState = false;
 
+// ---------- I2C presence flags ----------
+
+
+// Presence probe
+bool i2cPresent(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return (Wire.endTransmission() == 0);
+}
+
+
+// globals
+bool g_hasPCA = false;
+bool g_hasADS = false;   // true if any ADS1115 we intend to use is present
+
+// Simple wrappers so we can guard calls with readable names
+inline bool PCA_OK() { return g_hasPCA; }
+inline bool ADS_OK() { return g_hasADS; }
+
+
+
+
 // ===== SERVO / PCA9685 (unchanged API) =====
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
@@ -99,10 +136,12 @@ bool isToolheadRaised() {
 }
 
 void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
+  if (!PCA_OK()) return;
   pwm.writeMicroseconds(servoNum, pulseLength);
 }
 
 void setServoAngle(uint8_t channel, int angle) {
+  if (!PCA_OK()) return;
   _ensureAnglesInit();
   if (angle < 0) angle = 0;
   if (angle > 180) angle = 180;
@@ -123,6 +162,7 @@ void raiseToolhead() {
 }
 
 void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
+  if (!PCA_OK()) return;
   _ensureAnglesInit();
   if (targetAngle < 0) targetAngle = 0;
   if (targetAngle > 180) targetAngle = 180;
@@ -148,6 +188,7 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
                         uint8_t chB, int tgtB,
                         uint16_t stepDelayA = 20, uint16_t stepDelayB = 20,
                         uint8_t stepSizeA = 1, uint8_t stepSizeB = 1) {
+  if (!PCA_OK()) return;
   _ensureAnglesInit();
 
   if (tgtA < 0) tgtA = 0; if (tgtA > 180) tgtA = 180;
@@ -384,7 +425,12 @@ void setSpeed23SPS(long sps) {
 }
 
 // ===== Homing (unchanged logic) =====
-bool ensureToolheadRaised(uint16_t timeout_ms = 1200) {
+bool ensureToolheadRaised(uint16_t timeout_ms) {
+  if (!PCA_OK()) {
+    Serial.println("ERROR: No PCA9685; cannot raise toolhead. Movement blocked.");
+    return false;
+  }
+
   if (isToolheadRaised()) return true;
 
   setServoAngle(COUPLING_SERVO, decoupledPos);
@@ -524,6 +570,8 @@ bool goToBase(uint8_t idx1) {
 
 // ======== ADS1115 helper: read single-ended channel -> 0..1023 ========
 static inline uint16_t readPotADC(uint8_t potIndex) {
+  if (!ADS_OK()) return 0;             // no hardware -> stable zero
+
   // potIndex maps to ADS channel via POT_PINS[]
   int ch = POT_PINS[potIndex];
   int16_t v = ads.readADC_SingleEnded(ch); // signed
@@ -537,6 +585,13 @@ static inline uint16_t readPotADC(uint8_t potIndex) {
 
 // ===== Pots (same API; ADC source swapped) =====
 void initPots() {
+  if (!ADS_OK()) {
+    // Seed arrays to zero so prints are stable
+    for (uint8_t i=0;i<NUM_POTS;i++) pot_raw[i]=pot_filtered[i]=pot_last_reported[i]=0;
+    pots_inited = true;
+    Serial.println("Pots: ADS not present; readings disabled.");
+    return;
+  }
   for (uint8_t i = 0; i < NUM_POTS; ++i) {
     uint16_t r = readPotADC(i);
     pot_raw[i] = r;
@@ -559,6 +614,7 @@ void initPots() {
 
 void pollPots() {
   if (!pots_inited) initPots();
+  if (!ADS_OK()) return;   // nothing to do
 
   for (uint8_t i = 0; i < NUM_POTS; ++i) {
     uint16_t r = readPotADC(i);
@@ -591,6 +647,10 @@ float getPotPercent(uint8_t idx) {
 
 // ===== Pot-driven move (ADC source swapped, behavior same) =====
 bool move2UntilPot_simple(uint16_t target_adc, long sps) {
+  if (!ADS_OK()) {
+    Serial.println("move2UntilPot: ADS not present.");
+    return false;
+  }
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
 
@@ -654,18 +714,17 @@ bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   return true;
 }
 
-// ===== Defaults/calibration/EEPROM (unchanged structs) =====
-long basePos[NUM_BASES] = { 3330, 5480, 3330, 3330, 3330 };
-const int EEPROM_BASE_ADDR = 0;
 
 // ===== Setup / Loop / Serial (minor ESP32 notes inline) =====
+
 void setup() {
-  // I2C for PCA9685 + ADS1115
-  Wire.begin(21, 22);               // SDA, SCL (change if you wired differently)
+  // --- Basic system setup ---
+  esp_log_level_set("*", ESP_LOG_ERROR); // Silence ESP-IDF spam
+  Serial.begin(115200);
+  delay(200);
+  Serial.println("\n=== Syringe Fill Control (ESP32 Safe Init) ===");
 
-  // EEPROM emulation on ESP32 needs begin()
-  EEPROM.begin(512);
-
+  // --- I/O Pin Setup ---
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
   pinMode(enablePin, OUTPUT);
@@ -681,35 +740,69 @@ void setup() {
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 
-  // Limit switches: if using GPIO34/35 you MUST provide external pull-ups to 3.3V.
-  pinMode(limitPin, INPUT);   // was INPUT_PULLUP
-  pinMode(raisedPin, INPUT);  // was INPUT_PULLUP
+  // Limit switches — remember GPIO34/35 are INPUT-ONLY and need external pull-ups!
+  pinMode(limitPin, INPUT);
+  pinMode(raisedPin, INPUT);
 
-  digitalWrite(enablePin, HIGH);  // Start disabled
-  digitalWrite(dirPin, HIGH);     // Set direction
+  // Start with main stepper disabled
+  digitalWrite(enablePin, HIGH);
+  digitalWrite(dirPin, HIGH);
 
-  Serial.begin(115200);
-  Serial.println("Commands: on, off, speed <steps/sec>, dir <0|1>");
+  // --- EEPROM ---
+  EEPROM.begin(512);
 
+  // --- I2C (PCA9685 + ADS1115 detection) ---
+  Wire.begin(21, 22);      // SDA, SCL
+  Wire.setClock(400000);   // 400kHz fast mode
+
+  // --- ADS1115 (0x48 default) ---
+  if (i2cPresent(0x48) && ads.begin(0x48)) {
+    ads.setGain(GAIN_ONE);
+    g_hasADS = true;
+    Serial.println("ADS1115 detected @0x48");
+  } else {
+    g_hasADS = false;
+    Serial.println("WARN: ADS1115 not found; pot readings disabled.");
+  }
+
+  // --- PCA9685 (0x40 default) ---
+  if (i2cPresent(0x40)) {
+    pwm.begin();
+    pwm.setPWMFreq(60);
+    g_hasPCA = true;
+    Serial.println("PCA9685 detected @0x40");
+  } else {
+    g_hasPCA = false;
+    Serial.println("WARN: PCA9685 not found; servo control disabled.");
+  }
+
+  // --- Bases ---
   initBasesNoMCP();
   disableAllBases();
 
-  // ADS1115 init
-  if (!ads.begin(0x48)) { // change if your ADS has a different address
-    Serial.println("ERROR: ADS1115 not found!");
+  // --- Potentiometers ---
+  if (g_hasADS) {
+    initPots();
+  } else {
+    // Initialize arrays to 0 for consistency
+    for (uint8_t i = 0; i < NUM_POTS; ++i) {
+      pot_raw[i] = pot_filtered[i] = pot_last_reported[i] = 0;
+    }
+    pots_inited = true;
   }
-  ads.setGain(GAIN_ONE);   // +/-4.096V FS (good headroom for 0..~3.2V pots)
 
-  initPots();
-
-  // PCA9685 init
-  pwm.begin();
-  pwm.setPWMFreq(60);
-  delay(100);
-  if (!ensureToolheadRaised()) {
-    Serial.println("I'm STUCK");
-    return;
+  // --- Toolhead safety ---
+  if (g_hasPCA) {
+    delay(100);
+    if (!ensureToolheadRaised()) {
+      Serial.println("ERROR: Toolhead not raised. System halted.");
+      while (true) delay(1000);
+    }
+  } else {
+    Serial.println("WARN: No PCA9685 -> cannot raise toolhead. Movement blocked.");
   }
+
+  Serial.println("Setup complete. Type commands: on/off, home, move, servo, etc.");
 }
 
 void loop() {
@@ -732,7 +825,7 @@ void loop() {
 void handleSerial() {
   static String input = "";
   while (Serial.available()) {
-    char c = Serial.read();
+    char c = Serial.read(); 
     if (c == '\n') {
       input.trim();
       Serial.print("received: ");
@@ -978,3 +1071,4 @@ void handleSerial() {
     }
   }
 }
+
