@@ -4,14 +4,13 @@
 
 namespace EEStore {
 
-static const int BASE_ADDR = 0; // start of EEPROM region
+static const int BASE_ADDR = 0;
 
-void begin(size_t bytes) {
+void begin(std::size_t bytes) {  // matches header, no default here
   EEPROM.begin(bytes);
 }
 
 void saveBasePositions(const long* arr, uint8_t n) {
-  // Store count + values (fixed layout)
   int addr = BASE_ADDR;
   EEPROM.write(addr++, n);
   for (uint8_t i = 0; i < n; ++i) {
