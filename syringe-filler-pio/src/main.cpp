@@ -148,6 +148,8 @@ void setServoAngle(uint8_t channel, int angle) {
   if (angle < 0) angle = 0;
   if (angle > 180) angle = 180;
 
+  if (currentAngles[channel] == angle) return;  // <-- avoid redundant I2C writes
+
   uint16_t pulselen = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
   pwm.setPWM(channel, 0, pulselen);
 
@@ -156,6 +158,7 @@ void setServoAngle(uint8_t channel, int angle) {
   Serial.print(" -> ");   Serial.print(angle);
   Serial.println(" deg");
 }
+
 
 void raiseToolhead() {
   setServoAngle(TOOLHEAD_SERVO, raisedPos);
@@ -755,7 +758,7 @@ void setup() {
 
   // --- I2C (PCA9685 + ADS1115 detection) ---
   Wire.begin(21, 22);      // SDA, SCL
-  Wire.setClock(400000);   // 400kHz fast mode
+  Wire.setClock(100000);                 // was 400k
 
   // --- ADS1115 (0x48 default) ---
   if (i2cPresent(0x48) && ads.begin(0x48)) {
@@ -771,6 +774,7 @@ void setup() {
   if (i2cPresent(0x40)) {
     pwm.begin();
     pwm.setPWMFreq(60);
+    pwm.setOscillatorFrequency(27000000); // PCA9685 ref osc
     g_hasPCA = true;
     Serial.println("PCA9685 detected @0x40");
   } else {
