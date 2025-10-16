@@ -45,8 +45,8 @@ void setup() {
 
   if (Drivers::hasPCA()) {
     if (!Toolhead::ensureRaised()) {
-      Serial.println("ERROR: toolhead not raised; halting.");
-      while (true) delay(1000);
+      Serial.println("ERROR: toolhead not raised.");
+      //while (true) delay(1000);
     }
   } else {
     Serial.println("WARN: no PCA9685; movement will be blocked by safety where needed.");
