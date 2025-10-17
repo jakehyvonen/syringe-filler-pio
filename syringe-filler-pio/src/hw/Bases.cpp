@@ -5,7 +5,7 @@
 
 namespace Bases {
 
-static long basePos[Pins::NUM_BASES] = { 3330, 5480, 3330, 3330, 3330 };
+static long basePos[Pins::NUM_BASES] = { 3385, 5480, 3330, 3330, 3330 };
 
 void init() {
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {

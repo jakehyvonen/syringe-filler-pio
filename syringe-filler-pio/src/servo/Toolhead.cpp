@@ -11,13 +11,18 @@ static constexpr int SERVO_MAX     = 600;
 static constexpr int TOOLHEAD_SERVO  = 3;
 static constexpr int COUPLING_SERVO  = 5;
 
-static constexpr int RAISED_POS      = 99;
-static constexpr int COUPLING_POS1   = 132;
-static constexpr int COUPLED_POS     = 11;
-static constexpr int DECOUPLED_POS   = 151;
+static constexpr int TOOLHEAD_SERVO_RAISED_POS      = 107;
+static constexpr int TOOLHEAD_SERVO_COUPLING_POS1   = 140;
+static constexpr int COUPLING_SERVO_COUPLED_POS     = 11;
+static constexpr int COUPLING_SERVO_DECOUPLED_POS   = 151;
+
+static constexpr int RAMP_MS_FAST = 6;   // per-degree delay for quick but smooth moves
+static constexpr int RAMP_MS_SLOW = 10;  // use larger if you still see brownouts
+
 
 static int  s_angles[16];
 static bool s_anglesInit = false;
+
 
 static inline void ensureAnglesInit() {
   if (!s_anglesInit) {
@@ -83,20 +88,31 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
 }
 
 void raise() {
-  setAngle(TOOLHEAD_SERVO, RAISED_POS);
-  delay(100);
-  setAngle(COUPLING_SERVO, DECOUPLED_POS);
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
+  delay(50); // small settle time
+  setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
 }
 
 void couple() {
-  setAngle(TOOLHEAD_SERVO, COUPLING_POS1);
-  delay(71);
-  setAngle(COUPLING_SERVO, 151);
-  delay(71);
-  setPulseRaw(TOOLHEAD_SERVO, 0); // stop pulses briefly
-  delay(71);
-  setAngle(COUPLING_SERVO, COUPLED_POS);
+  // Approach coupling position slowly, then close the coupler smoothly
+  setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
+  delay(100);
+
+  // Optional: brief pause gives the mechanics time to settle before clamping
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
+  delay(100);
+
+  // (Retain your brief "stop pulses" if it's helpful for your mechanism)
+  setPulseRaw(TOOLHEAD_SERVO, 0);
+  delay(100);
+
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, RAMP_MS_SLOW);
+  delay(100);
+  setPulseRaw(COUPLING_SERVO, 0);
+
+
 }
+
 
 bool ensureRaised(uint16_t timeout_ms) {
   if (!Drivers::hasPCA()) {
@@ -105,15 +121,15 @@ bool ensureRaised(uint16_t timeout_ms) {
   }
   if (isRaised()) return true;
 
-  setAngle(COUPLING_SERVO, DECOUPLED_POS);
+  setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
   delay(100);
-  setAngle(TOOLHEAD_SERVO, RAISED_POS);
+  setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS);
 
   unsigned long start = millis();
   while (!isRaised() && (millis() - start) < timeout_ms) {
-    setAngle(COUPLING_SERVO, DECOUPLED_POS);
+    setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
     delay(100);
-    setAngle(TOOLHEAD_SERVO, RAISED_POS);
+    setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS);
     delay(100);
   }
 
