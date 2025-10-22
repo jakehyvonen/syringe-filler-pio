@@ -20,6 +20,20 @@ static inline long mmToSteps(float mm) {
   return (long)lround(mm * Pins::STEPS_PER_MM);
 }
 
+// --- Debug helper: show which EN pins are LOW/HIGH right now.
+static void dumpBaseEN(const char* label = "EN") {
+  Serial.print("[EN] "); Serial.print(label);
+  Serial.print(" sel="); Serial.print(Bases::selected());
+  Serial.print("  pins: ");
+  for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
+    int lvl = digitalRead(Pins::BASE_EN[i]);
+    Serial.print(Pins::BASE_EN[i]); Serial.print('=');
+    Serial.print(lvl);
+    if (i + 1 < Pins::NUM_BASES) Serial.print(' ');
+  }
+  Serial.println();
+}
+
 void handleSerial() {
   while (Serial.available()) {
     char c = Serial.read();
@@ -87,7 +101,18 @@ void handleSerial() {
       // ---------------- Bases ----------------
       } else if (input.startsWith("base ")) {
         int idx = input.substring(5).toInt(); // 0..NUM_BASES
-        if (!Bases::select((uint8_t)idx)) Serial.println("Usage: base <0..5>");
+        if (!Bases::select((uint8_t)idx)) {
+          Serial.print("Usage: base <0.."); Serial.print(Pins::NUM_BASES); Serial.println(">");
+        } else {
+          Serial.print("[Base] selected="); Serial.println(Bases::selected());
+          dumpBaseEN("after base");
+        }
+      } else if (input == "whichbase") {
+        Serial.print("[Base] selected="); Serial.println(Bases::selected());
+        dumpBaseEN("whichbase");
+      } else if (input == "baseoff") {
+        Bases::select(0);
+        dumpBaseEN("after baseoff");
       } else if (input.startsWith("gobase ")) {
         long idx = input.substring(7).toInt(); // 1..NUM_BASES
         if (idx < 1 || idx > Pins::NUM_BASES) {
@@ -167,12 +192,18 @@ void handleSerial() {
       // ---------------- Axis 2 & 3 ----------------
       } else if (input.startsWith("move2 ")) {
         long s = input.substring(6).toInt();
+        // Axis 2 = TOOLHEAD syringe (EN2)
         AxisPair::move2(s);
         Serial.println("OK move2");
       } else if (input.startsWith("move3 ")) {
         long s = input.substring(6).toInt();
-        AxisPair::move3(s);
-        Serial.println("OK move3");
+        // Axis 3 = SELECTED BASE syringe (enable via Bases::hold)
+        if (Bases::selected() == 0) {
+          Serial.println("ERR move3: no base selected. Use 'base <1..5>' first.");
+        } else {
+          AxisPair::move3(s);
+          Serial.println("OK move3");
+        }
       } else if (input.startsWith("speed23 ")) {
         long sps = input.substring(8).toInt();
         AxisPair::setSpeedSPS(sps);
@@ -181,15 +212,23 @@ void handleSerial() {
         if (sp > 0) {
           long s2 = input.substring(4, sp).toInt();
           long s3 = input.substring(sp + 1).toInt();
-          AxisPair::moveSync(s2, s3);
-          Serial.println("OK m23");
+          if (s3 != 0 && Bases::selected() == 0) {
+            Serial.println("ERR m23: base steps requested but no base selected. Use 'base <1..5>'.");
+          } else {
+            AxisPair::moveSync(s2, s3);
+            Serial.println("OK m23");
+          }
         } else {
           Serial.println("Usage: m23 <steps2> <steps3>");
         }
       } else if (input.startsWith("link ")) {
         long s = input.substring(5).toInt();
-        AxisPair::link(s);
-        Serial.println("OK link");
+        if (Bases::selected() == 0) {
+          Serial.println("ERR link: no base selected. Use 'base <1..5>' first.");
+        } else {
+          AxisPair::link(s);
+          Serial.println("OK link");
+        }
       } else if (input == "pos2") {
         float mm = AxisPair::pos2() / Pins::STEPS_PER_MM;
         Serial.print("POS2 steps="); Serial.print(AxisPair::pos2());
@@ -210,7 +249,7 @@ void handleSerial() {
           Serial.println(Pots::percent(i), 1);
         }
       } else if (input.startsWith("potmove ")) {
-        // "potmove <target_adc 0-1023> <sps>"
+        // "potmove <target_adc 0-1023> <sps>"  (toolhead/Axis2 only)
         int sp = input.indexOf(' ', 8);
         if (sp < 0) {
           Serial.println("Usage: potmove <target_adc 0-1023> <sps>");

@@ -12,18 +12,18 @@ constexpr uint8_t STEP1 = 4;
 constexpr uint8_t DIR1  = 16;
 constexpr uint8_t EN1   = 17;
 
-// ---------- Stepper #2 and #3 (plunger pair) ----------
+// ---------- Stepper #2 and #3 (plunger pair) ----------mov
 constexpr uint8_t STEP2 = 18;
 constexpr uint8_t DIR2  = 19;
 constexpr uint8_t EN2   = 5;
 
 constexpr uint8_t STEP3 = 12;
 constexpr uint8_t DIR3  = 14;
-constexpr uint8_t EN3   = 27;
+//constexpr uint8_t EN3   = 27;
 
 // ---------- Bases enable lines (active LOW) ----------
 constexpr uint8_t NUM_BASES = 5;
-constexpr uint8_t BASE_EN[NUM_BASES] = {23, 26, 32, 33, 13};
+constexpr uint8_t BASE_EN[NUM_BASES] = {27, 26, 25, 33, 32};
 
 // ---------- Limit switches ----------
 constexpr uint8_t LIMIT   = 34;
