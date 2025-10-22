@@ -20,6 +20,32 @@ static inline long mmToSteps(float mm) {
   return (long)lround(mm * Pins::STEPS_PER_MM);
 }
 
+
+// ---- Debug helpers for ADS1115 ------------------------------------------------
+static constexpr uint8_t ADS_ADDRS[] = { 0x48, 0x49 };   // ADDR->GND, ADDR->VDD
+static constexpr float   ADS_LSB_VOLTS_GAIN_ONE = 0.000125f; // 125 µV/LSB at ±4.096V
+
+static bool readADSOnce(uint8_t i2c_addr, int16_t out_counts[4]) {
+  Adafruit_ADS1115 ads;
+  if (!ads.begin(i2c_addr)) {
+    return false;
+  }
+  ads.setGain(GAIN_ONE); // ±4.096V so 3.3V fits comfortably
+
+  for (int ch = 0; ch < 4; ++ch) {
+    int16_t v = ads.readADC_SingleEnded(ch);
+    if (v < 0) v = 0; // clamp negatives (shouldn't happen for single-ended)
+    out_counts[ch] = v;
+  }
+  return true;
+}
+
+static inline float countsToVolts(int16_t counts) {
+  // At GAIN_ONE the ADS1115 returns up to ~32767 for +4.096 V
+  // LSB is 125 µV -> volts = counts * 0.000125
+  return counts * ADS_LSB_VOLTS_GAIN_ONE;
+}
+
 // --- Debug helper: show which EN pins are LOW/HIGH right now.
 static void dumpBaseEN(const char* label = "EN") {
   Serial.print("[EN] "); Serial.print(label);
@@ -196,14 +222,19 @@ void handleSerial() {
         AxisPair::move2(s);
         Serial.println("OK move2");
       } else if (input.startsWith("move3 ")) {
-        long s = input.substring(6).toInt();
-        // Axis 3 = SELECTED BASE syringe (enable via Bases::hold)
+        // Accepts: "move3 <steps>" or "move3 <steps> <sps>"
         if (Bases::selected() == 0) {
           Serial.println("ERR move3: no base selected. Use 'base <1..5>' first.");
         } else {
-          AxisPair::move3(s);
-          Serial.println("OK move3");
+          String rest = input.substring(6);
+          int sp = rest.indexOf(' ');
+          if (sp < 0) {
+            long steps = rest.toInt();
+            AxisPair::move3(steps);              // default speed
+            Serial.println("OK move3");
+          } 
         }
+
       } else if (input.startsWith("speed23 ")) {
         long sps = input.substring(8).toInt();
         AxisPair::setSpeedSPS(sps);
@@ -239,16 +270,30 @@ void handleSerial() {
         Serial.print("  mm=");       Serial.println(mm, 3);
 
       // ---------------- Pots / ADS1115 ----------------
-      } else if (input == "pots" || input == "potlist") {
-        for (uint8_t i = 0; i < Pots::NUM_POTS; ++i) {
-          Serial.print("pot["); Serial.print(i); Serial.print("] raw=");
-          Serial.print(Pots::raw(i));
-          Serial.print(" filt=");
-          Serial.print(Pots::filt(i));
-          Serial.print(" pct=");
-          Serial.println(Pots::percent(i), 1);
+      } else if (input == "pots") {
+        // Snapshot ADS1115 channels (both chips), and also print current Pots API view.
+        for (uint8_t i = 0; i < sizeof(ADS_ADDRS); ++i) {
+          uint8_t addr = ADS_ADDRS[i];
+          int16_t counts[4] = {0,0,0,0};
+          bool ok = readADSOnce(addr, counts);
+
+          Serial.print("ADS@0x"); Serial.print(addr, HEX);
+          if (!ok) {
+            Serial.println("  (not found)");
+            continue;
+          }
+          Serial.println();
+
+          for (int ch = 0; ch < 4; ++ch) {
+            float volts = countsToVolts(counts[ch]);
+            Serial.print("  A"); Serial.print(ch);
+            Serial.print(": counts="); Serial.print(counts[ch]);
+            Serial.print("  volts="); Serial.println(volts, 5);
+          }          
         }
-      } else if (input.startsWith("potmove ")) {
+      }
+      
+      else if (input.startsWith("potmove ")) {
         // "potmove <target_adc 0-1023> <sps>"  (toolhead/Axis2 only)
         int sp = input.indexOf(' ', 8);
         if (sp < 0) {

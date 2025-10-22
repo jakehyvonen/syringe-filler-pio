@@ -6,6 +6,7 @@ namespace AxisPair {
   void setSpeedSPS(long sps);
   void move2(long steps);
   void move3(long steps);
+
   void moveSync(long steps2, long steps3); // m23
   void link(long steps); // s2=+steps, s3=-steps
   long pos2();

@@ -21,13 +21,22 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
   Wire.begin(sda, scl);
   Wire.setClock(freq);
 
-  // ADS1115 probe
+  // ADS1115 1 probe
   g_hasADS = (i2cPresent(0x48) && ADS.begin(0x48));
   if (g_hasADS) {
     ADS.setGain(GAIN_ONE);
-    Serial.println("ADS1115 detected @0x48");
+    Serial.println("ADS1115 1 detected @0x48");
   } else {
-    Serial.println("WARN: ADS1115 not found; pot readings disabled.");
+    Serial.println("WARN: ADS1115 1 not found; pot readings disabled.");
+  }
+
+  // ADS1115 2 probe
+  g_hasADS = (i2cPresent(0x49) && ADS.begin(0x49));
+  if (g_hasADS) {
+    ADS.setGain(GAIN_ONE);
+    Serial.println("ADS1115 2 detected @0x49");
+  } else {
+    Serial.println("WARN: ADS1115 2 not found; pot readings disabled.");
   }
 
   // PCA9685 probe

@@ -7,33 +7,109 @@
 
 namespace AxisPair {
 
-// Position counters for each logical axis
-static volatile long s_pos2 = 0;  // toolhead syringe (uses STEP2/DIR2/EN2)
-static volatile long s_pos3 = 0;  // selected base syringe (uses STEP3/DIR3 and Bases::hold())
+// -----------------------------
+// Public position readback
+// -----------------------------
+static volatile long s_pos2 = 0;  // toolhead syringe (STEP2/DIR2/EN2)
+static volatile long s_pos3 = 0;  // selected base syringe (STEP3/DIR3 + Bases::hold())
 
-// Speed state
-static long          s_speedSPS    = 800;
-static unsigned long s_interval_us = 1000000UL / (2UL * 800UL);
+long pos2() { return s_pos2; }
+long pos3() { return s_pos3; }
 
-/**
- * Step a given STEP pin at a bounded rate.
- * Keeps separate cadence for STEP2 vs STEP3 via static state.
- */
-static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
-  static unsigned long last2 = 0, last3 = 0;
-  static bool state2 = false, state3 = false;
+// -----------------------------
+// Speed (FULL PERIOD model)
+// -----------------------------
+static volatile long          s_speedSPS  = 800;
+static volatile unsigned long s_period_us = 1000000UL / 800UL;
 
-  unsigned long &last  = (pin == Pins::STEP2) ? last2 : last3;
-  bool         &state = (pin == Pins::STEP2) ? state2 : state3;
+// -----------------------------
+// Timer + motion state
+// -----------------------------
+static hw_timer_t *s_timer = nullptr;
 
-  unsigned long now;
-  do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
-  last = now;
+enum class Mode : uint8_t { IDLE=0, MOVE2, MOVE3, SYNC };
+static volatile Mode s_mode = Mode::IDLE;
 
-  state = !state;
-  digitalWrite(pin, state ? HIGH : LOW);
+// Axis 2 state
+static volatile long s_rem2 = 0;
+static volatile bool s_dir2High = true;
+
+// Axis 3 state
+static volatile long s_rem3 = 0;
+static volatile bool s_dir3High = true;
+
+// SYNC accumulators (Bresenham)
+static volatile long s_syncA = 0;  // |steps2|
+static volatile long s_syncB = 0;  // |steps3|
+static volatile long s_syncN = 0;  // max(a,b)
+static volatile long s_acc2  = 0;
+static volatile long s_acc3  = 0;
+
+// Remember which axes were pulsed on this tick (for SYNC decrement)
+static volatile bool s_do2 = false;
+static volatile bool s_do3 = false;
+
+// Cached safe pulse width (us)
+static inline uint32_t pulseWidthUs() {
+  uint32_t pw = (Pins::STEP_PULSE_US < 8) ? 8u : (uint32_t)Pins::STEP_PULSE_US;
+  // very long wiring + 5 drivers: feel free to bump to 12–20 us
+  return pw;
 }
 
+// -----------------------------
+// TIMER ISR (two-phase in one visit)
+// We run one interrupt per step period. Inside it we:
+//   1) compute who steps this tick (Bresenham for SYNC)
+//   2) drive STEP HIGH, delay 'pw', drive LOW
+// This avoids fragile multi-alarm juggling.
+// -----------------------------
+static void IRAM_ATTR onStepTimer() {
+  const Mode mode = s_mode;
+  if (mode == Mode::IDLE) return;
+
+  // Decide who steps on this tick
+  bool do2 = false, do3 = false;
+
+  switch (mode) {
+    case Mode::MOVE2: do2 = (s_rem2 > 0); break;
+    case Mode::MOVE3: do3 = (s_rem3 > 0); break;
+    case Mode::SYNC:
+      if (s_rem2 > 0 || s_rem3 > 0) {
+        s_acc2 += s_syncA; if (s_acc2 >= s_syncN) { s_acc2 -= s_syncN; do2 = (s_rem2 > 0); }
+        s_acc3 += s_syncB; if (s_acc3 >= s_syncN) { s_acc3 -= s_syncN; do3 = (s_rem3 > 0); }
+      }
+      break;
+    default: break;
+  }
+
+  s_do2 = do2;
+  s_do3 = do3;
+
+  // Emit pulses (short HIGH, then LOW). Using digitalWrite for robustness.
+  if (do2) digitalWrite(Pins::STEP2, HIGH);
+  if (do3) digitalWrite(Pins::STEP3, HIGH);
+  delayMicroseconds(pulseWidthUs());
+  if (do2) digitalWrite(Pins::STEP2, LOW);
+  if (do3) digitalWrite(Pins::STEP3, LOW);
+
+  // Update counters/positions
+  if (do2 && s_rem2 > 0) { s_rem2--; s_pos2 += s_dir2High ? +1 : -1; }
+  if (do3 && s_rem3 > 0) { s_rem3--; s_pos3 += s_dir3High ? +1 : -1; }
+
+  // Done?
+  bool done = false;
+  switch (mode) {
+    case Mode::MOVE2: done = (s_rem2 <= 0); break;
+    case Mode::MOVE3: done = (s_rem3 <= 0); break;
+    case Mode::SYNC:  done = (s_rem2 <= 0 && s_rem3 <= 0); break;
+    default: break;
+  }
+  if (done) s_mode = Mode::IDLE;
+}
+
+// -----------------------------
+// Init
+// -----------------------------
 void init() {
   // TOOLHEAD (Axis 2)
   pinMode(Pins::STEP2, OUTPUT);
@@ -41,77 +117,111 @@ void init() {
   pinMode(Pins::EN2,   OUTPUT);
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
 
-  // BASES (Axis 3) share STEP3/DIR3; enable is handled by Bases::hold()
+  // BASES (Axis 3)
   pinMode(Pins::STEP3, OUTPUT);
   pinMode(Pins::DIR3,  OUTPUT);
 
-  Serial.println("[AxisPair] init done (EN2 disabled, bases disabled via Bases.init())");
+  // Hardware timer 0, prescaler 80 => 1 tick = 1 us
+  s_timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(s_timer, &onStepTimer, true);
+  timerAlarmWrite(s_timer, s_period_us, true); // auto-reload each period
+  timerAlarmDisable(s_timer);
+
+  s_mode = Mode::IDLE;
+  Serial.println("[AxisPair] init (timer ready).");
 }
 
+// -----------------------------
+// Speed setter
+// -----------------------------
 void setSpeedSPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
-  s_speedSPS    = sps;
-  s_interval_us = (unsigned long)(1000000.0 / (2.0 * (double)sps));
+  s_speedSPS  = sps;
+  s_period_us = (unsigned long)(1000000.0 / (double)sps);
+
+  // Update timer period immediately
+  noInterrupts();
+  timerAlarmDisable(s_timer);
+  timerAlarmWrite(s_timer, s_period_us, true);
+  timerAlarmEnable(s_timer);
+  interrupts();
+
   Serial.print("[AxisPair] speed set to "); Serial.print(s_speedSPS);
-  Serial.print(" sps (interval=");  Serial.print(s_interval_us);
+  Serial.print(" sps (period=");  Serial.print(s_period_us);
   Serial.println(" us)");
 }
 
-/** ============================
- *  AXIS 2: TOOLHEAD SYRINGE
- *  Uses STEP2 / DIR2 / EN2
- *  ============================ */
+// -----------------------------
+// Blocking helper: wait until ISR marks IDLE
+// -----------------------------
+static void waitForIdle() {
+  while (s_mode != Mode::IDLE) {
+    delay(1);
+  }
+  // After motion completes, stop timer to avoid free-running ISR
+  timerAlarmDisable(s_timer);
+}
+
+// -----------------------------
+// AXIS 2: Toolhead syringe (EN2)
+// -----------------------------
 void move2(long steps) {
   if (steps == 0) return;
 
   const bool dirHigh = (steps > 0);
-  long todo = labs(steps);
+  const long todo    = labs(steps);
 
   Serial.print("[AxisPair] move2 steps="); Serial.println(steps);
 
-  // Enable ONLY the toolhead driver (EN2). Bases remain disabled.
   digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
+  delayMicroseconds(500);
   digitalWrite(Pins::DIR2, dirHigh ? HIGH : LOW);
+  delayMicroseconds(10);
 
-  for (long i = 0; i < todo; ++i) {
-    stepOnceTimedOnPin(Pins::STEP2, s_interval_us);
-    s_pos2 += dirHigh ? +1 : -1;
-    stepOnceTimedOnPin(Pins::STEP2, s_interval_us);
-  }
+  noInterrupts();
+  s_dir2High = dirHigh;
+  s_rem2     = todo;
+  s_mode     = Mode::MOVE2;
+  timerAlarmWrite(s_timer, s_period_us, true); // ensure latest period
+  timerAlarmEnable(s_timer);
+  interrupts();
 
+  waitForIdle();
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
 }
 
-/** =================================
- *  AXIS 3: SELECTED BASE SYRINGE ONLY
- *  Uses STEP3 / DIR3; enable via Bases
- *  ================================= */
+// -----------------------------
+// AXIS 3: Selected base syringe (Bases::hold)
+// -----------------------------
 void move3(long steps) {
   if (steps == 0) return;
 
   const bool dirHigh = (steps > 0);
-  long todo = labs(steps);
+  const long todo    = labs(steps);
 
   Serial.print("[AxisPair] move3 steps="); Serial.println(steps);
 
-  // Enable ONLY the currently selected base via Bases::hold(true)
   Bases::hold(true);
+  delayMicroseconds(500);
   digitalWrite(Pins::DIR3, dirHigh ? HIGH : LOW);
+  delayMicroseconds(10);
 
-  for (long i = 0; i < todo; ++i) {
-    stepOnceTimedOnPin(Pins::STEP3, s_interval_us);
-    s_pos3 += dirHigh ? +1 : -1;
-    stepOnceTimedOnPin(Pins::STEP3, s_interval_us);
-  }
+  noInterrupts();
+  s_dir3High = dirHigh;
+  s_rem3     = todo;
+  s_mode     = Mode::MOVE3;
+  timerAlarmWrite(s_timer, s_period_us, true);
+  timerAlarmEnable(s_timer);
+  interrupts();
 
+  waitForIdle();
   Bases::hold(false);
 }
 
-/** ==============================================================
- *  SYNCHRONOUS MOVE: TOOLHEAD (AXIS 2) + SELECTED BASE (AXIS 3)
- *  Enables BOTH: EN2 for toolhead AND Bases::hold(true) for base.
- *  ============================================================== */
+// -----------------------------
+// Synchronous move (toolhead + base)
+// -----------------------------
 void moveSync(long steps2, long steps3) {
   const long a = labs(steps2), b = labs(steps3);
   if (a == 0 && b == 0) return;
@@ -122,49 +232,40 @@ void moveSync(long steps2, long steps3) {
   Serial.print("[AxisPair] moveSync s2="); Serial.print(steps2);
   Serial.print(" s3="); Serial.println(steps3);
 
-  // Enable both participants
-  digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);  // toolhead
-  Bases::hold(true);                            // selected base
+  digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
+  Bases::hold(true);
+  delayMicroseconds(500);
 
   digitalWrite(Pins::DIR2, dir2High ? HIGH : LOW);
   digitalWrite(Pins::DIR3, dir3High ? HIGH : LOW);
+  delayMicroseconds(10);
 
-  const long n = (a > b) ? a : b;
-  long acc2 = 0, acc3 = 0;
+  noInterrupts();
+  s_dir2High = dir2High;
+  s_dir3High = dir3High;
+  s_rem2     = a;
+  s_rem3     = b;
+  s_syncA    = a;
+  s_syncB    = b;
+  s_syncN    = (a > b) ? a : b;
+  s_acc2     = 0;
+  s_acc3     = 0;
+  s_mode     = Mode::SYNC;
+  timerAlarmWrite(s_timer, s_period_us, true);
+  timerAlarmEnable(s_timer);
+  interrupts();
 
-  unsigned long last = micros();
-  for (long i = 0; i < n; ++i) {
-    unsigned long now;
-    do { now = micros(); } while ((unsigned long)(now - last) < s_interval_us);
-    last = now;
+  waitForIdle();
 
-    bool do2 = false, do3 = false;
-    acc2 += a; if (acc2 >= n) { acc2 -= n; do2 = true; }
-    acc3 += b; if (acc3 >= n) { acc3 -= n; do3 = true; }
-
-    if (do2) digitalWrite(Pins::STEP2, HIGH);
-    if (do3) digitalWrite(Pins::STEP3, HIGH);
-    delayMicroseconds(Pins::STEP_PULSE_US);
-    if (do2) { digitalWrite(Pins::STEP2, LOW); s_pos2 += dir2High ? +1 : -1; }
-    if (do3) { digitalWrite(Pins::STEP3, LOW); s_pos3 += dir3High ? +1 : -1; }
-  }
-
-  // Disable both
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
   Bases::hold(false);
 }
 
-void link(long steps) {
-  // Positive steps push toolhead forward while pulling base back (or vice versa)
-  moveSync(steps, -steps);
-}
+void link(long steps) { moveSync(steps, -steps); }
 
-long pos2() { return s_pos2; }
-long pos3() { return s_pos3; }
-
-/**
- * AXIS 2 closed-loop: move toolhead until pot[0] reaches target
- */
+// -----------------------------
+// Axis 2 closed-loop helper (unchanged blocking path)
+// -----------------------------
 bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   if (!Drivers::hasADS()) {
     Serial.println("[AxisPair] move2UntilPot: ADS not present.");
@@ -174,20 +275,21 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
 
-  const unsigned long interval_us = (unsigned long)(1000000.0 / (2.0 * (double)sps));
+  const unsigned long period_us = (unsigned long)(1000000.0 / (double)sps);
   const uint8_t hysteresis = 3;
   const unsigned long timeout_ms = 20000UL;
 
-  Pots::init();   // safe to call repeatedly
+  Pots::init();
 
   uint16_t pot = Pots::readScaled(0);
   bool dirHigh = (target_adc > pot);
 
-  // Enable toolhead only (we're moving Axis 2)
   digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
+  delayMicroseconds(500);
   digitalWrite(Pins::DIR2, dirHigh ? HIGH : LOW);
+  delayMicroseconds(10);
 
-  unsigned long last = micros();
+  unsigned long nextEdge = micros();
   unsigned long startMs = millis();
 
   while (true) {
@@ -197,12 +299,11 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
       return false;
     }
 
-    unsigned long now;
-    do { now = micros(); } while ((unsigned long)(now - last) < interval_us);
-    last = now;
+    while ((long)(micros() - nextEdge) < 0) { /* spin */ }
+    nextEdge += period_us;
 
     digitalWrite(Pins::STEP2, HIGH);
-    delayMicroseconds(Pins::STEP_PULSE_US);
+    delayMicroseconds(pulseWidthUs());
     digitalWrite(Pins::STEP2, LOW);
 
     s_pos2 += dirHigh ? +1 : -1;
