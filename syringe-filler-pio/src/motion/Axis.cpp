@@ -3,6 +3,8 @@
 #include "hw/Pins.hpp"
 #include <Arduino.h>
 
+
+
 namespace Axis {
 
 static volatile long          s_currentSteps = 0;
@@ -18,6 +20,12 @@ static volatile Mode s_mode = Mode::IDLE;
 static volatile long s_remaining = 0;
 static volatile bool s_dirHigh   = true;
 
+// --- NEW: backlash handling ---
+static constexpr long BACKLASH_STEPS = 40;  // tune this for your mechanics (start 20–80)
+static volatile bool s_lastDirHigh   = true;
+static volatile long s_compToIgnore  = 0;   // during a reversal, ignore this many steps in position count
+// --------------------------------
+
 static inline uint32_t pulseWidthUs() {
   uint32_t pw = (Pins::STEP_PULSE_US < 8) ? 8u : (uint32_t)Pins::STEP_PULSE_US;
   return pw;
@@ -30,12 +38,21 @@ static void IRAM_ATTR onStepTimer() {
     return;
   }
 
+  // STEP pulse
   digitalWrite(Pins::STEP1, HIGH);
   delayMicroseconds(pulseWidthUs());
   digitalWrite(Pins::STEP1, LOW);
 
+  // Bookkeeping for remaining & position
   s_remaining--;
-  s_currentSteps += s_dirHigh ? +1 : -1;
+
+  // If we're taking up backlash after a reversal, consume steps
+  if (s_compToIgnore > 0) {
+    s_compToIgnore--;
+    // Do NOT change s_currentSteps for these “lash take-up” steps
+  } else {
+    s_currentSteps += s_dirHigh ? +1 : -1;
+  }
 
   if (s_remaining <= 0) {
     s_mode = Mode::IDLE;
@@ -64,16 +81,19 @@ void init() {
   timerAlarmDisable(s_timer);
 
   s_mode = Mode::IDLE;
+  s_lastDirHigh = true;
+  s_compToIgnore = 0;
+
   Serial.println("[Axis] init (timer ready).");
 }
 
 void setSpeedSPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
+  noInterrupts();
   s_speedSPS  = sps;
   s_period_us = (unsigned long)(1000000.0 / (double)sps);
 
-  noInterrupts();
   timerAlarmDisable(s_timer);
   timerAlarmWrite(s_timer, s_period_us, true);
   if (s_mode != Mode::IDLE) {
@@ -91,8 +111,10 @@ void enable(bool on) {
   digitalWrite(Pins::EN1, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
 }
 
-void dir(bool high) {
+static inline void setDir(bool high) {
   digitalWrite(Pins::DIR1, high ? HIGH : LOW);
+  // A4988 DIR setup/hold min is sub-µs; 10 µs is generous and safe:
+  delayMicroseconds(10);
 }
 
 void stepBlocking() {
@@ -109,17 +131,32 @@ void moveSteps(long steps) {
   }
 
   const bool dirHigh = (steps > 0);
-  const long todo    = labs(steps);
+  long todo          = labs(steps);
 
   enable(true);
   delayMicroseconds(500);
-  dir(dirHigh);
-  delayMicroseconds(10);
+
+  // --- detect direction change for backlash compensation ---
+  noInterrupts();
+  const bool reversing = (dirHigh != s_lastDirHigh);
+  interrupts();
+
+  setDir(dirHigh);
 
   noInterrupts();
-  s_dirHigh   = dirHigh;
+  s_dirHigh = dirHigh;
+
+  if (reversing) {
+    // Add physical steps to take up lash, but don’t advance logical position
+    s_compToIgnore = BACKLASH_STEPS;
+    todo += BACKLASH_STEPS;
+    s_lastDirHigh = dirHigh;
+  }
+
   s_remaining = todo;
   s_mode      = Mode::MOVE;
+
+  // ensure current period
   timerAlarmWrite(s_timer, s_period_us, true);
   timerAlarmEnable(s_timer);
   interrupts();
@@ -133,11 +170,27 @@ void moveTo(long targetSteps) {
   if (tgt < Pins::MIN_POS_STEPS) tgt = Pins::MIN_POS_STEPS;
   if (tgt > Pins::MAX_POS_STEPS) tgt = Pins::MAX_POS_STEPS;
 
-  long delta = tgt - s_currentSteps;
+  long cur;
+  noInterrupts();
+  cur = s_currentSteps;     // atomic read of shared counter
+  interrupts();
+
+  long delta = tgt - cur;
   moveSteps(delta);
 }
 
-long current() { return s_currentSteps; }
+
+void dir(bool high) {
+  digitalWrite(Pins::DIR1, high ? HIGH : LOW);
+}
+
+long current() {
+  long v;
+  noInterrupts();
+  v = s_currentSteps;
+  interrupts();
+  return v;
+}
 
 void setCurrent(long s) {
   noInterrupts();

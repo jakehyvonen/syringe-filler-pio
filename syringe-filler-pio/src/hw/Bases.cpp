@@ -6,7 +6,13 @@
 namespace Bases {
 
 // Persisted step positions for each base (human-indexed 1..NUM_BASES).
-static long basePos[Pins::NUM_BASES] = { 3390, 5735, 3330, 3330, 3330 };
+static long basePos[Pins::NUM_BASES] = { 
+  1900, 
+  5735, 
+  3330, 
+  3330, 
+  3330 
+};
 
 // 0 = none selected; else 1..NUM_BASES
 static uint8_t s_selected = 0;
