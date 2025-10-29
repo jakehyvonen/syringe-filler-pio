@@ -35,8 +35,8 @@ constexpr uint8_t  DISABLE_LEVEL = HIGH;
 constexpr bool     HOME_DIR_HIGH = false;
 constexpr float    STEPS_PER_MM  = 80.0f;
 constexpr long     MIN_POS_STEPS = 0;
-constexpr long     MAX_POS_STEPS = (long)(200.0f * STEPS_PER_MM);
+constexpr long     MAX_POS_STEPS = (long)(250.0f * STEPS_PER_MM);
 
 // ---------- Step pulse timing ----------
-constexpr uint8_t STEP_PULSE_US = 4;
+constexpr uint8_t STEP_PULSE_US = 11;
 }
