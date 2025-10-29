@@ -11,6 +11,7 @@
 #include "motion/Axis.hpp"
 #include "motion/AxisPair.hpp"
 #include "motion/Homing.hpp"
+#include "hw/RFID.hpp"
 
 namespace CommandRouter {
 
@@ -305,6 +306,8 @@ void handleSerial() {
           if (ok) Serial.println("OK potmove");
           else    Serial.println("ERR potmove");
         }
+
+        
 
       } else {
         Serial.println("Invalid command.");

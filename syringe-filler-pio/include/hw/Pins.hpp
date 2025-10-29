@@ -39,4 +39,9 @@ constexpr long     MAX_POS_STEPS = (long)(250.0f * STEPS_PER_MM);
 
 // ---------- Step pulse timing ----------
 constexpr uint8_t STEP_PULSE_US = 11;
+
+// -------- PN532 (I2C mode) ------------
+constexpr int PN532_IRQ = -1;   // set to a GPIO if you wire IRQ
+constexpr int PN532_RST = -1;   // set to a GPIO if you wire RST (active low)
+
 }
