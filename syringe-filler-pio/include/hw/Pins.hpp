@@ -5,7 +5,7 @@ namespace Pins {
 // ---------- I2C ----------
 constexpr int      I2C_SDA  = 21;
 constexpr int      I2C_SCL  = 22;
-constexpr uint32_t I2C_FREQ = 100000; // Hz
+constexpr uint32_t I2C_FREQ = 50000; // Hz
 
 // ---------- Stepper #1 (gantry axis) ----------
 constexpr uint8_t STEP1 = 4;

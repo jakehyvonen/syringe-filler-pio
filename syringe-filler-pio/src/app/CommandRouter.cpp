@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <Wire.h>
+
 #include "app/CommandRouter.hpp"
 
 #include "hw/Pins.hpp"
@@ -21,46 +23,6 @@ static inline long mmToSteps(float mm) {
   return (long)lround(mm * Pins::STEPS_PER_MM);
 }
 
-
-// ---- Debug helpers for ADS1115 ------------------------------------------------
-static constexpr uint8_t ADS_ADDRS[] = { 0x48, 0x49 };   // ADDR->GND, ADDR->VDD
-static constexpr float   ADS_LSB_VOLTS_GAIN_ONE = 0.000125f; // 125 µV/LSB at ±4.096V
-
-static bool readADSOnce(uint8_t i2c_addr, int16_t out_counts[4]) {
-  Adafruit_ADS1115 ads;
-  if (!ads.begin(i2c_addr)) {
-    return false;
-  }
-  ads.setGain(GAIN_ONE); // ±4.096V so 3.3V fits comfortably
-
-  for (int ch = 0; ch < 4; ++ch) {
-    int16_t v = ads.readADC_SingleEnded(ch);
-    if (v < 0) v = 0; // clamp negatives (shouldn't happen for single-ended)
-    out_counts[ch] = v;
-  }
-  return true;
-}
-
-static inline float countsToVolts(int16_t counts) {
-  // At GAIN_ONE the ADS1115 returns up to ~32767 for +4.096 V
-  // LSB is 125 µV -> volts = counts * 0.000125
-  return counts * ADS_LSB_VOLTS_GAIN_ONE;
-}
-
-// --- Debug helper: show which EN pins are LOW/HIGH right now.
-static void dumpBaseEN(const char* label = "EN") {
-  Serial.print("[EN] "); Serial.print(label);
-  Serial.print(" sel="); Serial.print(Bases::selected());
-  Serial.print("  pins: ");
-  for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
-    int lvl = digitalRead(Pins::BASE_EN[i]);
-    Serial.print(Pins::BASE_EN[i]); Serial.print('=');
-    Serial.print(lvl);
-    if (i + 1 < Pins::NUM_BASES) Serial.print(' ');
-  }
-  Serial.println();
-}
-
 void handleSerial() {
   while (Serial.available()) {
     char c = Serial.read();
@@ -71,8 +33,69 @@ void handleSerial() {
       Serial.print("received: ");
       Serial.println(input);
 
+      // ---------------- Utility: I2C & NFC ----------------
+      if (input == "i2cscan") {
+        // Ensure bus is up at 100 kHz (PN532-friendly)
+        Serial.printf("Scanning I2C (SDA=%d SCL=%d)...\n", Pins::I2C_SDA, Pins::I2C_SCL);
+      uint8_t found = 0;
+      for (uint8_t a = 0x03; a <= 0x77; ++a) {
+        Wire.beginTransmission(a);
+        uint8_t err = Wire.endTransmission(true);   // don't hang if a device misbehaves
+        if (err == 0) {
+          Serial.printf(" - 0x%02X\n", a);
+          ++found;
+        }
+        delay(2);
+      }
+      if (!found) Serial.println(" (none)");
+      Serial.println("I2C scan complete.");
+    }
+
+    else if (input == "nfc") {
+      if (RFID::firmware() == 0) {
+        Serial.println("PN532 not initialized yet.");
+      } else {
+        uint8_t uid[10];
+        int len = RFID::readUID(uid, sizeof(uid));
+        if (len <= 0) {
+          Serial.println("No tag.");
+        } else {
+          Serial.print("UID: ");
+          for (int i = 0; i < len; ++i) {
+            Serial.printf("%02X", uid[i]);
+            if (i + 1 < len) Serial.print(':');
+          }
+          Serial.println();
+        }
+      }
+    }
+
+    else if (input == "nfcwatch") {
+      if (RFID::firmware() == 0) {
+        Serial.println("PN532 not initialized yet.");
+      } else {
+        Serial.println("Watching for tags (5s)...");
+        const unsigned long t0 = millis();
+        while (millis() - t0 < 5000UL) {
+          if (RFID::present()) {
+            uint8_t uid[10];
+            int len = RFID::readUID(uid, sizeof(uid));
+            if (len > 0) {
+              Serial.print("Tag UID: ");
+              for (int i = 0; i < len; ++i) {
+                Serial.printf("%02X", uid[i]);
+                if (i + 1 < len) Serial.print(':');
+              }
+              Serial.println();
+              delay(400); // debounce so the same tag doesn't spam
+            }
+          }
+          delay(50);
+        }
+      }
+
       // ---------------- Axis #1 (gantry) ----------------
-      if (input == "on") {
+      } else if (input == "on") {
         Axis::enable(true);
         Serial.println("Motor ON");
       } else if (input == "off") {
@@ -127,19 +150,17 @@ void handleSerial() {
 
       // ---------------- Bases ----------------
       } else if (input.startsWith("base ")) {
-        int idx = input.substring(5).toInt(); // 0..NUM_BASES
+        int idx = input.substring(5).toInt(); // 0..NUM_BASES (0=off)
         if (!Bases::select((uint8_t)idx)) {
           Serial.print("Usage: base <0.."); Serial.print(Pins::NUM_BASES); Serial.println(">");
         } else {
           Serial.print("[Base] selected="); Serial.println(Bases::selected());
-          dumpBaseEN("after base");
         }
       } else if (input == "whichbase") {
         Serial.print("[Base] selected="); Serial.println(Bases::selected());
-        dumpBaseEN("whichbase");
       } else if (input == "baseoff") {
         Bases::select(0);
-        dumpBaseEN("after baseoff");
+        Serial.println("[Base] off");
       } else if (input.startsWith("gobase ")) {
         long idx = input.substring(7).toInt(); // 1..NUM_BASES
         if (idx < 1 || idx > Pins::NUM_BASES) {
@@ -204,7 +225,7 @@ void handleSerial() {
             angle   = rest.substring(0, secondSpace).toInt();
             delayMs = rest.substring(secondSpace + 1).toInt();
           } else {
-            angle = rest.toInt();
+            angle   = rest.toInt();
             delayMs = 15;
           }
           if (channel < 0 || channel > 15) Serial.println("Error: channel must be 0–15");
@@ -219,11 +240,9 @@ void handleSerial() {
       // ---------------- Axis 2 & 3 ----------------
       } else if (input.startsWith("move2 ")) {
         long s = input.substring(6).toInt();
-        // Axis 2 = TOOLHEAD syringe (EN2)
-        AxisPair::move2(s);
+        AxisPair::move2(s);  // toolhead syringe
         Serial.println("OK move2");
       } else if (input.startsWith("move3 ")) {
-        // Accepts: "move3 <steps>" or "move3 <steps> <sps>"
         if (Bases::selected() == 0) {
           Serial.println("ERR move3: no base selected. Use 'base <1..5>' first.");
         } else {
@@ -231,11 +250,10 @@ void handleSerial() {
           int sp = rest.indexOf(' ');
           if (sp < 0) {
             long steps = rest.toInt();
-            AxisPair::move3(steps);              // default speed
+            AxisPair::move3(steps);
             Serial.println("OK move3");
-          } 
+          }
         }
-
       } else if (input.startsWith("speed23 ")) {
         long sps = input.substring(8).toInt();
         AxisPair::setSpeedSPS(sps);
@@ -270,31 +288,8 @@ void handleSerial() {
         Serial.print("POS3 steps="); Serial.print(AxisPair::pos3());
         Serial.print("  mm=");       Serial.println(mm, 3);
 
-      // ---------------- Pots / ADS1115 ----------------
-      } else if (input == "pots") {
-        // Snapshot ADS1115 channels (both chips), and also print current Pots API view.
-        for (uint8_t i = 0; i < sizeof(ADS_ADDRS); ++i) {
-          uint8_t addr = ADS_ADDRS[i];
-          int16_t counts[4] = {0,0,0,0};
-          bool ok = readADSOnce(addr, counts);
-
-          Serial.print("ADS@0x"); Serial.print(addr, HEX);
-          if (!ok) {
-            Serial.println("  (not found)");
-            continue;
-          }
-          Serial.println();
-
-          for (int ch = 0; ch < 4; ++ch) {
-            float volts = countsToVolts(counts[ch]);
-            Serial.print("  A"); Serial.print(ch);
-            Serial.print(": counts="); Serial.print(counts[ch]);
-            Serial.print("  volts="); Serial.println(volts, 5);
-          }          
-        }
-      }
-      
-      else if (input.startsWith("potmove ")) {
+      // ---------------- Pot-driven motion (kept) ----------------
+      } else if (input.startsWith("potmove ")) {
         // "potmove <target_adc 0-1023> <sps>"  (toolhead/Axis2 only)
         int sp = input.indexOf(' ', 8);
         if (sp < 0) {
@@ -306,8 +301,6 @@ void handleSerial() {
           if (ok) Serial.println("OK potmove");
           else    Serial.println("ERR potmove");
         }
-
-        
 
       } else {
         Serial.println("Invalid command.");
