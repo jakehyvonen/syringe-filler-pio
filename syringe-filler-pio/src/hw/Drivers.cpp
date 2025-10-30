@@ -79,13 +79,9 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
   // ---- PN532 presence + init (no I2C ownership here) ----
   if (i2cPresentQuick(0x24)) {
     Serial.println("INFO: PN532 ACK at 0x24");
-    if (RFID::firmware() == 0) {
-      if (RFID::init()) {
-        Serial.println("INFO: PN532 ready.");
-      } else {
-        Serial.println("WARN: PN532 init failed.");
-      }
-    }
+    RFID::init();
+
+    
   } else {
     Serial.println("INFO: PN532 not ACKing at 0x24 (mode/address mismatch?)");
   }

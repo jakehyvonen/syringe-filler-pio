@@ -9,6 +9,7 @@
 #include "servo/Toolhead.hpp"
 #include "util/EEStore.hpp"
 #include "app/CommandRouter.hpp"
+#include "hw/RFID.hpp"
 
 namespace App {
 
@@ -57,7 +58,8 @@ void setup() {
 
 void loop() {
   CommandRouter::handleSerial();
-  // (optional) Axis::tick(); if you later add a non-blocking stepper tick
+  RFID::tick(); // active only if enabled
+
 }
 
 } // namespace App

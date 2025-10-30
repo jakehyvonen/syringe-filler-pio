@@ -2,16 +2,24 @@
 #include <Arduino.h>
 
 namespace RFID {
-  // Initialize PN532 over I2C; returns true if firmware responds
-  bool init();
 
-  // Returns true if any ISO14443A target is present (quick poll)
-  bool present();
+// Call once from setup()
+void init();
 
-  // Reads a tag UID if present. Returns length (>=0) on success, -1 otherwise.
-  // uidBuf must be at least 10 bytes (covers 7-byte UIDs).
-  int readUID(uint8_t* uidBuf, uint8_t uidBufLen);
+// Call every loop(); does nothing unless enabled()
+void tick();
 
-  // Returns last known firmware version (chip + revision), or 0 if unknown.
-  uint32_t firmware();
-}
+// Start/stop the internal polling loop
+void enable(bool e);
+bool enabled();
+
+// Last-seen UID helpers (updated when a new tag is read)
+bool     available();            // true if a new UID was captured since last tick()
+uint8_t  uidLen();
+const uint8_t* uidBytes();
+void     printUID(Stream& s);
+
+// One-shot helper used by the "rfid once" command (tries N times, returns true on hit)
+bool     detectOnce(uint16_t tries = 30, uint16_t delay_ms = 100);
+
+} // namespace RFID

@@ -33,69 +33,10 @@ void handleSerial() {
       Serial.print("received: ");
       Serial.println(input);
 
-      // ---------------- Utility: I2C & NFC ----------------
-      if (input == "i2cscan") {
-        // Ensure bus is up at 100 kHz (PN532-friendly)
-        Serial.printf("Scanning I2C (SDA=%d SCL=%d)...\n", Pins::I2C_SDA, Pins::I2C_SCL);
-      uint8_t found = 0;
-      for (uint8_t a = 0x03; a <= 0x77; ++a) {
-        Wire.beginTransmission(a);
-        uint8_t err = Wire.endTransmission(true);   // don't hang if a device misbehaves
-        if (err == 0) {
-          Serial.printf(" - 0x%02X\n", a);
-          ++found;
-        }
-        delay(2);
-      }
-      if (!found) Serial.println(" (none)");
-      Serial.println("I2C scan complete.");
-    }
-
-    else if (input == "nfc") {
-      if (RFID::firmware() == 0) {
-        Serial.println("PN532 not initialized yet.");
-      } else {
-        uint8_t uid[10];
-        int len = RFID::readUID(uid, sizeof(uid));
-        if (len <= 0) {
-          Serial.println("No tag.");
-        } else {
-          Serial.print("UID: ");
-          for (int i = 0; i < len; ++i) {
-            Serial.printf("%02X", uid[i]);
-            if (i + 1 < len) Serial.print(':');
-          }
-          Serial.println();
-        }
-      }
-    }
-
-    else if (input == "nfcwatch") {
-      if (RFID::firmware() == 0) {
-        Serial.println("PN532 not initialized yet.");
-      } else {
-        Serial.println("Watching for tags (5s)...");
-        const unsigned long t0 = millis();
-        while (millis() - t0 < 5000UL) {
-          if (RFID::present()) {
-            uint8_t uid[10];
-            int len = RFID::readUID(uid, sizeof(uid));
-            if (len > 0) {
-              Serial.print("Tag UID: ");
-              for (int i = 0; i < len; ++i) {
-                Serial.printf("%02X", uid[i]);
-                if (i + 1 < len) Serial.print(':');
-              }
-              Serial.println();
-              delay(400); // debounce so the same tag doesn't spam
-            }
-          }
-          delay(50);
-        }
-      }
+      
 
       // ---------------- Axis #1 (gantry) ----------------
-      } else if (input == "on") {
+     if (input == "on") {
         Axis::enable(true);
         Serial.println("Motor ON");
       } else if (input == "off") {
@@ -288,6 +229,26 @@ void handleSerial() {
         Serial.print("POS3 steps="); Serial.print(AxisPair::pos3());
         Serial.print("  mm=");       Serial.println(mm, 3);
 
+
+      } else if (input == "rfid" || input.startsWith("rfid ")) {
+  String arg = "";
+  if (input.length() > 5)
+    arg = input.substring(5);
+
+  if (arg == "on") {
+    RFID::enable(true);
+    Serial.println(F("[rfid] polling enabled"));
+  } else if (arg == "off") {
+    RFID::enable(false);
+    Serial.println(F("[rfid] polling disabled"));
+  } else if (arg == "once") {
+    Serial.println(F("[rfid] detecting once..."));
+    RFID::detectOnce(30, 100); // ~3 s total
+  } else {
+    Serial.println(F("[rfid] usage: rfid on | off | once"));
+  }
+
+        
       // ---------------- Pot-driven motion (kept) ----------------
       } else if (input.startsWith("potmove ")) {
         // "potmove <target_adc 0-1023> <sps>"  (toolhead/Axis2 only)
