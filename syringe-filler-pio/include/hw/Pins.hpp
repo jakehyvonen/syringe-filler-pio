@@ -67,12 +67,11 @@ constexpr uint8_t STEP_PULSE_US = 11;
 constexpr int PN532_I2C_SDA = I2C_SDA;
 constexpr int PN532_I2C_SCL = I2C_SCL;
 
-// PN532 #2  → SPI  (BaseRFID)
-// VSPI default pins
-constexpr int PN532_SPI_SCK  = 18;
-constexpr int PN532_SPI_MISO = 19;
-constexpr int PN532_SPI_MOSI = 23;
-constexpr int PN532_SPI_CS   = 15;   // chip-select for BaseRFID PN532 (free GPIO)
+// ---------- Secondary I2C bus (Wire1) for BaseRFID ----------
+constexpr int      I2C2_SDA  = 18;   // choose free GPIOs
+constexpr int      I2C2_SCL  = 19;
+constexpr uint32_t I2C2_FREQ = 50000; // keep same 50 kHz for stability
+
 
 // =======================================================
 // ==========  UNUSED / PLACEHOLDERS  =====================

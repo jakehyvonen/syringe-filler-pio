@@ -10,6 +10,7 @@
 #include "util/EEStore.hpp"
 #include "app/CommandRouter.hpp"
 #include "hw/RFID.hpp"
+#include "hw/BaseRFID.hpp"
 
 namespace App {
 
@@ -32,11 +33,14 @@ void setup() {
 
   // I2C + EEPROM + subsystems
   Drivers::initI2C();
+  Drivers::initI2C2();
+  Drivers::i2cScanBoth();
   EEStore::begin();
 
   Bases::init();
   Axis::init();
   AxisPair::init();
+
 
   if (Drivers::hasADS()) {
     Pots::init();
@@ -52,6 +56,7 @@ void setup() {
   } else {
     Serial.println("WARN: no PCA9685; movement will be blocked by safety where needed.");
   }
+
 
   Serial.println("Setup complete. Type commands: on/off, home, move, servo, ...");
 }

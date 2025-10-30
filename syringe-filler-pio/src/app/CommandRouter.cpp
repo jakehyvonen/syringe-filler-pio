@@ -14,6 +14,7 @@
 #include "motion/AxisPair.hpp"
 #include "motion/Homing.hpp"
 #include "hw/RFID.hpp"
+#include "hw/BaseRFID.hpp"
 
 namespace CommandRouter {
 
@@ -247,6 +248,35 @@ void handleSerial() {
   } else {
     Serial.println(F("[rfid] usage: rfid on | off | once"));
   }
+
+} else if (input == "rfid2" || input.startsWith("rfid2 ")) {
+  String arg = (input.length() > 6) ? input.substring(6) : "";
+
+  if (arg == "on") {
+    BaseRFID::enable(true);
+    Serial.println(F("[rfid2] polling enabled (SPI PN532)"));
+  } 
+  else if (arg == "off") {
+    BaseRFID::enable(false);
+    Serial.println(F("[rfid2] polling disabled"));
+  } 
+  else if (arg.startsWith("once")) {
+    // Example:  rfid2 once 50   → 50 tries with 100 ms delay each
+    int tries = 30;
+    int spaceIndex = arg.indexOf(' ');
+    if (spaceIndex > 0) {
+      int val = arg.substring(spaceIndex + 1).toInt();
+      if (val > 0 && val < 200) tries = val;
+    }
+    Serial.print(F("[rfid2] detecting once (~"));
+    Serial.print(tries * 100 / 1000.0, 1);
+    Serial.println(F(" s window)…"));
+    BaseRFID::detectOnce(tries, 100);
+  } 
+  else {
+    Serial.println(F("[rfid2] usage: rfid2 on | off | once [tries]"));
+  }
+
 
         
       // ---------------- Pot-driven motion (kept) ----------------
