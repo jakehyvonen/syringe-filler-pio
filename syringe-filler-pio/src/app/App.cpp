@@ -18,8 +18,8 @@ void setup() {
   delay(200);
 
   // Pin modes
-  pinMode(Pins::STEP1, OUTPUT); pinMode(Pins::DIR1, OUTPUT); pinMode(Pins::EN1, OUTPUT);
-  pinMode(Pins::STEP2, OUTPUT); pinMode(Pins::DIR2, OUTPUT); pinMode(Pins::EN2, OUTPUT);
+  pinMode(Pins::STEP12, OUTPUT); pinMode(Pins::DIR12, OUTPUT); pinMode(Pins::EN1, OUTPUT);
+  pinMode(Pins::STEP12, OUTPUT); pinMode(Pins::DIR12, OUTPUT); pinMode(Pins::EN2, OUTPUT);
 //  pinMode(Pins::STEP3, OUTPUT); pinMode(Pins::DIR3, OUTPUT); pinMode(Pins::EN3, OUTPUT);
   pinMode(Pins::LIMIT, INPUT);
   pinMode(Pins::RAISED, INPUT);
@@ -28,7 +28,7 @@ void setup() {
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
   //digitalWrite(Pins::EN3, Pins::DISABLE_LEVEL);
   digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
-  digitalWrite(Pins::DIR1, HIGH);
+  digitalWrite(Pins::DIR12, HIGH);
 
   // I2C + EEPROM + subsystems
   Drivers::initI2C();

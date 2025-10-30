@@ -56,11 +56,11 @@ static void IRAM_ATTR onStepTimer() {
   // Two-phase step without busy-wait
   if (do1 && !s_phaseHigh) {
     // phase A: STEP HIGH
-    GPIO.out_w1ts = (1UL << Pins::STEP1);  // fast write (optional)
+    GPIO.out_w1ts = (1UL << Pins::STEP12);  // fast write (optional)
     s_phaseHigh = true;
   } else if (s_phaseHigh) {
     // phase B: hold time has elapsed via timer period; STEP LOW
-    GPIO.out_w1tc = (1UL << Pins::STEP1);
+    GPIO.out_w1tc = (1UL << Pins::STEP12);
     s_phaseHigh = false;
 
     if (do1 && s_rem > 0) { s_rem--; s_pos += s_dirHigh ? +1 : -1; }
@@ -83,12 +83,12 @@ static void waitForIdle() {
 // Init
 // -----------------------------
 void init() {
-  pinMode(Pins::STEP1, OUTPUT);
-  pinMode(Pins::DIR1,  OUTPUT);
+  pinMode(Pins::STEP12, OUTPUT);
+  pinMode(Pins::DIR12,  OUTPUT);
   pinMode(Pins::EN1,   OUTPUT);
 
   digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
-  digitalWrite(Pins::DIR1, HIGH);
+  digitalWrite(Pins::DIR12, HIGH);
 
   // Use hardware timer 1 so we don't collide with AxisPair's timer 0
   // Prescaler 80 => 1 tick = 1 us
@@ -131,13 +131,13 @@ void enable(bool on) {
 
 // Optional helpers kept for API parity
 void dir(bool high) {
-  digitalWrite(Pins::DIR1, high ? HIGH : LOW);
+  digitalWrite(Pins::DIR12, high ? HIGH : LOW);
   delayMicroseconds(3);
 }
 void stepBlocking() {
-  digitalWrite(Pins::STEP1, HIGH);
+  digitalWrite(Pins::STEP12, HIGH);
   delayMicroseconds(pulseWidthUs());
-  digitalWrite(Pins::STEP1, LOW);
+  digitalWrite(Pins::STEP12, LOW);
 }
 // -----------------------------
 // Motion
@@ -155,7 +155,7 @@ void moveSteps(long steps) {
 
   enable(true);                      // keep enabled
   delayMicroseconds(500);
-  digitalWrite(Pins::DIR1, dirHigh ? HIGH : LOW);
+  digitalWrite(Pins::DIR12, dirHigh ? HIGH : LOW);
   delayMicroseconds(10);
 
   noInterrupts();
