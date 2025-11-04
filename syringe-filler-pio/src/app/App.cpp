@@ -11,6 +11,7 @@
 #include "app/CommandRouter.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
+#include "hw/Encoder.hpp"       // <-- NEW
 
 namespace App {
 
@@ -41,6 +42,9 @@ void setup() {
   Axis::init();
   AxisPair::init();
 
+  // --- NEW: encoder init
+  EncoderHW::begin();
+  Serial.println("Encoder ready. Commands: ENC, ENC ON, ENC OFF, ENC ZERO");
 
   if (Drivers::hasADS()) {
     Pots::init();
@@ -57,14 +61,15 @@ void setup() {
     Serial.println("WARN: no PCA9685; movement will be blocked by safety where needed.");
   }
 
-
-  Serial.println("Setup complete. Type commands: on/off, home, move, servo, ...");
+  Serial.println("Setup complete. Type commands: on/off, home, move, servo, enc ...");
 }
 
 void loop() {
   CommandRouter::handleSerial();
   RFID::tick(); // active only if enabled
 
+  // --- NEW: let encoder do periodic printing when polling is on
+  EncoderHW::service();
 }
 
 } // namespace App

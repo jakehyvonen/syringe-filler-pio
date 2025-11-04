@@ -72,6 +72,17 @@ constexpr int      I2C2_SDA  = 18;   // choose free GPIOs
 constexpr int      I2C2_SCL  = 19;
 constexpr uint32_t I2C2_FREQ = 50000; // keep same 50 kHz for stability
 
+// =======================================================
+// ==========  LINEAR ENCODER (A/B/Index)  =================
+// =======================================================
+// Phidgets ENC4111_0 via 74LVC245 (5V → 3V3)
+// ESP32 DevKitC pins:
+//  - A  → GPIO 23
+//  - B  → GPIO 13
+//  - Z  → GPIO 39 (VN, input-only)
+constexpr uint8_t ENC_A = 23;
+constexpr uint8_t ENC_B = 13;
+constexpr uint8_t ENC_Z = 39; // index / reference mark (input-only)
 
 // =======================================================
 // ==========  UNUSED / PLACEHOLDERS  =====================
