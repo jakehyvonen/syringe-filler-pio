@@ -2,6 +2,7 @@
 #include "motion/Axis.hpp"
 #include "servo/Toolhead.hpp"
 #include "hw/Pins.hpp"
+#include "hw/Encoder.hpp"    // <-- NEW
 #include <Arduino.h>
 
 namespace Homing {
@@ -82,7 +83,7 @@ void home() {
     }
   }
 
-  // Zero position
+  // Zero position (stepper logical)
   Axis::setCurrent(0);
 
   // Release a few steps
@@ -95,8 +96,39 @@ void home() {
     }
   }
 
+  // ---- NEW: also zero the encoder here ----
+  EncoderHW::reset();
+
+  // ---- OPTIONAL: try to find the encoder index just after homing ----
+  // This assumes Pins::ENC_Z is wired through the level shifter and is not floating.
+  // We move away from the switch (same dir as the little release above) for a short range
+  // and if we see the index high, we re-zero the encoder right there.
+  {
+    const int maxIndexSearchSteps = 2000;  // adjust to your mechanics
+    bool foundIndex = false;
+
+    // move in the "away from home" direction
+    Axis::dir(!Pins::HOME_DIR_HIGH);
+    for (int i = 0; i < maxIndexSearchSteps; ++i) {
+      stepOnceTimed();
+
+      // poll index line
+      if (digitalRead(Pins::ENC_Z) == HIGH) {
+        EncoderHW::reset();
+        foundIndex = true;
+        Serial.print("HOMING: encoder index captured at step ");
+        Serial.println(i);
+        break;
+      }
+    }
+
+    if (!foundIndex) {
+      Serial.println("HOMING: encoder index not seen in search window; using limit-based zero.");
+    }
+  }
+
   s_fastIntervalUs = saved;
-  Serial.println("HOMING COMPLETE. pos=0");
+  Serial.println("HOMING COMPLETE. pos=0 (stepper + encoder)");
 
   Axis::enable(false);
 }

@@ -16,7 +16,7 @@ void IRAM_ATTR index_isr() {
 
 void begin() {
   // PCNT units need this on some cores
-  ESP32Encoder::useInternalWeakPullResistors = false;
+ESP32Encoder::useInternalWeakPullResistors = puType::NONE;
 
   // Attach quadrature
   s_encoder.attachFullQuad(PIN_A, PIN_B);

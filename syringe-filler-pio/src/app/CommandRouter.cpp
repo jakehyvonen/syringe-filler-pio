@@ -15,6 +15,7 @@
 #include "motion/Homing.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
+#include "hw/Encoder.hpp"  // <-- NEW
 
 namespace CommandRouter {
 
@@ -276,6 +277,36 @@ void handleSerial() {
   else {
     Serial.println(F("[rfid2] usage: rfid2 on | off | once [tries]"));
   }
+
+      // ---------------- Encoder ----------------
+      } else if (input == "enc" || input.startsWith("enc ")) {
+        // enc
+        // enc on
+        // enc off
+        // enc zero
+        String arg = "";
+        if (input.length() > 4) {
+          arg = input.substring(4);
+          arg.trim();
+          arg.toLowerCase();
+        }
+
+        if (arg.length() == 0) {
+          long c = EncoderHW::count();
+          float mm = EncoderHW::mm();
+          Serial.printf("[enc] count=%ld pos=%.3f mm\n", c, mm);
+        } else if (arg == "on") {
+          EncoderHW::setPolling(true);
+          Serial.println("[enc] polling ON");
+        } else if (arg == "off") {
+          EncoderHW::setPolling(false);
+          Serial.println("[enc] polling OFF");
+        } else if (arg == "zero" || arg == "reset") {
+          EncoderHW::reset();
+          Serial.println("[enc] zeroed");
+        } else {
+          Serial.println("[enc] usage: enc | enc on | enc off | enc zero");
+        }
 
 
         
