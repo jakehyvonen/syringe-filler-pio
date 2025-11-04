@@ -2,7 +2,7 @@
 #include "motion/Axis.hpp"
 #include "servo/Toolhead.hpp"
 #include "hw/Pins.hpp"
-#include "hw/Encoder.hpp"    // <-- NEW
+#include "hw/Encoder.hpp"
 #include <Arduino.h>
 
 namespace Homing {
@@ -27,8 +27,6 @@ void home() {
     return;
   }
 
-  // Use Axis speed as baseline for timing if you expose it; otherwise default.
-  // Here we keep a conservative default.
   s_fastIntervalUs = 1000; // ~500 sps full-steps (two toggles per step)
 
   Axis::enable(true);
@@ -83,10 +81,10 @@ void home() {
     }
   }
 
-  // Zero position (stepper logical)
+  // Stepper logical zero at the switch
   Axis::setCurrent(0);
 
-  // Release a few steps
+  // Release a few steps away from the switch
   {
     const int releaseSteps = 5;
     Axis::dir(!Pins::HOME_DIR_HIGH);
@@ -96,31 +94,44 @@ void home() {
     }
   }
 
-  // ---- NEW: also zero the encoder here ----
-  EncoderHW::reset();
+  // ---- encoder zero at the final home position ----
+  EncoderHW::zeroHere();
 
-  // ---- OPTIONAL: try to find the encoder index just after homing ----
-  // This assumes Pins::ENC_Z is wired through the level shifter and is not floating.
-  // We move away from the switch (same dir as the little release above) for a short range
-  // and if we see the index high, we re-zero the encoder right there.
+  // ---- OPTIONAL index search that returns to 0 ----
   {
-    const int maxIndexSearchSteps = 2000;  // adjust to your mechanics
+    const int maxIndexSearchSteps = 5000;  // tune for your mechanics
     bool foundIndex = false;
+    long stepsMoved = 0;
 
-    // move in the "away from home" direction
+    // remember where we are (should be 0)
+    long homePosSteps = Axis::current();
+
+    // move away from home to look for index
     Axis::dir(!Pins::HOME_DIR_HIGH);
     for (int i = 0; i < maxIndexSearchSteps; ++i) {
       stepOnceTimed();
+      stepsMoved++;
+      // keep stepper position in sync while searching
+      Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
 
-      // poll index line
       if (digitalRead(Pins::ENC_Z) == HIGH) {
-        EncoderHW::reset();
+        // index found right here → make THIS the encoder zero
+        EncoderHW::zeroHere();
         foundIndex = true;
-        Serial.print("HOMING: encoder index captured at step ");
+        Serial.print("HOMING: encoder index captured at search step ");
         Serial.println(i);
         break;
       }
     }
+
+    // go back to the home position we saved so we always end at 0
+    Axis::dir(Pins::HOME_DIR_HIGH); // reverse direction
+    for (long i = 0; i < stepsMoved; ++i) {
+      stepOnceTimed();
+      Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+    }
+    // ensure exact logical 0
+    Axis::setCurrent(homePosSteps);
 
     if (!foundIndex) {
       Serial.println("HOMING: encoder index not seen in search window; using limit-based zero.");

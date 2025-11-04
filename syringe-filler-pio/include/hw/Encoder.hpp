@@ -1,26 +1,45 @@
 #pragma once
 #include <Arduino.h>
+#include "hw/Pins.hpp"   // for ENC_A / ENC_B / ENC_Z if you want, or you can repeat pins here
 
 namespace EncoderHW {
 
-// Logical counts per mm for your math (ENC4111_0 is 5 µm/pulse per channel).
-// With quadrature x4, effective counts/mm = (1 mm / 0.005 mm) * 4 = 200 * 4 = 800
+// Logical counts/mm we derived earlier for your Phidgets strip
 constexpr float COUNTS_PER_MM = 800.0f;
 
-// Pin assignment – chosen to avoid conflicts with your Pins.hpp.
-constexpr gpio_num_t PIN_A   = GPIO_NUM_23;
-constexpr gpio_num_t PIN_B   = GPIO_NUM_13;
-constexpr gpio_num_t PIN_IDX = GPIO_NUM_39; // input-only; fine for index
+// Pin assignments (you can keep them here or in Pins.hpp; you're already putting them in Pins.hpp,
+// so if you prefer, remove these 3 lines and just include Pins.hpp in Encoder.cpp)
+constexpr uint8_t PIN_A   = Pins::ENC_A;
+constexpr uint8_t PIN_B   = Pins::ENC_B;
+constexpr uint8_t PIN_IDX = Pins::ENC_Z;
 
+// init hardware encoder (A/B, prepare index pin)
 void begin();
+
+// full reset: clear hardware count and software offset
 void reset();
-long count();           // raw quadrature count (can be negative if reversed)
-float mm();             // position in mm
+
+// set current hardware count as zero (software offset only)
+// this is what Homing should call after it's done
+void zeroHere();
+
+// get raw hardware count straight from ESP32Encoder (no offset)
+long raw();
+
+// get logical count (raw - offset)
+long count();
+
+// convert to mm using COUNTS_PER_MM
+float mm();
+
+// enable/disable periodic serial printing
 void setPolling(bool on);
 bool polling();
 
-void onIndexPulse();    // ISR-safe hook to zero-at-index (optional)
+// to be called from App::loop() so "enc on" can print
+void service();
 
-void service();         // call periodically if polling==true to print
+// optional, in case you re-enable the real index ISR path
+void onIndexPulse();
 
 } // namespace EncoderHW
