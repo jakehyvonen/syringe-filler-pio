@@ -5,13 +5,15 @@
 namespace EncoderHW {
 
 // Logical counts/mm we derived earlier for your Phidgets strip
-constexpr float COUNTS_PER_MM = 800.0f;
+constexpr float COUNTS_PER_MM = 200.0f;
 
 // Pin assignments (you can keep them here or in Pins.hpp; you're already putting them in Pins.hpp,
 // so if you prefer, remove these 3 lines and just include Pins.hpp in Encoder.cpp)
 constexpr uint8_t PIN_A   = Pins::ENC_A;
 constexpr uint8_t PIN_B   = Pins::ENC_B;
 constexpr uint8_t PIN_IDX = Pins::ENC_Z;
+
+constexpr int ENCODER_SIGN = -1;   // was +1; flip because encoder is mounted reversed
 
 // init hardware encoder (A/B, prepare index pin)
 void begin();

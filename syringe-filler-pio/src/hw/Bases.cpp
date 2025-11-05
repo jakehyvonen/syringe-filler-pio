@@ -7,11 +7,11 @@ namespace Bases {
 
 // Persisted step positions for each base (human-indexed 1..NUM_BASES).
 static long basePos[Pins::NUM_BASES] = { 
-  1820, 
-  6150, 
-  10400, 
-  14650, 
-  3330 
+  600, 
+  5300, 
+  10010, 
+  14700, 
+  19400 
 };
 
 // 0 = none selected; else 1..NUM_BASES

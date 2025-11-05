@@ -52,7 +52,9 @@ long raw() {
 
 // logical count (what the rest of the app should use)
 long count() {
-  return (long)s_encoder.getCount() - s_offset;
+  // raw - offset, then apply sign
+  long c = (long)s_encoder.getCount() - s_offset;
+  return c * ENCODER_SIGN;
 }
 
 float mm() {
