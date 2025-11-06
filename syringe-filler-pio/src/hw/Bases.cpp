@@ -2,28 +2,27 @@
 #include "hw/Bases.hpp"
 #include "hw/Pins.hpp"
 #include "motion/Axis.hpp"
+#include "util/Storage.hpp"     // <-- NEW
 
 namespace Bases {
 
-// Persisted step positions for each base (human-indexed 1..NUM_BASES).
-static long basePos[Pins::NUM_BASES] = { 
-  600, 
-  5300, 
-  10010, 
-  14700, 
-  19400 
+// default positions if nothing in NVS
+static long basePos[Pins::NUM_BASES] = {
+  600,
+  5300,
+  10010,
+  14700,
+  19400
 };
 
 // 0 = none selected; else 1..NUM_BASES
 static uint8_t s_selected = 0;
 
-// Map selection -> actual EN pin (returns 255 if none selected)
 static inline uint8_t selectedEnPin() {
-  if (s_selected == 0) return 255;                 // invalid
-  return Pins::BASE_EN[s_selected - 1];            // map 1-based -> 0-based
+  if (s_selected == 0) return 255;
+  return Pins::BASE_EN[s_selected - 1];
 }
 
-// Dump the current levels of all EN lines for debugging.
 static void debugDumpEN(const char* label) {
   Serial.print("[Bases] "); Serial.print(label);
   Serial.print("  sel=");  Serial.print(s_selected);
@@ -39,12 +38,21 @@ static void debugDumpEN(const char* label) {
 }
 
 void init() {
-  // Configure all base-enable pins as outputs and default to disabled.
+  // pins
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
     pinMode(Pins::BASE_EN[i], OUTPUT);
-    digitalWrite(Pins::BASE_EN[i], Pins::DISABLE_LEVEL); // HIGH if active-low
+    digitalWrite(Pins::BASE_EN[i], Pins::DISABLE_LEVEL);
   }
   s_selected = 0;
+
+  // try to load positions from NVS; if found, overwrite defaults
+  for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
+    long loaded;
+    if (Util::loadBasePos(i, loaded)) {
+      basePos[i] = loaded;
+    }
+  }
+
   debugDumpEN("init");
 }
 
@@ -73,7 +81,6 @@ bool select(uint8_t idx1) {
     return false;
   }
 
-  // Record selection and keep all disabled until a move starts.
   s_selected = idx1;
   disableAll();
 
@@ -82,17 +89,15 @@ bool select(uint8_t idx1) {
   return true;
 }
 
-// Enable/disable only the selected base's driver (/EN).
 void hold(bool on) {
   if (s_selected == 0) {
     Serial.println("[Bases] hold() called with no selection; ignoring");
-    return;                      // nothing selected
+    return;
   }
 
   const uint8_t enPin = selectedEnPin();
-  if (enPin == 255) return;      // safety guard
+  if (enPin == 255) return;
 
-  // Active LOW: ENABLE_LEVEL should be LOW, DISABLE_LEVEL HIGH.
   digitalWrite(enPin, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
 
   Serial.print("[Bases] hold(");
@@ -111,12 +116,15 @@ long getPos(uint8_t idx1) {
 bool setPos(uint8_t idx1, long steps) {
   if (idx1 == 0 || idx1 > Pins::NUM_BASES) return false;
   basePos[idx1 - 1] = steps;
+  // persist new value
+  Util::saveBasePos(idx1 - 1, steps);
   return true;
 }
 
 bool setHere(uint8_t idx1, long current) {
   if (idx1 == 0 || idx1 > Pins::NUM_BASES) return false;
   basePos[idx1 - 1] = current;
+  Util::saveBasePos(idx1 - 1, current);
   return true;
 }
 

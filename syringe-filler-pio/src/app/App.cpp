@@ -7,7 +7,7 @@
 #include "motion/Axis.hpp"
 #include "motion/AxisPair.hpp"
 #include "servo/Toolhead.hpp"
-#include "util/EEStore.hpp"
+#include "util/Storage.hpp"
 #include "app/CommandRouter.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
@@ -36,7 +36,7 @@ void setup() {
   Drivers::initI2C();
   Drivers::initI2C2();
   Drivers::i2cScanBoth();
-  EEStore::begin();
+  Util::initStorage();
 
   Bases::init();
   Axis::init();
