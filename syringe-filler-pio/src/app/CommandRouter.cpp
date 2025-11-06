@@ -15,11 +15,15 @@
 #include "motion/Homing.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
-#include "hw/Encoder.hpp"  // <-- NEW
+#include "hw/Encoder.hpp"  
+#include "app/SyringeFillController.hpp"
+
 
 namespace CommandRouter {
 
 static String input;
+static App::SyringeFillController g_sfc;
+
 
 static inline long mmToSteps(float mm) {
   return (long)lround(mm * Pins::STEPS_PER_MM);
@@ -307,6 +311,40 @@ void handleSerial() {
         } else {
           Serial.println("[enc] usage: enc | enc on | enc off | enc zero");
         }
+
+              // ---------------- SFC (Syringe Fill Controller) ----------------
+      } else if (input == "sfc.scanBases") {
+        Serial.println("[SFC] scanning all base syringes...");
+        g_sfc.scanAllBaseSyringes();
+        Serial.println("[SFC] scan complete.");
+      } else if (input == "sfc.scanToolhead") {
+        Serial.println("[SFC] scanning toolhead syringe...");
+        g_sfc.scanToolheadSyringe();
+        Serial.println("[SFC] scan complete.");
+      } else if (input == "sfc.run") {
+        Serial.println("[SFC] running current recipe...");
+        g_sfc.runRecipe();
+        Serial.println("[SFC] recipe done.");
+      } else if (input == "sfc.load") {
+        // load recipe for whatever toolhead RFID is currently known
+        if (g_sfc.loadToolheadRecipeFromFS()) {
+          Serial.println("[SFC] recipe loaded from FS.");
+        } else {
+          Serial.println("[SFC] ERROR: no recipe for this toolhead in FS.");
+        }
+      } else if (input == "sfc.save") {
+        if (g_sfc.saveToolheadRecipeToFS()) {
+          Serial.println("[SFC] recipe saved to FS.");
+        } else {
+          Serial.println("[SFC] ERROR: could not save recipe (missing toolhead RFID?).");
+        }
+      } else if (input == "sfc.status") {
+        Serial.println("[SFC] status:");
+        Serial.print("  toolhead RFID: 0x");
+        // we don't have a getter, so hacky: add a quick lambda to print
+        // but we can’t access private members here, so just say we don’t know:
+        Serial.println("(not exposed)");
+        Serial.println("  (tip: enable SFC debug in SyringeFillController.cpp to see details.)");
 
 
         
