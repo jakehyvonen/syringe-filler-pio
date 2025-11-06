@@ -17,12 +17,21 @@ public:
 
   void scanAllBaseSyringes();
   void scanToolheadSyringe();
+  bool scanBaseSyringe(uint8_t slot);   // <-- add this
 
   bool loadToolheadRecipeFromFS();
   bool saveToolheadRecipeToFS();
 
   void setRecipe(const Util::RecipeDTO& r) { m_recipe = r; }
   void runRecipe();
+
+   // calibration helpers for TOOLHEAD
+  bool captureToolheadEmpty();
+  bool captureToolheadFull(float mlFull);
+  bool saveToolheadCalibration();
+
+  // (optional) expose current toolhead RFID for debugging/printing
+  uint32_t toolheadRfid() const { return m_toolhead.rfid; }
 
 private:
   App::Syringe     m_toolhead;
@@ -34,6 +43,8 @@ private:
   float    readToolheadVolumeMl();
   float    readBaseVolumeMl(uint8_t slot);
   bool     transferFromBase(uint8_t slot, float ml);
+  uint16_t readToolheadRawADC();   // new helper
+
 };
 
 } // namespace App

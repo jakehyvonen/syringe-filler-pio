@@ -14,6 +14,63 @@ namespace {
   }
 }
 
+
+uint16_t SyringeFillController::readToolheadRawADC() {
+  // TODO: hook to your real Pots API + channel
+  // e.g. uint16_t raw = Pots::readScaled(POTS_TOOLHEAD_CH);
+  // for now:
+  uint16_t raw = 0;
+  if (SFC_DBG) {
+    Serial.print("[SFC] readToolheadRawADC(): stub -> ");
+    Serial.println(raw);
+  }
+  return raw;
+}
+
+bool SyringeFillController::captureToolheadEmpty() {
+  if (m_toolhead.rfid == 0) {
+    if (SFC_DBG) Serial.println("[SFC] captureToolheadEmpty(): no toolhead RFID yet");
+    return false;
+  }
+  uint16_t raw = readToolheadRawADC();
+  m_toolhead.cal.adcEmpty = raw;
+  if (SFC_DBG) {
+    Serial.print("[SFC] toolhead empty ADC = ");
+    Serial.println(raw);
+  }
+  return true;
+}
+
+bool SyringeFillController::captureToolheadFull(float mlFull) {
+  if (m_toolhead.rfid == 0) {
+    if (SFC_DBG) Serial.println("[SFC] captureToolheadFull(): no toolhead RFID yet");
+    return false;
+  }
+  uint16_t raw = readToolheadRawADC();
+  m_toolhead.cal.adcFull = raw;
+  m_toolhead.cal.mlFull  = mlFull;
+  if (SFC_DBG) {
+    Serial.print("[SFC] toolhead full ADC = ");
+    Serial.print(raw);
+    Serial.print("  mlFull = ");
+    Serial.println(mlFull, 3);
+  }
+  return true;
+}
+
+bool SyringeFillController::saveToolheadCalibration() {
+  if (m_toolhead.rfid == 0) {
+    if (SFC_DBG) Serial.println("[SFC] saveToolheadCalibration(): no toolhead RFID");
+    return false;
+  }
+  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  if (SFC_DBG) {
+    Serial.print("[SFC] saveToolheadCalibration(): ");
+    Serial.println(ok ? "OK" : "FAIL");
+  }
+  return ok;
+}
+
 SyringeFillController::SyringeFillController() {
   if (SFC_DBG) {
     Serial.println("[SFC] ctor: init base slots");
@@ -26,65 +83,95 @@ SyringeFillController::SyringeFillController() {
 
 void SyringeFillController::scanAllBaseSyringes() {
   dbg("scanAllBaseSyringes() start");
+
   for (uint8_t i = 0; i < Bases::kCount; ++i) {
-    if (!goToBase(i)) {
+    if (!scanBaseSyringe(i)) {
       if (SFC_DBG) {
-        Serial.print("[SFC] WARN: goToBase(");
+        Serial.print("[SFC] WARN: scanBaseSyringe(");
         Serial.print(i);
-        Serial.println(") failed; skipping RFID read");
+        Serial.println(") failed");
       }
-      continue;
-    }
-
-    uint32_t tag = readRFIDNow();
-    if (tag == 0) {
-      if (SFC_DBG) {
-        Serial.print("[SFC] INFO: no RFID at base slot ");
-        Serial.println(i);
-      }
-      continue;
-    }
-
-    if (SFC_DBG) {
-      Serial.print("[SFC] base slot ");
-      Serial.print(i);
-      Serial.print(" -> RFID 0x");
-      Serial.println(tag, HEX);
-    }
-
-    m_bases[i].rfid = tag;
-    m_bases[i].role = SyringeRole::Base;
-    m_bases[i].slot = i;
-
-    Util::BaseMeta meta;
-    App::PotCalibration cal;
-    if (Util::loadBase(tag, meta, cal)) {
-      m_bases[i].cal = cal;
-      if (SFC_DBG) {
-        Serial.print("[SFC]   loaded BASE meta+cal from NVS for tag 0x");
-        Serial.println(tag, HEX);
-      }
-    } else if (Util::loadCalibration(tag, cal)) {
-      m_bases[i].cal = cal;
-      if (SFC_DBG) {
-        Serial.print("[SFC]   loaded CAL only from NVS for tag 0x");
-        Serial.println(tag, HEX);
-      }
-    } else {
-      if (SFC_DBG) {
-        Serial.print("[SFC]   no calibration in NVS for tag 0x");
-        Serial.println(tag, HEX);
-      }
-    }
-
-    m_bases[i].currentMl = readBaseVolumeMl(i);
-    if (SFC_DBG) {
-      Serial.print("[SFC]   measured volume ~ ");
-      Serial.print(m_bases[i].currentMl, 3);
-      Serial.println(" mL");
     }
   }
+
   dbg("scanAllBaseSyringes() done");
+}
+
+
+bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
+  if (slot >= Bases::kCount) {
+    if (SFC_DBG) {
+      Serial.print("[SFC] scanBaseSyringe(): slot out of range ");
+      Serial.println(slot);
+    }
+    return false;
+  }
+
+  dbg("[SFC] scanBaseSyringe() begin move");
+  if (!goToBase(slot)) {
+    if (SFC_DBG) {
+      Serial.print("[SFC] WARN: goToBase(");
+      Serial.print(slot);
+      Serial.println(") failed");
+    }
+    return false;
+  }
+
+  // --- read RFID tag ---
+  uint32_t tag = readRFIDNow();
+  if (tag == 0) {
+    if (SFC_DBG) {
+      Serial.print("[SFC] INFO: no RFID detected at base slot ");
+      Serial.println(slot);
+    }
+    return false;
+  }
+
+  if (SFC_DBG) {
+    Serial.print("[SFC] base slot ");
+    Serial.print(slot);
+    Serial.print(" -> RFID 0x");
+    Serial.println(tag, HEX);
+  }
+
+  // --- update local record ---
+  Syringe& s = m_bases[slot];
+  s.rfid = tag;
+  s.role = SyringeRole::Base;
+  s.slot = slot;
+
+  // --- load calibration or metadata ---
+  Util::BaseMeta meta;
+  App::PotCalibration cal;
+  if (Util::loadBase(tag, meta, cal)) {
+    s.cal = cal;
+    if (SFC_DBG) {
+      Serial.print("[SFC]   loaded BASE meta+cal for tag 0x");
+      Serial.println(tag, HEX);
+    }
+  } else if (Util::loadCalibration(tag, cal)) {
+    s.cal = cal;
+    if (SFC_DBG) {
+      Serial.print("[SFC]   loaded CAL only for tag 0x");
+      Serial.println(tag, HEX);
+    }
+  } else {
+    if (SFC_DBG) {
+      Serial.print("[SFC]   no calibration found for tag 0x");
+      Serial.println(tag, HEX);
+    }
+  }
+
+  // --- read volume ---
+  s.currentMl = readBaseVolumeMl(slot);
+  if (SFC_DBG) {
+    Serial.print("[SFC]   measured volume ~ ");
+    Serial.print(s.currentMl, 3);
+    Serial.println(" mL");
+  }
+
+  dbg("[SFC] scanBaseSyringe() done");
+  return true;
 }
 
 void SyringeFillController::scanToolheadSyringe() {

@@ -1,4 +1,5 @@
 #include "util/Storage.hpp"
+#include "util/Recipe.hpp"
 #include <nvs_flash.h>
 #include <nvs.h>
 #include <LittleFS.h>
@@ -191,5 +192,34 @@ bool saveBasePos(uint8_t idx0, long steps) {
   snprintf(key, sizeof(key), "p%u", idx0);
   return nvsSaveBlob("bases", key, &steps, sizeof(steps));
 }
+
+bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
+    if (toolheadRfid == 0) return false;
+    File f = LittleFS.open(recipePath(toolheadRfid), "w");
+    if (!f) return false;
+
+    DynamicJsonDocument doc(2048);
+    JsonArray arr = doc.createNestedArray("steps");
+    recipe.toJson(arr);
+    serializeJson(doc, f);
+    f.close();
+    return true;
+}
+
+bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe) {
+    if (toolheadRfid == 0) return false;
+    File f = LittleFS.open(recipePath(toolheadRfid), "r");
+    if (!f) return false;
+
+    DynamicJsonDocument doc(2048);
+    DeserializationError err = deserializeJson(doc, f);
+    f.close();
+    if (err) return false;
+
+    JsonArrayConst arr = doc["steps"].as<JsonArrayConst>();
+    recipe.fromJson(arr);
+    return !recipe.isEmpty();
+}
+
 
 } // namespace Util

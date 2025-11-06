@@ -3,14 +3,18 @@
 
 namespace App {
 
-// just to tag what the syringe is doing in the system
+// ----------------------------------------------------
+// Roles
+// ----------------------------------------------------
 enum class SyringeRole : uint8_t {
   Unknown = 0,
   Base,
   Toolhead
 };
 
-// this is the thing we persist in NVS (simple 2-point + capacity)
+// ----------------------------------------------------
+// Calibration (persisted in NVS)
+// ----------------------------------------------------
 struct PotCalibration {
   uint16_t adcEmpty = 0;     // raw ADC at 0 mL
   uint16_t adcFull  = 4095;  // raw ADC at max mL
@@ -26,13 +30,47 @@ struct PotCalibration {
   }
 };
 
-// this is your runtime object — what the controller works with
+// ----------------------------------------------------
+// Syringe (runtime object)
+// ----------------------------------------------------
 struct Syringe {
-  uint32_t     rfid = 0;          // what we read from the tag
-  SyringeRole  role = SyringeRole::Unknown;
-  PotCalibration cal;             // loaded from NVS, per RFID
-  float        currentMl = 0.0f;  // last measured by pot
-  uint8_t      slot = 0;          // which base position, for base syringes
+  uint32_t     rfid      = 0;          // unique tag ID
+  SyringeRole  role      = SyringeRole::Unknown;
+  PotCalibration cal;                  // loaded from NVS (per RFID)
+  float        currentMl = 0.0f;       // last measured volume
+  uint8_t      slot      = 0;          // which base position (for base syringes)
+  String       colorName;              // e.g. "Cobalt Blue" (optional)
+  String       colorHex;               // e.g. "#0047AB" (optional)
+
+  void clearColor() {
+    colorName = "";
+    colorHex  = "";
+  }
+
+  bool hasColor() const {
+    return colorName.length() > 0 || colorHex.length() > 0;
+  }
+
+  // Optional: compact summary for debug prints
+  void printTo(Stream& s) const {
+    s.printf("[Syringe] role=%s slot=%u RFID=0x%08lX vol=%.2f mL ",
+             (role == SyringeRole::Base ? "Base" :
+              role == SyringeRole::Toolhead ? "Toolhead" : "Unknown"),
+             slot, rfid, currentMl);
+    if (hasColor()) {
+      s.print("color=");
+      if (colorName.length()) s.print(colorName);
+      if (colorHex.length()) {
+        if (colorName.length()) s.print(" ");
+        s.print("(");
+        s.print(colorHex);
+        s.print(")");
+      }
+    } else {
+      s.print("color=<none>");
+    }
+    s.println();
+  }
 };
 
 } // namespace App

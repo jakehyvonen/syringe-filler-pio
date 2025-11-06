@@ -346,6 +346,55 @@ void handleSerial() {
         Serial.println("(not exposed)");
         Serial.println("  (tip: enable SFC debug in SyringeFillController.cpp to see details.)");
 
+      } else if (input.startsWith("sfc.scanbase ")) {
+        uint8_t slot = input.substring(strlen("sfc.scanbase ")).toInt();
+        g_sfc.scanBaseSyringe(slot);
+      }
+
+
+      // ---------------- SFC CALIBRATION ----------------
+      } else if (input == "sfc.cal.t.empty") {
+        if (g_sfc.captureToolheadEmpty()) {
+          Serial.println("[SFC] toolhead EMPTY point captured.");
+        } else {
+          Serial.println("[SFC] ERROR: capture empty failed (scan toolhead first).");
+        }
+      } else if (input.startsWith("sfc.cal.t.full ")) {
+        // sfc.cal.t.full 12.0
+        float ml = input.substring(strlen("sfc.cal.t.full ")).toFloat();
+        if (ml <= 0.0f) {
+          Serial.println("[SFC] usage: sfc.cal.t.full <ml>");
+        } else {
+          if (g_sfc.captureToolheadFull(ml)) {
+            Serial.print("[SFC] toolhead FULL point captured at ");
+            Serial.print(ml, 3);
+            Serial.println(" mL.");
+          } else {
+            Serial.println("[SFC] ERROR: capture full failed (scan toolhead first).");
+          }
+        }
+      } else if (input == "sfc.cal.t.save") {
+        if (g_sfc.saveToolheadCalibration()) {
+          Serial.println("[SFC] toolhead calibration saved to NVS.");
+        } else {
+          Serial.println("[SFC] ERROR: could not save toolhead calibration.");
+        }
+
+      // make recipe names clearer
+      } else if (input == "sfc.recipe.save") {
+        if (g_sfc.saveToolheadRecipeToFS()) {
+          Serial.println("[SFC] recipe saved to FS.");
+        } else {
+          Serial.println("[SFC] ERROR: no toolhead RFID, cannot save recipe.");
+        }
+      } else if (input == "sfc.recipe.load") {
+        if (g_sfc.loadToolheadRecipeFromFS()) {
+          Serial.println("[SFC] recipe loaded from FS.");
+        } else {
+          Serial.println("[SFC] ERROR: no recipe for this toolhead.");
+        }
+
+
 
         
       // ---------------- Pot-driven motion (kept) ----------------
