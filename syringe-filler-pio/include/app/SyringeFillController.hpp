@@ -33,6 +33,9 @@ public:
   // (optional) expose current toolhead RFID for debugging/printing
   uint32_t toolheadRfid() const { return m_toolhead.rfid; }
 
+  void requestScanBase(uint8_t slot);
+  void service();   // call this from App::loop()
+
 private:
   App::Syringe     m_toolhead;
   App::Syringe     m_bases[Bases::kCount];   // <-- now real count

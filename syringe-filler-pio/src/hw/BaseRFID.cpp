@@ -65,15 +65,27 @@ void printUID(Stream& s) {
 }
 
 void tick() {
+  static uint32_t tickCount = 0;
+
   if (!s_enabled) return;
+
+  Serial.print("[BaseRFID] tick #");
+  Serial.print(tickCount++);
+  Serial.println(" (enabled)");
 
   uint8_t uid[7];
   uint8_t uidLength = 0;
 
+  Serial.println("[BaseRFID] calling nfc.readPassiveTargetID(...)");
   bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+  Serial.print("[BaseRFID] readPassiveTargetID done, success=");
+  Serial.println(success ? "YES" : "NO");
 
   if (success) {
     bool changed = (uidLength != s_uidLen) || memcmp(uid, s_uid, uidLength) != 0;
+    Serial.print("[BaseRFID] success; changed=");
+    Serial.println(changed ? "YES" : "NO");
+
     if (changed) {
       memcpy(s_uid, uid, uidLength);
       s_uidLen    = uidLength;
@@ -85,11 +97,13 @@ void tick() {
       printUID(Serial);
       Serial.println();
 
-      // NEW: publish event
+      // publish event
       if (s_listener) {
+        Serial.println("[BaseRFID] firing listener");
         s_listener(s_uid, s_uidLen, s_listenerUser);
       }
     }
+    // keep the debounce for now
     delay(300);
   }
 
