@@ -1,10 +1,28 @@
 #include "app/SyringeFillController.hpp"
+#include "hw/BaseRFID.hpp"
 
 using namespace App;
 
 namespace {
   // flip to false if you want it quiet
   constexpr bool SFC_DBG = true;
+
+  struct BaseTagCapture {
+    bool     got = false;
+    uint32_t packed = 0;
+  };
+
+  void baseTagHandler(const uint8_t* uid, uint8_t len, void* user) {
+    auto* cap = static_cast<BaseTagCapture*>(user);
+    if (!cap) return;
+    // pack first up-to-4 bytes
+    uint32_t v = 0;
+    for (uint8_t i = 0; i < len && i < 4; ++i) {
+      v = (v << 8) | uid[i];
+    }
+    cap->packed = v;
+    cap->got    = true;
+  }
 
   void dbg(const char* msg) {
     if (SFC_DBG) {
@@ -117,8 +135,8 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
     return false;
   }
 
-  // --- read RFID tag ---
-  uint32_t tag = readRFIDNow();
+  // --- read RFID tag from BASE reader (event/listener style) ---
+  uint32_t tag = readBaseRFIDBlocking(2000);   // 2s timeout
   if (tag == 0) {
     if (SFC_DBG) {
       Serial.print("[SFC] INFO: no RFID detected at base slot ");
@@ -173,6 +191,44 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
   dbg("[SFC] scanBaseSyringe() done");
   return true;
 }
+
+// NOW we’re outside scanBaseSyringe()
+// so we can define the helper normally:
+
+uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
+  BaseTagCapture cap;
+  cap.got    = false;
+  cap.packed = 0;
+
+  // remember current state
+  bool wasEnabled = BaseRFID::enabled();
+
+  // subscribe
+  BaseRFID::setListener(baseTagHandler, &cap);
+
+  if (!wasEnabled) {
+    BaseRFID::enable(true);
+  }
+
+  uint32_t start = millis();
+  while (millis() - start < timeoutMs) {
+    // drive the reader ourselves while we wait
+    BaseRFID::tick();
+    if (cap.got) break;
+    delay(5);
+  }
+
+  // cleanup
+  BaseRFID::setListener(nullptr, nullptr);
+  if (!wasEnabled) {
+    BaseRFID::enable(false);
+  }
+
+  return cap.got ? cap.packed : 0;
+}
+
+
+
 
 void SyringeFillController::scanToolheadSyringe() {
   dbg("scanToolheadSyringe() start");
@@ -313,7 +369,7 @@ uint32_t SyringeFillController::readRFIDNow() {
 
   // poll the reader ourselves because we're in a blocking function
   while (millis() - startMs < timeoutMs) {
-    RFID::tick();              // this is normally called from App::loop()
+    //RFID::tick();              // this is normally called from App::loop()
     if (RFID::available()) {
       // got something
       const uint8_t* uid = RFID::uidBytes();

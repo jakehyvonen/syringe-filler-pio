@@ -67,6 +67,7 @@ void setup() {
 void loop() {
   CommandRouter::handleSerial();
   RFID::tick(); // active only if enabled
+  BaseRFID::tick();
 
   // --- NEW: let encoder do periodic printing when polling is on
   EncoderHW::service();

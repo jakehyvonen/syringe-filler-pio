@@ -44,6 +44,8 @@ private:
   float    readBaseVolumeMl(uint8_t slot);
   bool     transferFromBase(uint8_t slot, float ml);
   uint16_t readToolheadRawADC();   // new helper
+  uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
+
 
 };
 

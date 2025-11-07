@@ -5,8 +5,6 @@
 #include <Wire.h>
 #include <Adafruit_PN532.h>
 
-// Use the Adafruit I2C ctor with an explicit TwoWire*
-// IRQ/RESET are unused for us; pass 0xFF so the lib won’t touch pins.
 static Adafruit_PN532 nfc(27, 14, &Wire1);
 
 // ---- State ----
@@ -15,12 +13,19 @@ static bool    s_available = false;
 static uint8_t s_uid[7]    = {0};
 static uint8_t s_uidLen    = 0;
 
+// NEW: listener
+static BaseRFID::TagListener s_listener = nullptr;
+static void*                  s_listenerUser = nullptr;
+
 namespace BaseRFID {
 
+void setListener(TagListener cb, void* user) {
+  s_listener = cb;
+  s_listenerUser = user;
+}
+
 void init() {
-  // Bring up the secondary I2C controller exactly like your primary
   Wire1.begin(Pins::I2C2_SDA, Pins::I2C2_SCL);
-  
 
   nfc.begin();
 
@@ -36,7 +41,6 @@ void init() {
   Serial.print('.');
   Serial.println((verdata >> 8) & 0xFF);
 
-  // Configure once, same as your other reader
   nfc.SAMConfig();
 
   s_enabled   = false;
@@ -60,7 +64,6 @@ void printUID(Stream& s) {
   }
 }
 
-// Run only when enabled(); this is your loop() verbatim.
 void tick() {
   if (!s_enabled) return;
 
@@ -81,17 +84,20 @@ void tick() {
       Serial.print(F("): "));
       printUID(Serial);
       Serial.println();
+
+      // NEW: publish event
+      if (s_listener) {
+        s_listener(s_uid, s_uidLen, s_listenerUser);
+      }
     }
-    // EXACT debounce & idle like your other reader
     delay(300);
   }
 
-  // small idle delay for symmetry
   delay(5);
 }
 
-// One-shot using the same call pattern; bounded tries
 bool detectOnce(uint16_t tries, uint16_t delay_ms) {
+  // leave as-is, you said it didn’t work well, but we keep it
   for (uint16_t i = 0; i < tries; ++i) {
     uint8_t uid[7]; uint8_t len = 0;
     if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &len)) {
@@ -104,6 +110,11 @@ bool detectOnce(uint16_t tries, uint16_t delay_ms) {
       Serial.print(F("): "));
       printUID(Serial);
       Serial.println();
+
+      if (s_listener) {
+        s_listener(s_uid, s_uidLen, s_listenerUser);
+      }
+
       return true;
     }
     delay(delay_ms);
