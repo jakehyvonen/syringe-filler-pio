@@ -394,6 +394,32 @@ void handleSerial() {
           Serial.println("[SFC] ERROR: no recipe for this toolhead.");
         }
 
+      // ----- SFC base-level calibration -----
+      } else if (input == "sfc.base.setemptypos") {
+        int8_t slot = g_sfc.currentSlot();
+        if (slot < 0) {
+          Serial.println("[SFC] no current base – run sfc.scanbase N or gobase N first");
+        } else {
+          if (g_sfc.captureBaseEmpty((uint8_t)slot)) {
+            Serial.print("[SFC] empty position captured for base ");
+            Serial.println(slot);
+          } else {
+            Serial.println("[SFC] failed to capture empty position");
+          }
+        }
+      } else if (input == "sfc.base.save") {
+        if (g_sfc.saveCurrentBaseToNVS()) {
+          Serial.println("[SFC] current base saved to NVS");
+        } else {
+          Serial.println("[SFC] ERROR saving current base to NVS");
+        }
+      } else if (input == "sfc.base.show") {
+        int8_t slot = g_sfc.currentSlot();
+        if (slot < 0) {
+          Serial.println("[SFC] no current base");
+        } else {
+          g_sfc.printBaseInfo((uint8_t)slot, Serial);
+        }
 
 
         

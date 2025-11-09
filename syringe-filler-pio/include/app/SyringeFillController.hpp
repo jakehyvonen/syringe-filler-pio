@@ -1,13 +1,8 @@
 #pragma once
-
 #include <Arduino.h>
 #include "app/Syringe.hpp"
-#include "util/Storage.hpp"
 #include "hw/Bases.hpp"
-#include "hw/RFID.hpp"
-#include "hw/Pots.hpp"
-#include "motion/Axis.hpp"
-#include "servo/Toolhead.hpp"
+#include "util/Storage.hpp"   // for loadBase/saveBase etc.
 
 namespace App {
 
@@ -16,40 +11,42 @@ public:
   SyringeFillController();
 
   void scanAllBaseSyringes();
-  void scanToolheadSyringe();
-  bool scanBaseSyringe(uint8_t slot);   // <-- add this
+  bool scanBaseSyringe(uint8_t slot);
 
+  // NEW
+  int8_t currentSlot() const { return m_currentSlot; }
+  void   printBaseInfo(uint8_t slot, Stream& s);
+  bool   saveCurrentBaseToNVS();   // create/update entry for the base we’re parked at
+  bool captureBaseEmpty(uint8_t slot);
+  bool captureCurrentBaseEmpty() { 
+    return (m_currentSlot >= 0) ? captureBaseEmpty((uint8_t)m_currentSlot) : false;
+  }
+  void scanToolheadSyringe();
   bool loadToolheadRecipeFromFS();
   bool saveToolheadRecipeToFS();
-
-  void setRecipe(const Util::RecipeDTO& r) { m_recipe = r; }
   void runRecipe();
 
-   // calibration helpers for TOOLHEAD
+  // calibration for toolhead already here...
   bool captureToolheadEmpty();
   bool captureToolheadFull(float mlFull);
   bool saveToolheadCalibration();
 
-  // (optional) expose current toolhead RFID for debugging/printing
-  uint32_t toolheadRfid() const { return m_toolhead.rfid; }
-
-  void requestScanBase(uint8_t slot);
-  void service();   // call this from App::loop()
-
 private:
-  App::Syringe     m_toolhead;
-  App::Syringe     m_bases[Bases::kCount];   // <-- now real count
-  Util::RecipeDTO  m_recipe;
-
   bool     goToBase(uint8_t slot);
   uint32_t readRFIDNow();
+  uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   float    readToolheadVolumeMl();
   float    readBaseVolumeMl(uint8_t slot);
   bool     transferFromBase(uint8_t slot, float ml);
-  uint16_t readToolheadRawADC();   // new helper
-  uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
+  uint16_t readToolheadRawADC();
+  uint16_t readBaseRawADC(uint8_t slot);
 
+  Syringe m_toolhead;
+  Syringe m_bases[Bases::kCount];
 
+  // NEW
+  int8_t  m_currentSlot = -1;
+  Util::RecipeDTO m_recipe;  // or Util::Recipe, whatever you called it
 };
 
 } // namespace App
