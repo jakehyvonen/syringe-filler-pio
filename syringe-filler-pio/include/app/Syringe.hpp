@@ -18,7 +18,7 @@ enum class SyringeRole : uint8_t {
 struct PotCalibration {
   uint16_t adcEmpty = 0;     // raw ADC at 0 mL
   uint16_t adcFull  = 4095;  // raw ADC at max mL
-  float    mlFull   = 10.0f; // how many mL does adcFull mean?
+  float    mlFull   = 10.1f; // how many mL does adcFull mean?
 
   float rawToMl(uint16_t raw) const {
     int32_t span = (int32_t)adcFull - (int32_t)adcEmpty;

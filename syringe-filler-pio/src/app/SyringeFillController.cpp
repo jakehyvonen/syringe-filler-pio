@@ -236,6 +236,26 @@ bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
   return true;
 }
 
+
+bool SyringeFillController::captureBaseFull(uint8_t slot) {
+  if (slot >= Bases::kCount) {
+    if (SFC_DBG) {
+      Serial.print("[SFC] captureBaseFull(): slot OOR ");
+      Serial.println(slot);
+    }
+    return false;
+  }
+  uint16_t raw = readBaseRawADC(slot);
+  m_bases[slot].cal.adcFull = raw;
+  if (SFC_DBG) {
+    Serial.print("[SFC] captureBaseFull(): slot=");
+    Serial.print(slot);
+    Serial.print(" adcFull=");
+    Serial.println(raw);
+  }
+  return true;
+}
+
 // --------------------------------------------------
 // save current base (whatever slot we are at) to NVS
 // --------------------------------------------------

@@ -21,6 +21,12 @@ public:
   bool captureCurrentBaseEmpty() { 
     return (m_currentSlot >= 0) ? captureBaseEmpty((uint8_t)m_currentSlot) : false;
   }
+  bool captureBaseFull(uint8_t slot);
+  bool captureCurrentBaseFull() { 
+    return (m_currentSlot >= 0) ? captureBaseFull((uint8_t)m_currentSlot) : false;
+  }
+  bool setCurrentBaseMlFull(float ml);
+  bool setToolheadMlFull(float ml);  
   void scanToolheadSyringe();
   bool loadToolheadRecipeFromFS();
   bool saveToolheadRecipeToFS();
