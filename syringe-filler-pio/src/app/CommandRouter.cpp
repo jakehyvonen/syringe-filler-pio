@@ -65,18 +65,7 @@ void handleSerial() {
         float mm = Axis::current() / Pins::STEPS_PER_MM;
         Serial.print("POS steps="); Serial.print(Axis::current());
         Serial.print("  mm=");      Serial.println(mm, 3);
-      } else if (input.startsWith("move ")) {        // relative in steps
-        long s = input.substring(5).toInt();
-        Axis::enable(true);
-        Axis::moveSteps(s);
-        Axis::enable(false);
-        Serial.println("OK");
-      } else if (input.startsWith("movemm ")) {      // relative in mm
-        float mm = input.substring(7).toFloat();
-        Axis::enable(true);
-        Axis::moveSteps(mmToSteps(mm));
-        Axis::enable(false);
-        Serial.println("OK");
+      
       } else if (input.startsWith("goto ")) {        // absolute in steps
         long tgt = input.substring(5).toInt();
         if (tgt < Pins::MIN_POS_STEPS) tgt = Pins::MIN_POS_STEPS;
