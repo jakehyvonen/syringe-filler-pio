@@ -36,6 +36,8 @@ public:
   bool captureToolheadEmpty();
   bool captureToolheadFull(float mlFull);
   bool saveToolheadCalibration();
+  bool printCurrentBaseInfo(Stream& s = Serial);
+
 
 private:
   bool     goToBase(uint8_t slot);
@@ -49,8 +51,9 @@ private:
 
   Syringe m_toolhead;
   Syringe m_bases[Bases::kCount];
+  int8_t getBasePotIndex(uint8_t baseSlot) const;
 
-  // NEW
+  uint8_t  m_baseToPot[Bases::kCount];
   int8_t  m_currentSlot = -1;
   Util::RecipeDTO m_recipe;  // or Util::Recipe, whatever you called it
 };

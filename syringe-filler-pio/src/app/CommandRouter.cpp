@@ -421,6 +421,54 @@ void handleSerial() {
           g_sfc.printBaseInfo((uint8_t)slot, Serial);
         }
 
+      // ---------------- SFC BASE CALIBRATION ----------------
+      } else if (input == "sfc.base.setemptypos") {
+        if (g_sfc.captureCurrentBaseEmpty()) {
+          Serial.println("[SFC] base EMPTY point captured and saved.");
+        } else {
+          Serial.println("[SFC] ERROR: could not capture base empty (is SFC at a base?)");
+        }
+      } else if (input == "sfc.base.setfullpos") {
+        if (g_sfc.captureCurrentBaseFull()) {
+          Serial.println("[SFC] base FULL point captured and saved.");
+        } else {
+          Serial.println("[SFC] ERROR: could not capture base full (is SFC at a base?)");
+        }
+      } else if (input.startsWith("sfc.base.setmlfull ")) {
+        float ml = input.substring(strlen("sfc.base.setmlfull ")).toFloat();
+        if (ml <= 0.0f) {
+          Serial.println("[SFC] usage: sfc.base.setmlfull <ml>");
+        } else {
+          if (g_sfc.setCurrentBaseMlFull(ml)) {
+            Serial.print("[SFC] base mlFull set to ");
+            Serial.print(ml, 3);
+            Serial.println(" mL and saved.");
+          } else {
+            Serial.println("[SFC] ERROR: could not set base mlFull.");
+          }
+        }
+      } else if (input.startsWith("sfc.tool.setmlfull ")) {
+        float ml = input.substring(strlen("sfc.tool.setmlfull ")).toFloat();
+        if (ml <= 0.0f) {
+          Serial.println("[SFC] usage: sfc.tool.setmlfull <ml>");
+        } else {
+          if (g_sfc.setToolheadMlFull(ml)) {
+            Serial.print("[SFC] toolhead mlFull set to ");
+            Serial.print(ml, 3);
+            Serial.println(" mL and saved.");
+          } else {
+            Serial.println("[SFC] ERROR: could not set toolhead mlFull (scan toolhead first).");
+          }
+        }
+
+      } else if (input.startsWith("potraw ")) {
+        uint8_t i = input.substring(7).toInt();
+        uint16_t c = Pots::readCounts(i);
+        uint16_t s = Pots::readScaled(i);
+        Serial.print("[potraw] idx="); Serial.print(i);
+        Serial.print(" counts="); Serial.print(c);
+        Serial.print(" scaled="); Serial.println(s);
+
 
         
       // ---------------- Pot-driven motion (kept) ----------------

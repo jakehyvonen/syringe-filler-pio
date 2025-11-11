@@ -52,6 +52,19 @@ SyringeFillController::SyringeFillController() {
     m_bases[i].slot = i;
   }
   m_currentSlot = -1;
+//physical mapping of pots
+  m_baseToPot[0] = 3;
+  m_baseToPot[1] = 4;
+  m_baseToPot[2] = 5;
+  m_baseToPot[3] = 0;
+  m_baseToPot[4] = 1;
+}
+
+
+int8_t SyringeFillController::getBasePotIndex(uint8_t baseSlot) const {
+  if (baseSlot >= Bases::kCount) return -1;
+  uint8_t p = m_baseToPot[baseSlot];
+  return (p == 0xFF) ? -1 : (int8_t)p;
 }
 
 // ------------------------------------------------------------
@@ -202,21 +215,98 @@ if (Util::loadBase(tag, meta, cal)) {
   return true;
 }
 
+bool SyringeFillController::setCurrentBaseMlFull(float ml) {
+  if (m_currentSlot < 0 || m_currentSlot >= (int)Bases::kCount) {
+    if (SFC_DBG) Serial.println("[SFC] setCurrentBaseMlFull(): no current base slot");
+    return false;
+  }
+  if (ml <= 0.0f) {
+    if (SFC_DBG) Serial.println("[SFC] setCurrentBaseMlFull(): ml must be > 0");
+    return false;
+  }
+
+  Syringe &sy = m_bases[m_currentSlot];
+  if (sy.rfid == 0) {
+    if (SFC_DBG) Serial.println("[SFC] setCurrentBaseMlFull(): base has no RFID, run sfc.scanbase N first");
+    return false;
+  }
+
+  sy.cal.mlFull = ml;
+
+  if (SFC_DBG) {
+    Serial.print("[SFC] setCurrentBaseMlFull(): slot=");
+    Serial.print(m_currentSlot);
+    Serial.print(" mlFull=");
+    Serial.println(ml, 3);
+  }
+
+  Util::BaseMeta meta;
+  bool had = Util::loadBase(sy.rfid, meta, sy.cal);
+  (void)had;
+  bool ok = Util::saveBase(sy.rfid, meta, sy.cal);
+  if (SFC_DBG) Serial.println(ok ? "[SFC] ...saved to NVS" : "[SFC] ...FAILED to save to NVS");
+  return ok;
+}
+
+bool SyringeFillController::setToolheadMlFull(float ml) {
+  if (ml <= 0.0f) {
+    if (SFC_DBG) Serial.println("[SFC] setToolheadMlFull(): ml must be > 0");
+    return false;
+  }
+  if (m_toolhead.rfid == 0) {
+    if (SFC_DBG) Serial.println("[SFC] setToolheadMlFull(): no toolhead RFID, scan toolhead first");
+    return false;
+  }
+
+  m_toolhead.cal.mlFull = ml;
+
+  if (SFC_DBG) {
+    Serial.print("[SFC] setToolheadMlFull(): mlFull=");
+    Serial.println(ml, 3);
+  }
+
+  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  if (SFC_DBG) Serial.println(ok ? "[SFC] ...toolhead cal saved to NVS" : "[SFC] ...FAILED to save toolhead cal");
+  return ok;
+}
+
+
+uint16_t SyringeFillController::readBaseRawADC(uint8_t slot) {
+  if (slot >= Bases::kCount) {
+    if (SFC_DBG) {
+      Serial.print("[SFC] readBaseRawADC(): slot OOR ");
+      Serial.println(slot);
+    }
+    return 0;
+  }
+
+  int8_t potIdx = getBasePotIndex(slot);
+  if (potIdx < 0) {
+    if (SFC_DBG) {
+      Serial.print("[SFC] readBaseRawADC(): no pot mapped for base ");
+      Serial.println(slot);
+    }
+    return 0;
+  }
+
+  // real ADS counts
+  uint16_t counts = Pots::readCounts((uint8_t)potIdx);
+
+  if (SFC_DBG) {
+    Serial.print("[SFC] readBaseRawADC(base=");
+    Serial.print(slot);
+    Serial.print(" pot=");
+    Serial.print(potIdx);
+    Serial.print("): counts=");
+    Serial.print(counts);
+  }
+
+  return counts;
+}
+
 // --------------------------------------------------
 // capture base EMPTY (pot @ fully empty)
 // --------------------------------------------------
-uint16_t SyringeFillController::readBaseRawADC(uint8_t slot) {
-  // you can improve this to use your real mapping of ADS channels
-  uint16_t raw = Pots::readScaled(slot);
-  if (SFC_DBG) {
-    Serial.print("[SFC] readBaseRawADC(slot=");
-    Serial.print(slot);
-    Serial.print(") -> ");
-    Serial.println(raw);
-  }
-  return raw;
-}
-
 bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
   if (slot >= Bases::kCount) {
     if (SFC_DBG) {
