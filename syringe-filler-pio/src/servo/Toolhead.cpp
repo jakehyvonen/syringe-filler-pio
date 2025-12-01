@@ -11,13 +11,13 @@ static constexpr int SERVO_MAX     = 600;
 static constexpr int TOOLHEAD_SERVO  = 3;
 static constexpr int COUPLING_SERVO  = 5;
 
-static constexpr int TOOLHEAD_SERVO_RAISED_POS      = 107;
+static constexpr int TOOLHEAD_SERVO_RAISED_POS      = 111;
 static constexpr int TOOLHEAD_SERVO_COUPLING_POS1   = 140;
-static constexpr int COUPLING_SERVO_COUPLED_POS     = 11;
-static constexpr int COUPLING_SERVO_DECOUPLED_POS   = 151;
+static constexpr int COUPLING_SERVO_COUPLED_POS     = 31;
+static constexpr int COUPLING_SERVO_DECOUPLED_POS   = 147;
 
-static constexpr int RAMP_MS_FAST = 6;   // per-degree delay for quick but smooth moves
-static constexpr int RAMP_MS_SLOW = 10;  // use larger if you still see brownouts
+static constexpr int RAMP_MS_FAST = 11;   // per-degree delay for quick but smooth moves
+static constexpr int RAMP_MS_SLOW = 17;  // use larger if you still see brownouts
 
 
 static int  s_angles[16];

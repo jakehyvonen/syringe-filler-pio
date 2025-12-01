@@ -502,6 +502,104 @@ uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
 // ------------------------------------------------------------
 // toolhead side
 // ------------------------------------------------------------
+
+bool SyringeFillController::scanToolheadBlocking() {
+  dbg("scanToolheadBlocking() start");
+
+  uint32_t tag = readToolheadRFIDBlocking(2000);
+  if (tag == 0) {
+    dbg("no toolhead tag detected");
+    return false;
+  }
+
+  m_toolhead.rfid = tag;
+  m_toolhead.role = SyringeRole::Toolhead;
+
+  PotCalibration cal;
+  if (Util::loadCalibration(tag, cal)) {
+    m_toolhead.cal = cal;
+    Serial.print("[SFC] loaded toolhead cal for 0x");
+    Serial.println(tag, HEX);
+  } else {
+    Serial.print("[SFC] no toolhead cal for 0x");
+    Serial.println(tag, HEX);
+  }
+
+  m_toolhead.currentMl = readToolheadVolumeMl();
+  Serial.print("[SFC] toolhead volume ~");
+  Serial.println(m_toolhead.currentMl, 3);
+
+  dbg("scanToolheadBlocking() done");
+  return true;
+}
+
+
+// ------------------------------------------------------------
+// blocking TOOLHEAD RFID read (I2C PN532 #1)
+// ------------------------------------------------------------
+uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
+  Serial.print("[SFC] readToolheadRFIDBlocking(): timeout=");
+  Serial.print(timeoutMs);
+  Serial.println(" ms");
+
+  struct Cap {
+    bool got = false;
+    uint32_t packed = 0;
+  } cap;
+
+  // listener that packs first up-to-4 bytes
+  auto handler = [](const uint8_t* uid, uint8_t len, void* user) {
+    Cap* c = static_cast<Cap*>(user);
+    uint32_t v = 0;
+    for (uint8_t i = 0; i < len && i < 4; ++i) {
+      v = (v << 8) | uid[i];
+    }
+    c->packed = v;
+    c->got = true;
+  };
+
+  const bool wasEnabled = RFID::enabled();
+  if (!wasEnabled) {
+    RFID::enable(true);
+    Serial.println("[SFC] TH:block: enabled RFID temporarily");
+  }
+
+  RFID::setListener(handler, &cap);
+
+  const uint32_t start = millis();
+  uint32_t iter = 0;
+
+  while (millis() - start < timeoutMs) {
+    Serial.print("[SFC] TH:block iter=");
+    Serial.println(iter++);
+    RFID::tick();   // force tick for toolhead PN532
+
+    if (cap.got) {
+      Serial.print("[SFC] TH:block got tag 0x");
+      Serial.println(cap.packed, HEX);
+      break;
+    }
+    delay(5);
+  }
+
+  RFID::setListener(nullptr, nullptr);
+
+  if (!wasEnabled) {
+    RFID::enable(false);
+    Serial.println("[SFC] TH:block: restored to DISABLED");
+  }
+
+  if (!cap.got) {
+    Serial.println("[SFC] TH:block TIMEOUT");
+    return 0;
+  }
+
+  Serial.print("[SFC] TH:block success: 0x");
+  Serial.println(cap.packed, HEX);
+  return cap.packed;
+}
+
+
 void SyringeFillController::scanToolheadSyringe() {
   dbg("scanToolheadSyringe() start");
   uint32_t tag = readRFIDNow();

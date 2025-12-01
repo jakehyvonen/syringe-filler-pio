@@ -21,5 +21,8 @@ void     printUID(Stream& s);
 
 // One-shot helper used by the "rfid once" command (tries N times, returns true on hit)
 bool     detectOnce(uint16_t tries = 30, uint16_t delay_ms = 100);
+// callback gets raw uid bytes and length, plus the user pointer you registered
+typedef void (*TagListener)(const uint8_t* uid, uint8_t len, void* user);
 
+void setListener(TagListener cb, void* user);
 } // namespace RFID

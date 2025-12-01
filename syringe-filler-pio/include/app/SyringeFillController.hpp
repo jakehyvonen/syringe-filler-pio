@@ -37,12 +37,14 @@ public:
   bool captureToolheadFull(float mlFull);
   bool saveToolheadCalibration();
   bool printCurrentBaseInfo(Stream& s = Serial);
+  bool scanToolheadBlocking();
 
 
 private:
   bool     goToBase(uint8_t slot);
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
+  uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);
   float    readToolheadVolumeMl();
   float    readBaseVolumeMl(uint8_t slot);
   bool     transferFromBase(uint8_t slot, float ml);

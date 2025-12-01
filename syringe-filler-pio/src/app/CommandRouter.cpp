@@ -338,7 +338,14 @@ void handleSerial() {
       } else if (input.startsWith("sfc.scanbase ")) {
         uint8_t slot = input.substring(strlen("sfc.scanbase ")).toInt();
         g_sfc.scanBaseSyringe(slot);
-      
+          
+    } else if (input == "sfc.scanTool") {
+      Serial.println("[SFC] scanning toolhead syringe (blocking)...");
+      if (g_sfc.scanToolheadBlocking()) {
+        Serial.println("[SFC] toolhead scan OK");
+      } else {
+        Serial.println("[SFC] toolhead scan FAILED");
+      }
 
 
       // ---------------- SFC CALIBRATION ----------------
