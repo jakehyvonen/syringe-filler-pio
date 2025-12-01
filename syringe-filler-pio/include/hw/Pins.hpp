@@ -8,7 +8,7 @@ namespace Pins {
 // =======================================================
 constexpr int      I2C_SDA  = 21;
 constexpr int      I2C_SCL  = 22;
-constexpr uint32_t I2C_FREQ = 50000; // Hz (slow and safe for long bus)
+constexpr uint32_t I2C_FREQ = 100000; // Hz (slow and safe for long bus)
 
 // =======================================================
 // ==========  STEPPER SIGNALS  ==========================
