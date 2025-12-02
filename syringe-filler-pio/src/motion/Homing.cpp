@@ -18,7 +18,7 @@ static inline void stepOnceTimed() {
   last = now;
 
   state = !state;
-  digitalWrite(Pins::STEP12, state ? HIGH : LOW);
+  digitalWrite(Pins::STEP1, state ? HIGH : LOW);
 }
 
 void home() {

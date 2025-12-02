@@ -47,10 +47,10 @@ static void IRAM_ATTR onStepTimer() {
   bool do1 = (mode == Mode::MOVE) && (s_rem > 0);
 
   if (do1 && !s_phaseHigh) {
-    GPIO.out_w1ts = (1UL << Pins::STEP12);
+    GPIO.out_w1ts = (1UL << Pins::STEP1);
     s_phaseHigh = true;
   } else if (s_phaseHigh) {
-    GPIO.out_w1tc = (1UL << Pins::STEP12);
+    GPIO.out_w1tc = (1UL << Pins::STEP1);
     s_phaseHigh = false;
 
     if (do1 && s_rem > 0) {
@@ -74,12 +74,12 @@ static void waitForIdle() {
 // Init
 // -----------------------------
 void init() {
-  pinMode(Pins::STEP12, OUTPUT);
-  pinMode(Pins::DIR12,  OUTPUT);
+  pinMode(Pins::STEP1, OUTPUT);
+  pinMode(Pins::DIR1,  OUTPUT);
   pinMode(Pins::EN1,    OUTPUT);
 
   digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
-  digitalWrite(Pins::DIR12, HIGH);
+  digitalWrite(Pins::DIR1, HIGH);
 
   s_timer = timerBegin(1, 80, true);
   timerAttachInterrupt(s_timer, &onStepTimer, true);
@@ -119,13 +119,13 @@ void enable(bool on) {
 
 // Optional helpers
 void dir(bool high) {
-  digitalWrite(Pins::DIR12, high ? HIGH : LOW);
+  digitalWrite(Pins::DIR1, high ? HIGH : LOW);
   delayMicroseconds(3);
 }
 void stepBlocking() {
-  digitalWrite(Pins::STEP12, HIGH);
+  digitalWrite(Pins::STEP1, HIGH);
   delayMicroseconds(pulseWidthUs());
-  digitalWrite(Pins::STEP12, LOW);
+  digitalWrite(Pins::STEP1, LOW);
 }
 
 // -----------------------------
@@ -144,7 +144,7 @@ void moveSteps(long steps) {
 
   enable(true);
   delayMicroseconds(500);
-  digitalWrite(Pins::DIR12, dirHigh ? HIGH : LOW);
+  digitalWrite(Pins::DIR1, dirHigh ? HIGH : LOW);
   delayMicroseconds(10);
 
   noInterrupts();

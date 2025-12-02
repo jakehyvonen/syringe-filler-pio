@@ -13,20 +13,22 @@ constexpr uint32_t I2C_FREQ = 100000; // Hz (slow and safe for long bus)
 // =======================================================
 // ==========  STEPPER SIGNALS  ==========================
 // =======================================================
+// ---------- Stepper #1 (gantry) ----------
 
-// Shared step/dir between stepper #1 (gantry) and #2 (plunger)
-// Only one will ever be active at a time.
-constexpr uint8_t STEP12 = 4;
-constexpr uint8_t DIR12  = 16;
+constexpr uint8_t STEP1 = 4;
+constexpr uint8_t DIR1  = 16;
+constexpr uint8_t EN1   = 17;  // keep as-is
 
-// Separate enables let you select which motor is live
-constexpr uint8_t EN1 = 17;  // enable for gantry
-constexpr uint8_t EN2 = 5;   // enable for plunger
+// ---------- Stepper #2 (plunger) ----------
+constexpr uint8_t STEP2 = 15;
+constexpr uint8_t DIR2  = 2;
+constexpr uint8_t EN2   = 5;   // keep as-is
 
-// Stepper #3 (toolhead syringe / base drive)
+// ---------- Stepper #3 (toolhead syringe / base drive) ----------
 constexpr uint8_t STEP3 = 12;
 constexpr uint8_t DIR3  = 14;
-// constexpr uint8_t EN3 = — unused for now
+// constexpr uint8_t EN3 = ...; // if you ever want one, we can revisit
+
 
 // =======================================================
 // ==========  BASE ENABLE LINES (active LOW)  ============

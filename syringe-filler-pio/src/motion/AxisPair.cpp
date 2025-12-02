@@ -86,10 +86,10 @@ static void IRAM_ATTR onStepTimer() {
   s_do3 = do3;
 
   // Emit pulses (short HIGH, then LOW). Using digitalWrite for robustness.
-  if (do2) digitalWrite(Pins::STEP12, HIGH);
+  if (do2) digitalWrite(Pins::STEP2, HIGH);
   if (do3) digitalWrite(Pins::STEP3, HIGH);
   delayMicroseconds(pulseWidthUs());
-  if (do2) digitalWrite(Pins::STEP12, LOW);
+  if (do2) digitalWrite(Pins::STEP2, LOW);
   if (do3) digitalWrite(Pins::STEP3, LOW);
 
   // Update counters/positions
@@ -112,8 +112,8 @@ static void IRAM_ATTR onStepTimer() {
 // -----------------------------
 void init() {
   // TOOLHEAD (Axis 2)
-  pinMode(Pins::STEP12, OUTPUT);
-  pinMode(Pins::DIR12,  OUTPUT);
+  pinMode(Pins::STEP2, OUTPUT);
+  pinMode(Pins::DIR2,  OUTPUT);
   pinMode(Pins::EN2,   OUTPUT);
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
 
@@ -173,10 +173,11 @@ void move2(long steps) {
   const long todo    = labs(steps);
 
   Serial.print("[AxisPair] move2 steps="); Serial.println(steps);
+  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
 
   digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
   delayMicroseconds(500);
-  digitalWrite(Pins::DIR12, dirHigh ? HIGH : LOW);
+  digitalWrite(Pins::DIR2, dirHigh ? HIGH : LOW);
   delayMicroseconds(10);
 
   noInterrupts();
@@ -236,7 +237,7 @@ void moveSync(long steps2, long steps3) {
   Bases::hold(true);
   delayMicroseconds(500);
 
-  digitalWrite(Pins::DIR12, dir2High ? HIGH : LOW);
+  digitalWrite(Pins::DIR2, dir2High ? HIGH : LOW);
   digitalWrite(Pins::DIR3, dir3High ? HIGH : LOW);
   delayMicroseconds(10);
 
@@ -286,7 +287,7 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
 
   digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
   delayMicroseconds(500);
-  digitalWrite(Pins::DIR12, dirHigh ? HIGH : LOW);
+  digitalWrite(Pins::DIR2, dirHigh ? HIGH : LOW);
   delayMicroseconds(10);
 
   unsigned long nextEdge = micros();
@@ -302,9 +303,9 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
     while ((long)(micros() - nextEdge) < 0) { /* spin */ }
     nextEdge += period_us;
 
-    digitalWrite(Pins::STEP12, HIGH);
+    digitalWrite(Pins::STEP2, HIGH);
     delayMicroseconds(pulseWidthUs());
-    digitalWrite(Pins::STEP12, LOW);
+    digitalWrite(Pins::STEP2, LOW);
 
     s_pos2 += dirHigh ? +1 : -1;
 
