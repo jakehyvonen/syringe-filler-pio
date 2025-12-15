@@ -373,6 +373,11 @@ void handleSerial() {
           Serial.println("[SFC] ERROR: could not save toolhead calibration.");
         }
 
+      } else if (input == "sfc.tool.show" || input == "sfc.cal.t.show") {
+      // Print toolhead calibration + live reading
+      g_sfc.printToolheadInfo(Serial);
+
+
       // make recipe names clearer
       } else if (input == "sfc.recipe.save") {
         if (g_sfc.saveToolheadRecipeToFS()) {

@@ -599,6 +599,60 @@ uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
   return cap.packed;
 }
 
+float App::SyringeFillController::mlFromCounts_(const App::PotCalibration& cal, uint16_t counts) {
+  // Assumes PotCalibration has: emptyCounts, fullCounts, mlFull
+  int32_t denom = (int32_t)cal.adcFull - (int32_t)cal.adcEmpty;
+  if (denom == 0) return NAN;
+
+  float t = (float)((int32_t)counts - (int32_t)cal.adcEmpty) / (float)denom;
+  if (t < 0.0f) t = 0.0f;
+  if (t > 1.0f) t = 1.0f;
+  return t * cal.mlFull;
+}
+
+void App::SyringeFillController::printToolheadInfo(Stream& out) {
+  out.println(F("[SFC] Toolhead calibration:"));
+
+  if (m_toolheadRfid == 0) {
+    out.println(F("  RFID: (none)  tip: run 'sfc.scanTool'"));
+    return;
+  }
+
+  out.print(F("  RFID: 0x"));
+  out.println(m_toolheadRfid, HEX);
+
+  // Refresh calibration from NVS each time (so it always matches Storage.cpp)
+  App::PotCalibration calTmp;
+  bool ok = Util::loadCalibration(m_toolheadRfid, calTmp);
+  m_toolCalValid = ok;
+  if (ok) m_toolCal = calTmp;
+
+  out.print(F("  cal.inNVS: "));
+  out.println(ok ? F("yes") : F("no"));
+
+  if (ok) {
+    out.print(F("  cal.emptyCounts: ")); out.println(m_toolCal.adcEmpty);
+    out.print(F("  cal.fullCounts : ")); out.println(m_toolCal.adcFull);
+    out.print(F("  cal.mlFull     : ")); out.println(m_toolCal.mlFull, 3);
+    out.print(F("  cal.steps_mL     : ")); out.println(m_toolCal.steps_mL, 3);
+  }
+
+  // Live pot read (set this index correctly for the toolhead pot)
+  const uint8_t TOOLHEAD_POT_IDX = 0;  // TODO: set your toolhead pot index
+  uint16_t counts = Pots::readCounts(TOOLHEAD_POT_IDX);
+  uint16_t scaled = Pots::readScaled(TOOLHEAD_POT_IDX);
+
+  out.print(F("  pot.counts: ")); out.println(counts);
+  out.print(F("  pot.scaled: ")); out.println(scaled);
+
+  if (ok) {
+    float ml = mlFromCounts_(m_toolCal, counts);
+    out.print(F("  computed mL: "));
+    if (isnan(ml)) out.println(F("(n/a)"));
+    else out.println(ml, 3);
+  }
+}
+
 
 bool SyringeFillController::loadToolheadRecipeFromFS() {
   if (m_toolhead.rfid == 0) {
