@@ -427,6 +427,7 @@ void SyringeFillController::printBaseInfo(uint8_t slot, Stream& s) {
   s.print(" adcEmpty="); s.print(sy.cal.adcEmpty);
   s.print(" adcFull=");  s.print(sy.cal.adcFull);
   s.print(" mlFull=");   s.print(sy.cal.mlFull, 3);
+  s.print(" steps_mL=");   s.print(sy.cal.steps_mL, 3);
   s.println();
 }
 // ------------------------------------------------------------
@@ -613,21 +614,21 @@ float App::SyringeFillController::mlFromCounts_(const App::PotCalibration& cal, 
 void App::SyringeFillController::printToolheadInfo(Stream& out) {
   out.println(F("[SFC] Toolhead calibration:"));
 
-  if (m_toolheadRfid == 0) {
+  if (m_toolhead.rfid == 0) {
     out.println(F("  RFID: (none)  tip: run 'sfc.scanTool'"));
     return;
   }
 
   out.print(F("  RFID: 0x"));
-  out.println(m_toolheadRfid, HEX);
+  out.println(m_toolhead.rfid, HEX);
 
   // Refresh calibration from NVS each time (so it always matches Storage.cpp)
   App::PotCalibration calTmp;
-  bool ok = Util::loadCalibration(m_toolheadRfid, calTmp);
+  bool ok = Util::loadCalibration(m_toolhead.rfid, calTmp);
   m_toolCalValid = ok;
   if (ok) m_toolCal = calTmp;
 
-  out.print(F("  cal.inNVS: "));
+  out.print(F("  cal loaded from memory: "));
   out.println(ok ? F("yes") : F("no"));
 
   if (ok) {

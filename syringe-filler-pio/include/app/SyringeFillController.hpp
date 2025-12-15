@@ -38,7 +38,7 @@ public:
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
-  uint32_t toolheadRfid() const { return m_toolheadRfid; }   // optional but handy
+  uint32_t toolheadRfid() const { return m_toolhead.rfid; }   // optional but handy
 
 
 
@@ -56,7 +56,6 @@ private:
   Syringe m_toolhead;
   Syringe m_bases[Bases::kCount];
   int8_t getBasePotIndex(uint8_t baseSlot) const;
-  uint32_t m_toolheadRfid = 0;     // set when toolhead is scanned
   App::PotCalibration m_toolCal;   // loaded from NVS via Util::loadCalibration()
   bool m_toolCalValid = false;
 

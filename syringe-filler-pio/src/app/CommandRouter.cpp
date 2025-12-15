@@ -375,6 +375,7 @@ void handleSerial() {
 
       } else if (input == "sfc.tool.show" || input == "sfc.cal.t.show") {
       // Print toolhead calibration + live reading
+      Serial.println("[SFC] sfc.tool.show.");
       g_sfc.printToolheadInfo(Serial);
 
 
