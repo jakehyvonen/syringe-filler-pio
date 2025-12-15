@@ -306,10 +306,7 @@ void handleSerial() {
         Serial.println("[SFC] scanning all base syringes...");
         g_sfc.scanAllBaseSyringes();
         Serial.println("[SFC] scan complete.");
-      } else if (input == "sfc.scanToolhead") {
-        Serial.println("[SFC] scanning toolhead syringe...");
-        g_sfc.scanToolheadSyringe();
-        Serial.println("[SFC] scan complete.");
+      
       } else if (input == "sfc.run") {
         Serial.println("[SFC] running current recipe...");
         g_sfc.runRecipe();

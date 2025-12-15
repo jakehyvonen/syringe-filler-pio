@@ -27,7 +27,6 @@ public:
   }
   bool setCurrentBaseMlFull(float ml);
   bool setToolheadMlFull(float ml);  
-  void scanToolheadSyringe();
   bool loadToolheadRecipeFromFS();
   bool saveToolheadRecipeToFS();
   void runRecipe();

@@ -600,50 +600,6 @@ uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
 }
 
 
-void SyringeFillController::scanToolheadSyringe() {
-  dbg("scanToolheadSyringe() start");
-  uint32_t tag = readRFIDNow();
-  if (tag == 0) {
-    dbg("no toolhead RFID detected; leaving old toolhead data");
-    return;
-  }
-
-  m_toolhead.rfid = tag;
-  m_toolhead.role = SyringeRole::Toolhead;
-
-  PotCalibration cal;
-  if (Util::loadCalibration(tag, cal)) {
-    m_toolhead.cal = cal;
-    if (SFC_DBG) {
-      Serial.print("[SFC] toolhead cal loaded for tag 0x");
-      Serial.println(tag, HEX);
-    }
-  } else {
-    if (SFC_DBG) {
-      Serial.print("[SFC] toolhead cal NOT found for tag 0x");
-      Serial.println(tag, HEX);
-    }
-  }
-
-  m_toolhead.currentMl = readToolheadVolumeMl();
-  if (SFC_DBG) {
-    Serial.print("[SFC] toolhead volume ~ ");
-    Serial.print(m_toolhead.currentMl, 3);
-    Serial.println(" mL");
-  }
-
-  if (!loadToolheadRecipeFromFS()) {
-    if (SFC_DBG) Serial.println("[SFC] no recipe file for this toolhead");
-  } else {
-    if (SFC_DBG) {
-      Serial.print("[SFC] recipe loaded with ");
-      Serial.print(m_recipe.count);
-      Serial.println(" steps");
-    }
-  }
-  dbg("scanToolheadSyringe() done");
-}
-
 bool SyringeFillController::loadToolheadRecipeFromFS() {
   if (m_toolhead.rfid == 0) {
     dbg("loadToolheadRecipeFromFS(): no toolhead RFID");
