@@ -468,6 +468,15 @@ void handleSerial() {
         Serial.print(" counts="); Serial.print(c);
         Serial.print(" scaled="); Serial.println(s);
 
+      } else if (input.startsWith("basepot ")) {
+        uint8_t b = input.substring(7).toInt();
+        uint8_t i = Pins::BASE_POT_IDX[i];
+        uint16_t c = Pots::readCounts(i);
+        uint16_t s = Pots::readScaled(i);
+        Serial.print("[basepot] idx="); Serial.print(b);
+        Serial.print("[potraw] idx="); Serial.print(i);
+        Serial.print(" counts="); Serial.print(c);
+        Serial.print(" scaled="); Serial.println(s);
 
         
       // ---------------- Pot-driven motion (kept) ----------------
