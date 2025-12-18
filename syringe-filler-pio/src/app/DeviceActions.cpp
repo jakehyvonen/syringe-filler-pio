@@ -1,0 +1,355 @@
+#include "app/DeviceActions.hpp"
+
+#include <math.h>
+
+#include "hw/Bases.hpp"
+#include "hw/Drivers.hpp"
+#include "hw/Encoder.hpp"
+#include "hw/Pots.hpp"
+#include "hw/RFID.hpp"
+#include "hw/BaseRFID.hpp"
+#include "hw/Pins.hpp"
+#include "motion/Axis.hpp"
+#include "motion/AxisPair.hpp"
+#include "motion/Homing.hpp"
+#include "servo/Toolhead.hpp"
+
+namespace App {
+namespace {
+inline long mmToSteps(float mm) { return (long)lround(mm * Pins::STEPS_PER_MM); }
+}
+
+namespace DeviceActions {
+
+// Gantry / axis 1
+PositionResult gantryPosition() {
+  PositionResult res{};
+  res.steps = Axis::current();
+  res.mm = res.steps / Pins::STEPS_PER_MM;
+  res.ok = true;
+  res.message = "gantry position";
+  return res;
+}
+
+ActionResult enableGantry(bool on) {
+  Axis::enable(on);
+  return {true, on ? "gantry enabled" : "gantry disabled"};
+}
+
+ActionResult setGantrySpeed(long sps) {
+  Axis::setSpeedSPS(sps);
+  return {true, "gantry speed updated"};
+}
+
+ActionResult setGantryDirection(int dirLevel) {
+  Axis::dir(dirLevel ? HIGH : LOW);
+  return {true, "gantry direction set"};
+}
+
+ActionResult homeGantry() {
+  Homing::home();
+  return {true, "gantry homed"};
+}
+
+ActionResult moveGantryToSteps(long targetSteps) {
+  if (targetSteps < Pins::MIN_POS_STEPS) targetSteps = Pins::MIN_POS_STEPS;
+  if (targetSteps > Pins::MAX_POS_STEPS) targetSteps = Pins::MAX_POS_STEPS;
+  Axis::enable(true);
+  Axis::moveTo(targetSteps);
+  Axis::enable(false);
+  return {true, "gantry moved"};
+}
+
+ActionResult moveGantryToMm(float targetMm) { return moveGantryToSteps(mmToSteps(targetMm)); }
+
+// Bases
+ActionResult selectBase(uint8_t idx) {
+  if (!Bases::select(idx)) {
+    return {false, "invalid base index"};
+  }
+  return {true, "base selected"};
+}
+
+uint8_t selectedBase() { return Bases::selected(); }
+
+ActionResult moveToBase(uint8_t idx, long &targetSteps) {
+  if (idx < 1 || idx > Pins::NUM_BASES) {
+    return {false, "base index out of range"};
+  }
+  targetSteps = Bases::getPos(idx);
+  if (targetSteps < 0) {
+    return {false, "base position unknown"};
+  }
+  if (targetSteps < Pins::MIN_POS_STEPS || targetSteps > Pins::MAX_POS_STEPS) {
+    return {false, "base target outside limits"};
+  }
+  Axis::enable(true);
+  Axis::moveTo(targetSteps);
+  Axis::enable(false);
+  return {true, "moved to base"};
+}
+
+// Servos / toolhead
+ActionResult setServoPulseRaw(int channel, int us) {
+  Toolhead::setPulseRaw(channel, us);
+  return {true, "servo pulse set"};
+}
+
+ActionResult setServoAngle(int channel, int angle) {
+  if (channel < 0 || channel > 15) {
+    return {false, "channel must be 0-15"};
+  }
+  Toolhead::setAngle(channel, angle);
+  return {true, "servo angle set"};
+}
+
+ActionResult setServoAngleSlow(int channel, int angle, int delayMs) {
+  if (channel < 0 || channel > 15) {
+    return {false, "channel must be 0-15"};
+  }
+  Toolhead::setAngleSlow(channel, angle, delayMs);
+  return {true, "servo angle set slowly"};
+}
+
+ActionResult raiseToolhead() {
+  Toolhead::raise();
+  return {true, "toolhead raised"};
+}
+
+ActionResult coupleSyringes() {
+  Toolhead::couple();
+  return {true, "syringes coupled"};
+}
+
+// Secondary axes
+ActionResult moveAxis2(long steps) {
+  AxisPair::move2(steps);
+  return {true, "axis2 moved"};
+}
+
+ActionResult moveAxis3(long steps) {
+  AxisPair::move3(steps);
+  return {true, "axis3 moved"};
+}
+
+ActionResult setAxis23Speed(long sps) {
+  AxisPair::setSpeedSPS(sps);
+  return {true, "axis2/3 speed set"};
+}
+
+ActionResult moveAxisSync(long steps2, long steps3, bool requireBaseSelected) {
+  if (requireBaseSelected && steps3 != 0 && Bases::selected() == 0) {
+    return {false, "base required for axis3"};
+  }
+  AxisPair::moveSync(steps2, steps3);
+  return {true, "axes moved"};
+}
+
+ActionResult linkAxis(long steps) {
+  if (Bases::selected() == 0) {
+    return {false, "base not selected"};
+  }
+  AxisPair::link(steps);
+  return {true, "axes linked"};
+}
+
+PositionResult axis2Position() {
+  PositionResult res{};
+  res.steps = AxisPair::pos2();
+  res.mm = res.steps / Pins::STEPS_PER_MM;
+  res.ok = true;
+  res.message = "axis2 position";
+  return res;
+}
+
+PositionResult axis3Position() {
+  PositionResult res{};
+  res.steps = AxisPair::pos3();
+  res.mm = res.steps / Pins::STEPS_PER_MM;
+  res.ok = true;
+  res.message = "axis3 position";
+  return res;
+}
+
+// RFID
+ActionResult handleRfidCommand(const String &arg) {
+  if (arg == "on") {
+    RFID::enable(true);
+    return {true, "rfid polling enabled"};
+  }
+  if (arg == "off") {
+    RFID::enable(false);
+    return {true, "rfid polling disabled"};
+  }
+  if (arg == "once") {
+    RFID::detectOnce(30, 100);
+    return {true, "rfid detect once"};
+  }
+  return {false, "usage: rfid on|off|once"};
+}
+
+ActionResult handleBaseRfidCommand(const String &arg) {
+  if (arg == "on") {
+    BaseRFID::enable(true);
+    return {true, "base rfid polling enabled"};
+  }
+  if (arg == "off") {
+    BaseRFID::enable(false);
+    return {true, "base rfid polling disabled"};
+  }
+  if (arg.startsWith("once")) {
+    int tries = 30;
+    int spaceIndex = arg.indexOf(' ');
+    if (spaceIndex > 0) {
+      int val = arg.substring(spaceIndex + 1).toInt();
+      if (val > 0 && val < 200) tries = val;
+    }
+    BaseRFID::detectOnce(tries, 100);
+    return {true, "base rfid detect once"};
+  }
+  return {false, "usage: rfid2 on|off|once [tries]"};
+}
+
+// Encoder
+ActionResult encoderStatus(long &count, float &mm, bool &hasReading) {
+  hasReading = true;
+  count = EncoderHW::count();
+  mm = EncoderHW::mm();
+  return {true, "encoder reading"};
+}
+
+ActionResult encoderOn() {
+  EncoderHW::setPolling(true);
+  return {true, "encoder polling on"};
+}
+
+ActionResult encoderOff() {
+  EncoderHW::setPolling(false);
+  return {true, "encoder polling off"};
+}
+
+ActionResult encoderZero() {
+  EncoderHW::reset();
+  return {true, "encoder zeroed"};
+}
+
+// Syringe fill controller helpers
+ActionResult sfcScanBases(App::SyringeFillController &sfc) {
+  sfc.scanAllBaseSyringes();
+  return {true, "scanned all base syringes"};
+}
+
+ActionResult sfcRunRecipe(App::SyringeFillController &sfc) {
+  sfc.runRecipe();
+  return {true, "recipe completed"};
+}
+
+ActionResult sfcLoadRecipe(App::SyringeFillController &sfc) {
+  return {sfc.loadToolheadRecipeFromFS(), "recipe loaded"};
+}
+
+ActionResult sfcSaveRecipe(App::SyringeFillController &sfc) {
+  return {sfc.saveToolheadRecipeToFS(), "recipe saved"};
+}
+
+ActionResult sfcStatus() {
+  // Not exposed via controller; stub for structured output.
+  return {true, "status not exposed"};
+}
+
+ActionResult sfcScanBase(App::SyringeFillController &sfc, uint8_t slot) {
+  sfc.scanBaseSyringe(slot);
+  return {true, "base scanned"};
+}
+
+ActionResult sfcScanTool(App::SyringeFillController &sfc) {
+  bool ok = sfc.scanToolheadBlocking();
+  return {ok, ok ? "toolhead scan ok" : "toolhead scan failed"};
+}
+
+ActionResult sfcCaptureToolEmpty(App::SyringeFillController &sfc) {
+  bool ok = sfc.captureToolheadEmpty();
+  return {ok, ok ? "toolhead empty captured" : "capture empty failed"};
+}
+
+ActionResult sfcCaptureToolFull(App::SyringeFillController &sfc, float ml) {
+  bool ok = sfc.captureToolheadFull(ml);
+  return {ok, ok ? "toolhead full captured" : "capture full failed"};
+}
+
+ActionResult sfcSaveToolCalibration(App::SyringeFillController &sfc) {
+  bool ok = sfc.saveToolheadCalibration();
+  return {ok, ok ? "toolhead calibration saved" : "save calibration failed"};
+}
+
+ActionResult sfcShowTool(App::SyringeFillController &sfc) {
+  sfc.printToolheadInfo(Serial);
+  return {true, "toolhead info printed"};
+}
+
+ActionResult sfcRecipeSave(App::SyringeFillController &sfc) { return sfcSaveRecipe(sfc); }
+
+ActionResult sfcRecipeLoad(App::SyringeFillController &sfc) { return sfcLoadRecipe(sfc); }
+
+ActionResult sfcSetBaseEmpty(App::SyringeFillController &sfc) {
+  bool ok = sfc.captureBaseEmpty((uint8_t)sfc.currentSlot());
+  return {ok, ok ? "base empty captured" : "capture base empty failed"};
+}
+
+ActionResult sfcSaveCurrentBase(App::SyringeFillController &sfc) {
+  bool ok = sfc.saveCurrentBaseToNVS();
+  return {ok, ok ? "current base saved" : "save current base failed"};
+}
+
+ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc) {
+  int8_t slot = sfc.currentSlot();
+  if (slot < 0) {
+    return {false, "no current base"};
+  }
+  sfc.printBaseInfo((uint8_t)slot, Serial);
+  return {true, "base info printed"};
+}
+
+ActionResult sfcCaptureCurrentBaseEmpty(App::SyringeFillController &sfc) {
+  bool ok = sfc.captureCurrentBaseEmpty();
+  return {ok, ok ? "base empty captured" : "capture base empty failed"};
+}
+
+ActionResult sfcCaptureCurrentBaseFull(App::SyringeFillController &sfc) {
+  bool ok = sfc.captureCurrentBaseFull();
+  return {ok, ok ? "base full captured" : "capture base full failed"};
+}
+
+ActionResult sfcSetCurrentBaseMlFull(App::SyringeFillController &sfc, float ml) {
+  bool ok = sfc.setCurrentBaseMlFull(ml);
+  return {ok, ok ? "base ml full set" : "set base ml full failed"};
+}
+
+ActionResult sfcSetToolheadMlFull(App::SyringeFillController &sfc, float ml) {
+  bool ok = sfc.setToolheadMlFull(ml);
+  return {ok, ok ? "tool ml full set" : "set tool ml full failed"};
+}
+
+// Pots
+ActionResult readPot(uint8_t idx, uint16_t &counts, uint16_t &scaled) {
+  counts = Pots::readCounts(idx);
+  scaled = Pots::readScaled(idx);
+  return {true, "pot read"};
+}
+
+ActionResult readBasePot(uint8_t base, uint8_t &potIdx, uint16_t &counts, uint16_t &scaled) {
+  potIdx = Pins::BASE_POT_IDX[base];
+  counts = Pots::readCounts(potIdx);
+  scaled = Pots::readScaled(potIdx);
+  return {true, "base pot read"};
+}
+
+// Pot-driven motion
+ActionResult potMove(uint16_t target, long sps) {
+  bool ok = AxisPair::move2UntilPotSimple(target, sps);
+  return {ok, ok ? "potmove ok" : "potmove failed"};
+}
+
+}  // namespace DeviceActions
+}  // namespace App
+

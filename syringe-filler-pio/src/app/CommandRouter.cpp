@@ -2,499 +2,424 @@
 #include <Wire.h>
 
 #include "app/CommandRouter.hpp"
-
-#include "hw/Pins.hpp"
-#include "hw/Bases.hpp"
-#include "hw/Pots.hpp"
-#include "hw/Drivers.hpp"
-
-#include "servo/Toolhead.hpp"
-
-#include "motion/Axis.hpp"
-#include "motion/AxisPair.hpp"
-#include "motion/Homing.hpp"
-#include "hw/RFID.hpp"
-#include "hw/BaseRFID.hpp"
-#include "hw/Encoder.hpp"  
+#include "app/DeviceActions.hpp"
 #include "app/SyringeFillController.hpp"
 
+#include "hw/Bases.hpp"
+#include "hw/Pins.hpp"
+#include "hw/Pots.hpp"
 
 namespace CommandRouter {
+
+using App::ActionResult;
+using App::PositionResult;
+using App::DeviceActions::axis2Position;
+using App::DeviceActions::axis3Position;
+using App::DeviceActions::coupleSyringes;
+using App::DeviceActions::encoderOff;
+using App::DeviceActions::encoderOn;
+using App::DeviceActions::encoderStatus;
+using App::DeviceActions::encoderZero;
+using App::DeviceActions::gantryPosition;
+using App::DeviceActions::handleBaseRfidCommand;
+using App::DeviceActions::handleRfidCommand;
+using App::DeviceActions::homeGantry;
+using App::DeviceActions::linkAxis;
+using App::DeviceActions::moveAxis2;
+using App::DeviceActions::moveAxis3;
+using App::DeviceActions::moveAxisSync;
+using App::DeviceActions::moveGantryToMm;
+using App::DeviceActions::moveGantryToSteps;
+using App::DeviceActions::moveToBase;
+using App::DeviceActions::potMove;
+using App::DeviceActions::raiseToolhead;
+using App::DeviceActions::sfcCaptureCurrentBaseEmpty;
+using App::DeviceActions::sfcCaptureCurrentBaseFull;
+using App::DeviceActions::sfcCaptureToolEmpty;
+using App::DeviceActions::sfcCaptureToolFull;
+using App::DeviceActions::sfcLoadRecipe;
+using App::DeviceActions::sfcRecipeLoad;
+using App::DeviceActions::sfcRecipeSave;
+using App::DeviceActions::sfcRunRecipe;
+using App::DeviceActions::sfcSaveCurrentBase;
+using App::DeviceActions::sfcSaveRecipe;
+using App::DeviceActions::sfcSaveToolCalibration;
+using App::DeviceActions::sfcScanBase;
+using App::DeviceActions::sfcScanBases;
+using App::DeviceActions::sfcScanTool;
+using App::DeviceActions::sfcSetBaseEmpty;
+using App::DeviceActions::sfcSetCurrentBaseMlFull;
+using App::DeviceActions::sfcSetToolheadMlFull;
+using App::DeviceActions::sfcShowCurrentBase;
+using App::DeviceActions::sfcShowTool;
+using App::DeviceActions::sfcStatus;
+using App::DeviceActions::selectedBase;
+using App::DeviceActions::selectBase;
+using App::DeviceActions::setAxis23Speed;
+using App::DeviceActions::setGantryDirection;
+using App::DeviceActions::setGantrySpeed;
+using App::DeviceActions::setServoAngle;
+using App::DeviceActions::setServoAngleSlow;
+using App::DeviceActions::setServoPulseRaw;
+using App::DeviceActions::enableGantry;
+using App::DeviceActions::readBasePot;
+using App::DeviceActions::readPot;
+
+namespace {
+struct CommandDescriptor {
+  const char *name;
+  const char *help;
+  void (*handler)(const String &args);
+};
 
 static String input;
 static App::SyringeFillController g_sfc;
 
-
-static inline long mmToSteps(float mm) {
-  return (long)lround(mm * Pins::STEPS_PER_MM);
+void printStructured(const char *cmd, const ActionResult &res, const String &data = "") {
+  Serial.print("{\"cmd\":\"");
+  Serial.print(cmd);
+  Serial.print("\",\"status\":\"");
+  Serial.print(res.ok ? "ok" : "error");
+  Serial.print("\"");
+  if (res.message.length()) {
+    Serial.print(",\"message\":\"");
+    Serial.print(res.message);
+    Serial.print("\"");
+  }
+  if (data.length()) {
+    Serial.print(",\"data\":");
+    Serial.print(data);
+  }
+  Serial.println("}");
 }
+
+void printStructured(const char *cmd, const PositionResult &res) {
+  String data = "{";
+  data += "\"steps\":" + String(res.steps) + ",";
+  data += "\"mm\":" + String(res.mm, 3) + "}";
+  printStructured(cmd, static_cast<const ActionResult &>(res), data);
+}
+
+void handleOnOff(const String &args) { printStructured("on", enableGantry(true)); }
+
+void handleOff(const String &args) { printStructured("off", enableGantry(false)); }
+
+void handleSpeed(const String &args) {
+  long sps = args.toInt();
+  if (sps > 0) {
+    printStructured("speed", setGantrySpeed(sps));
+  } else {
+    printStructured("speed", {false, "missing speed"});
+  }
+}
+
+void handleDir(const String &args) { printStructured("dir", setGantryDirection(args.toInt())); }
+
+void handleHome(const String &args) { printStructured("home", homeGantry()); }
+
+void handlePos(const String &args) { printStructured("pos", gantryPosition()); }
+
+void handleGoto(const String &args) { printStructured("goto", moveGantryToSteps(args.toInt())); }
+
+void handleGotoMm(const String &args) { printStructured("gotomm", moveGantryToMm(args.toFloat())); }
+
+void handleBase(const String &args) {
+  int idx = args.toInt();
+  printStructured("base", selectBase((uint8_t)idx), "{\"selected\":" + String(selectedBase()) + "}");
+}
+
+void handleWhichBase(const String &args) {
+  ActionResult res{true, "base query"};
+  printStructured("whichbase", res, "{\"selected\":" + String(selectedBase()) + "}");
+}
+
+void handleBaseOff(const String &args) {
+  printStructured("baseoff", selectBase(0), "{\"selected\":0}");
+}
+
+void handleGoBase(const String &args) {
+  long target = 0;
+  ActionResult res = moveToBase((uint8_t)args.toInt(), target);
+  String data;
+  if (res.ok) { data = "{\"targetSteps\":" + String(target) + "}"; }
+  printStructured("gobase", res, data);
+}
+
+void handleServoPulse(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp > 0) {
+    int ch = args.substring(0, sp).toInt();
+    int us = args.substring(sp + 1).toInt();
+    printStructured("servopulse", setServoPulseRaw(ch, us));
+  } else {
+    printStructured("servopulse", {false, "usage: servopulse <channel> <us>"});
+  }
+}
+
+void handleServo(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp > 0) {
+    int ch = args.substring(0, sp).toInt();
+    int angle = args.substring(sp + 1).toInt();
+    printStructured("servo", setServoAngle(ch, angle));
+  } else {
+    printStructured("servo", {false, "usage: servo <ch> <angle>"});
+  }
+}
+
+void handleRaise(const String &args) { printStructured("raise", raiseToolhead()); }
+
+void handleServoSlow(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp > 0) {
+    int ch = args.substring(0, sp).toInt();
+    String rest = args.substring(sp + 1);
+    int sp2 = rest.indexOf(' ');
+    int angle = 0;
+    int delayMs = 15;
+    if (sp2 > 0) {
+      angle = rest.substring(0, sp2).toInt();
+      delayMs = rest.substring(sp2 + 1).toInt();
+    } else {
+      angle = rest.toInt();
+    }
+    printStructured("servoslow", setServoAngleSlow(ch, angle, delayMs));
+  } else {
+    printStructured("servoslow", {false, "usage: servoslow <ch> <angle> [delay]"});
+  }
+}
+
+void handleCouple(const String &args) { printStructured("couple", coupleSyringes()); }
+
+void handleMove2(const String &args) { printStructured("move2", moveAxis2(args.toInt())); }
+
+void handleMove3(const String &args) {
+  if (selectedBase() == 0) {
+    printStructured("move3", {false, "no base selected"});
+    return;
+  }
+  printStructured("move3", moveAxis3(args.toInt()));
+}
+
+void handleSpeed23(const String &args) { printStructured("speed23", setAxis23Speed(args.toInt())); }
+
+void handleM23(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp > 0) {
+    long s2 = args.substring(0, sp).toInt();
+    long s3 = args.substring(sp + 1).toInt();
+    printStructured("m23", moveAxisSync(s2, s3, true));
+  } else {
+    printStructured("m23", {false, "usage: m23 <steps2> <steps3>"});
+  }
+}
+
+void handleLink(const String &args) { printStructured("link", linkAxis(args.toInt())); }
+
+void handlePos2(const String &args) { printStructured("pos2", axis2Position()); }
+
+void handlePos3(const String &args) { printStructured("pos3", axis3Position()); }
+
+void handleRfid(const String &args) { printStructured("rfid", handleRfidCommand(args)); }
+
+void handleRfid2(const String &args) { printStructured("rfid2", handleBaseRfidCommand(args)); }
+
+void handleEncoder(const String &args) {
+  String lowered = args;
+  lowered.trim();
+  lowered.toLowerCase();
+  if (lowered.length() == 0) {
+    long count = 0;
+    float mm = 0.0f;
+    bool hasReading = false;
+    ActionResult res = encoderStatus(count, mm, hasReading);
+    if (hasReading) {
+      String data = "{\"count\":" + String(count) + ",\"mm\":" + String(mm, 3) + "}";
+      printStructured("enc", res, data);
+    } else {
+      printStructured("enc", res);
+    }
+  } else if (lowered == "on") {
+    printStructured("enc", encoderOn());
+  } else if (lowered == "off") {
+    printStructured("enc", encoderOff());
+  } else if (lowered == "zero" || lowered == "reset") {
+    printStructured("enc", encoderZero());
+  } else {
+    printStructured("enc", {false, "usage: enc|enc on|enc off|enc zero"});
+  }
+}
+
+void handleSfcScanBases(const String &args) { printStructured("sfc.scanBases", sfcScanBases(g_sfc)); }
+
+void handleSfcRun(const String &args) { printStructured("sfc.run", sfcRunRecipe(g_sfc)); }
+
+void handleSfcLoad(const String &args) { printStructured("sfc.load", sfcLoadRecipe(g_sfc)); }
+
+void handleSfcSave(const String &args) { printStructured("sfc.save", sfcSaveRecipe(g_sfc)); }
+
+void handleSfcStatus(const String &args) { printStructured("sfc.status", sfcStatus()); }
+
+void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfcScanBase(g_sfc, (uint8_t)args.toInt())); }
+
+void handleSfcScanTool(const String &args) { printStructured("sfc.scanTool", sfcScanTool(g_sfc)); }
+
+void handleSfcCalTEmpty(const String &args) { printStructured("sfc.cal.t.empty", sfcCaptureToolEmpty(g_sfc)); }
+
+void handleSfcCalTFull(const String &args) {
+  float ml = args.toFloat();
+  if (ml <= 0.0f) {
+    printStructured("sfc.cal.t.full", {false, "usage: sfc.cal.t.full <ml>"});
+  } else {
+    printStructured("sfc.cal.t.full", sfcCaptureToolFull(g_sfc, ml));
+  }
+}
+
+void handleSfcCalTSave(const String &args) { printStructured("sfc.cal.t.save", sfcSaveToolCalibration(g_sfc)); }
+
+void handleSfcToolShow(const String &args) { printStructured("sfc.tool.show", sfcShowTool(g_sfc)); }
+
+void handleSfcRecipeSave(const String &args) { printStructured("sfc.recipe.save", sfcRecipeSave(g_sfc)); }
+
+void handleSfcRecipeLoad(const String &args) { printStructured("sfc.recipe.load", sfcRecipeLoad(g_sfc)); }
+
+void handleSfcBaseSetEmptyPos(const String &args) { printStructured("sfc.base.setemptypos", sfcSetBaseEmpty(g_sfc)); }
+
+void handleSfcBaseSave(const String &args) { printStructured("sfc.base.save", sfcSaveCurrentBase(g_sfc)); }
+
+void handleSfcBaseShow(const String &args) { printStructured("sfc.base.show", sfcShowCurrentBase(g_sfc)); }
+
+void handleSfcBaseSetFullPos(const String &args) { printStructured("sfc.base.setfullpos", sfcCaptureCurrentBaseFull(g_sfc)); }
+
+void handleSfcBaseSetMlFull(const String &args) {
+  float ml = args.toFloat();
+  if (ml <= 0.0f) {
+    printStructured("sfc.base.setmlfull", {false, "usage: sfc.base.setmlfull <ml>"});
+  } else {
+    printStructured("sfc.base.setmlfull", sfcSetCurrentBaseMlFull(g_sfc, ml));
+  }
+}
+
+void handleSfcToolSetMlFull(const String &args) {
+  float ml = args.toFloat();
+  if (ml <= 0.0f) {
+    printStructured("sfc.tool.setmlfull", {false, "usage: sfc.tool.setmlfull <ml>"});
+  } else {
+    printStructured("sfc.tool.setmlfull", sfcSetToolheadMlFull(g_sfc, ml));
+  }
+}
+
+void handlePotRaw(const String &args) {
+  uint16_t counts = 0, scaled = 0;
+  ActionResult res = readPot((uint8_t)args.toInt(), counts, scaled);
+  String data = "{\"counts\":" + String(counts) + ",\"scaled\":" + String(scaled) + "}";
+  printStructured("potraw", res, data);
+}
+
+void handleBasePot(const String &args) {
+  uint8_t potIdx = 0;
+  uint16_t counts = 0, scaled = 0;
+  ActionResult res = readBasePot((uint8_t)args.toInt(), potIdx, counts, scaled);
+  String data = "{\"base\":" + String(args.toInt()) + ",\"potIndex\":" + String(potIdx) + ",\"counts\":" + String(counts) + ",\"scaled\":" + String(scaled) + "}";
+  printStructured("basepot", res, data);
+}
+
+void handlePotMove(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp < 0) {
+    printStructured("potmove", {false, "usage: potmove <target_adc> <sps>"});
+    return;
+  }
+  uint16_t target = (uint16_t)args.substring(0, sp).toInt();
+  long sps = args.substring(sp + 1).toInt();
+  printStructured("potmove", potMove(target, sps));
+}
+
+const CommandDescriptor COMMANDS[] = {
+    {"on", "enable gantry motor", handleOnOff},
+    {"off", "disable gantry motor", handleOff},
+    {"speed", "set gantry speed (steps/sec)", handleSpeed},
+    {"dir", "set gantry direction", handleDir},
+    {"home", "home gantry", handleHome},
+    {"pos", "report gantry position", handlePos},
+    {"goto", "move gantry to steps", handleGoto},
+    {"gotomm", "move gantry to mm", handleGotoMm},
+    {"base", "select base", handleBase},
+    {"whichbase", "report selected base", handleWhichBase},
+    {"baseoff", "deselect base", handleBaseOff},
+    {"gobase", "move to base", handleGoBase},
+    {"servopulse", "set servo pulse", handleServoPulse},
+    {"servo", "set servo angle", handleServo},
+    {"raise", "raise toolhead", handleRaise},
+    {"servoslow", "set servo slowly", handleServoSlow},
+    {"couple", "couple syringes", handleCouple},
+    {"couplesyringes", "couple syringes", handleCouple},
+    {"move2", "move axis2", handleMove2},
+    {"move3", "move axis3", handleMove3},
+    {"speed23", "set axis2/3 speed", handleSpeed23},
+    {"m23", "move axis2 and 3", handleM23},
+    {"link", "link axes", handleLink},
+    {"pos2", "report axis2 position", handlePos2},
+    {"pos3", "report axis3 position", handlePos3},
+    {"rfid", "rfid controls", handleRfid},
+    {"rfid2", "base rfid controls", handleRfid2},
+    {"enc", "encoder controls", handleEncoder},
+    {"sfc.scanBases", "scan all base syringes", handleSfcScanBases},
+    {"sfc.run", "run current recipe", handleSfcRun},
+    {"sfc.load", "load recipe", handleSfcLoad},
+    {"sfc.save", "save recipe", handleSfcSave},
+    {"sfc.status", "sfc status", handleSfcStatus},
+    {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
+    {"sfc.scanTool", "scan toolhead syringe", handleSfcScanTool},
+    {"sfc.cal.t.empty", "capture toolhead empty", handleSfcCalTEmpty},
+    {"sfc.cal.t.full", "capture toolhead full", handleSfcCalTFull},
+    {"sfc.cal.t.save", "save toolhead calibration", handleSfcCalTSave},
+    {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
+    {"sfc.recipe.save", "save toolhead recipe", handleSfcRecipeSave},
+    {"sfc.recipe.load", "load toolhead recipe", handleSfcRecipeLoad},
+    {"sfc.base.setemptypos", "capture base empty", handleSfcBaseSetEmptyPos},
+    {"sfc.base.save", "save current base", handleSfcBaseSave},
+    {"sfc.base.show", "show current base", handleSfcBaseShow},
+    {"sfc.base.setfullpos", "capture base full", handleSfcBaseSetFullPos},
+    {"sfc.base.setmlfull", "set base ml full", handleSfcBaseSetMlFull},
+    {"sfc.tool.setmlfull", "set toolhead ml full", handleSfcToolSetMlFull},
+    {"potraw", "read pot", handlePotRaw},
+    {"basepot", "read base pot", handleBasePot},
+    {"potmove", "pot driven move", handlePotMove},
+};
+
+const size_t COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
+
+const CommandDescriptor *lookupCommand(const String &verb) {
+  for (size_t i = 0; i < COMMAND_COUNT; ++i) {
+    if (verb == COMMANDS[i].name) return &COMMANDS[i];
+  }
+  return nullptr;
+}
+
+}  // namespace
 
 void handleSerial() {
   while (Serial.available()) {
     char c = Serial.read();
     if (c == '\n') {
       input.trim();
-      if (input.length() == 0) { input = ""; continue; }
-
-      Serial.print("received: ");
-      Serial.println(input);
-
-      
-
-      // ---------------- Axis #1 (gantry) ----------------
-     if (input == "on") {
-        Axis::enable(true);
-        Serial.println("Motor ON");
-      } else if (input == "off") {
-        Axis::enable(false);
-        Serial.println("Motor OFF");
-      } else if (input.startsWith("speed ")) {       // free-run style speed setter (compat)
-        long sps = input.substring(6).toInt();
-        if (sps > 0) {
-          Axis::setSpeedSPS(sps);
-          Serial.print("Speed set to "); Serial.print(sps); Serial.println(" steps/sec");
-        }
-      } else if (input.startsWith("dir ")) {
-        int d = input.substring(4).toInt();
-        Axis::dir(d ? HIGH : LOW);
-        Serial.print("Direction set to "); Serial.println(d);
-      } else if (input == "home") {
-        Serial.println("Homing...");
-        Homing::home();
-      } else if (input == "pos") {
-        float mm = Axis::current() / Pins::STEPS_PER_MM;
-        Serial.print("POS steps="); Serial.print(Axis::current());
-        Serial.print("  mm=");      Serial.println(mm, 3);
-      
-      } else if (input.startsWith("goto ")) {        // absolute in steps
-        long tgt = input.substring(5).toInt();
-        if (tgt < Pins::MIN_POS_STEPS) tgt = Pins::MIN_POS_STEPS;
-        if (tgt > Pins::MAX_POS_STEPS) tgt = Pins::MAX_POS_STEPS;
-        Axis::enable(true);
-        Axis::moveTo(tgt);
-        Axis::enable(false);
-        Serial.println("OK");
-      } else if (input.startsWith("gotomm ")) {      // absolute in mm
-        float mm = input.substring(7).toFloat();
-        long tgt = mmToSteps(mm);
-        if (tgt < Pins::MIN_POS_STEPS) tgt = Pins::MIN_POS_STEPS;
-        if (tgt > Pins::MAX_POS_STEPS) tgt = Pins::MAX_POS_STEPS;
-        Axis::enable(true);
-        Axis::moveTo(tgt);
-        Axis::enable(false);
-        Serial.println("OK");
-
-      // ---------------- Bases ----------------
-      } else if (input.startsWith("base ")) {
-        int idx = input.substring(5).toInt(); // 0..NUM_BASES (0=off)
-        if (!Bases::select((uint8_t)idx)) {
-          Serial.print("Usage: base <0.."); Serial.print(Pins::NUM_BASES); Serial.println(">");
-        } else {
-          Serial.print("[Base] selected="); Serial.println(Bases::selected());
-        }
-      } else if (input == "whichbase") {
-        Serial.print("[Base] selected="); Serial.println(Bases::selected());
-      } else if (input == "baseoff") {
-        Bases::select(0);
-        Serial.println("[Base] off");
-      } else if (input.startsWith("gobase ")) {
-        long idx = input.substring(7).toInt(); // 1..NUM_BASES
-        if (idx < 1 || idx > Pins::NUM_BASES) {
-          Serial.print("Usage: gobase <1.."); Serial.print(Pins::NUM_BASES); Serial.println(">");
-        } else {
-          long tgt = Bases::getPos((uint8_t)idx);
-          if (tgt < 0) {
-            Serial.println("ERROR: failed to move to base (index).");
-          } else {
-            if (tgt < Pins::MIN_POS_STEPS || tgt > Pins::MAX_POS_STEPS) {
-              Serial.println("ERROR: base target outside soft limits.");
-            } else {
-              Axis::enable(true);
-              Axis::moveTo(tgt);
-              Axis::enable(false);
-              Serial.print("At Base #"); Serial.print(idx);
-              Serial.print(" (steps="); Serial.print(tgt); Serial.println(")");
-            }
-          }
-        }
-
-      // ---------------- Servos / Toolhead ----------------
-      } else if (input.startsWith("servopulse")) {
-        // "servopulse <channel> <us>"
-        int firstSpace = input.indexOf(' ');
-        if (firstSpace >= 0) {
-          String rest = input.substring(firstSpace + 1);
-          int sp = rest.indexOf(' ');
-          if (sp > 0) {
-            int ch  = rest.substring(0, sp).toInt();
-            int us  = rest.substring(sp + 1).toInt();
-            Toolhead::setPulseRaw(ch, us);
-            Serial.print("Servo "); Serial.print(ch);
-            Serial.print(" set to raw pulse length "); Serial.println(us);
-          } else Serial.println("Usage: servopulse <channel> <us>");
-        } else Serial.println("Usage: servopulse <channel> <us>");
-      } else if (input.startsWith("servo ")) {
-        // "servo <channel> <angle>"
-        int firstSpace = input.indexOf(' ', 6);
-        if (firstSpace > 0) {
-          int channel = input.substring(6, firstSpace).toInt();
-          int angle   = input.substring(firstSpace + 1).toInt();
-          if (channel < 0 || channel > 15) {
-            Serial.println("Error: channel must be 0–15");
-          } else {
-            Toolhead::setAngle(channel, angle);
-          }
-        } else {
-          Serial.println("Usage: servo <channel 0-15> <angle 0-180>");
-        }
-      } else if (input == "raise") {
-        Toolhead::raise();
-      } else if (input.startsWith("servoslow ")) {
-        // "servoslow <channel> <angle> [delay_ms]"
-        int firstSpace = input.indexOf(' ', 10);
-        if (firstSpace > 0) {
-          int channel = input.substring(10, firstSpace).toInt();
-          String rest = input.substring(firstSpace + 1);
-          int secondSpace = rest.indexOf(' ');
-          int angle, delayMs;
-          if (secondSpace > 0) {
-            angle   = rest.substring(0, secondSpace).toInt();
-            delayMs = rest.substring(secondSpace + 1).toInt();
-          } else {
-            angle   = rest.toInt();
-            delayMs = 15;
-          }
-          if (channel < 0 || channel > 15) Serial.println("Error: channel must be 0–15");
-          else Toolhead::setAngleSlow(channel, angle, delayMs);
-        } else {
-          Serial.println("Usage: servoslow <channel> <angle 0-180> [delay_ms]");
-        }
-      } else if (input == "couple" || input == "couplesyringes") {
-        Toolhead::couple();
-        Serial.println("OK coupleSyringes");
-
-      // ---------------- Axis 2 & 3 ----------------
-      } else if (input.startsWith("move2 ")) {
-        long s = input.substring(6).toInt();
-        AxisPair::move2(s);  // toolhead syringe
-        Serial.println("OK move2");
-      } else if (input.startsWith("move3 ")) {
-        if (Bases::selected() == 0) {
-          Serial.println("ERR move3: no base selected. Use 'base <1..5>' first.");
-        } else {
-          String rest = input.substring(6);
-          int sp = rest.indexOf(' ');
-          if (sp < 0) {
-            long steps = rest.toInt();
-            AxisPair::move3(steps);
-            Serial.println("OK move3");
-          }
-        }
-      } else if (input.startsWith("speed23 ")) {
-        long sps = input.substring(8).toInt();
-        AxisPair::setSpeedSPS(sps);
-      } else if (input.startsWith("m23 ")) {
-        int sp = input.indexOf(' ', 4);
-        if (sp > 0) {
-          long s2 = input.substring(4, sp).toInt();
-          long s3 = input.substring(sp + 1).toInt();
-          if (s3 != 0 && Bases::selected() == 0) {
-            Serial.println("ERR m23: base steps requested but no base selected. Use 'base <1..5>'.");
-          } else {
-            AxisPair::moveSync(s2, s3);
-            Serial.println("OK m23");
-          }
-        } else {
-          Serial.println("Usage: m23 <steps2> <steps3>");
-        }
-      } else if (input.startsWith("link ")) {
-        long s = input.substring(5).toInt();
-        if (Bases::selected() == 0) {
-          Serial.println("ERR link: no base selected. Use 'base <1..5>' first.");
-        } else {
-          AxisPair::link(s);
-          Serial.println("OK link");
-        }
-      } else if (input == "pos2") {
-        float mm = AxisPair::pos2() / Pins::STEPS_PER_MM;
-        Serial.print("POS2 steps="); Serial.print(AxisPair::pos2());
-        Serial.print("  mm=");       Serial.println(mm, 3);
-      } else if (input == "pos3") {
-        float mm = AxisPair::pos3() / Pins::STEPS_PER_MM;
-        Serial.print("POS3 steps="); Serial.print(AxisPair::pos3());
-        Serial.print("  mm=");       Serial.println(mm, 3);
-
-
-      } else if (input == "rfid" || input.startsWith("rfid ")) {
-  String arg = "";
-  if (input.length() > 5)
-    arg = input.substring(5);
-
-  if (arg == "on") {
-    RFID::enable(true);
-    Serial.println(F("[rfid] polling enabled"));
-  } else if (arg == "off") {
-    RFID::enable(false);
-    Serial.println(F("[rfid] polling disabled"));
-  } else if (arg == "once") {
-    Serial.println(F("[rfid] detecting once..."));
-    RFID::detectOnce(30, 100); // ~3 s total
-  } else {
-    Serial.println(F("[rfid] usage: rfid on | off | once"));
-  }
-
-} else if (input == "rfid2" || input.startsWith("rfid2 ")) {
-  String arg = (input.length() > 6) ? input.substring(6) : "";
-
-  if (arg == "on") {
-    BaseRFID::enable(true);
-    Serial.println(F("[rfid2] polling enabled (SPI PN532)"));
-  } 
-  else if (arg == "off") {
-    BaseRFID::enable(false);
-    Serial.println(F("[rfid2] polling disabled"));
-  } 
-  else if (arg.startsWith("once")) {
-    // Example:  rfid2 once 50   → 50 tries with 100 ms delay each
-    int tries = 30;
-    int spaceIndex = arg.indexOf(' ');
-    if (spaceIndex > 0) {
-      int val = arg.substring(spaceIndex + 1).toInt();
-      if (val > 0 && val < 200) tries = val;
-    }
-    Serial.print(F("[rfid2] detecting once (~"));
-    Serial.print(tries * 100 / 1000.0, 1);
-    Serial.println(F(" s window)…"));
-    BaseRFID::detectOnce(tries, 100);
-  } 
-  else {
-    Serial.println(F("[rfid2] usage: rfid2 on | off | once [tries]"));
-  }
-
-      // ---------------- Encoder ----------------
-      } else if (input == "enc" || input.startsWith("enc ")) {
-        // enc
-        // enc on
-        // enc off
-        // enc zero
-        String arg = "";
-        if (input.length() > 4) {
-          arg = input.substring(4);
-          arg.trim();
-          arg.toLowerCase();
-        }
-
-        if (arg.length() == 0) {
-          long c = EncoderHW::count();
-          float mm = EncoderHW::mm();
-          Serial.printf("[enc] count=%ld pos=%.3f mm\n", c, mm);
-        } else if (arg == "on") {
-          EncoderHW::setPolling(true);
-          Serial.println("[enc] polling ON");
-        } else if (arg == "off") {
-          EncoderHW::setPolling(false);
-          Serial.println("[enc] polling OFF");
-        } else if (arg == "zero" || arg == "reset") {
-          EncoderHW::reset();
-          Serial.println("[enc] zeroed");
-        } else {
-          Serial.println("[enc] usage: enc | enc on | enc off | enc zero");
-        }
-
-              // ---------------- SFC (Syringe Fill Controller) ----------------
-      } else if (input == "sfc.scanBases") {
-        Serial.println("[SFC] scanning all base syringes...");
-        g_sfc.scanAllBaseSyringes();
-        Serial.println("[SFC] scan complete.");
-      
-      } else if (input == "sfc.run") {
-        Serial.println("[SFC] running current recipe...");
-        g_sfc.runRecipe();
-        Serial.println("[SFC] recipe done.");
-      } else if (input == "sfc.load") {
-        // load recipe for whatever toolhead RFID is currently known
-        if (g_sfc.loadToolheadRecipeFromFS()) {
-          Serial.println("[SFC] recipe loaded from FS.");
-        } else {
-          Serial.println("[SFC] ERROR: no recipe for this toolhead in FS.");
-        }
-      } else if (input == "sfc.save") {
-        if (g_sfc.saveToolheadRecipeToFS()) {
-          Serial.println("[SFC] recipe saved to FS.");
-        } else {
-          Serial.println("[SFC] ERROR: could not save recipe (missing toolhead RFID?).");
-        }
-      } else if (input == "sfc.status") {
-        Serial.println("[SFC] status:");
-        Serial.print("  toolhead RFID: 0x");
-        // we don't have a getter, so hacky: add a quick lambda to print
-        // but we can’t access private members here, so just say we don’t know:
-        Serial.println("(not exposed)");
-        Serial.println("  (tip: enable SFC debug in SyringeFillController.cpp to see details.)");
-
-      } else if (input.startsWith("sfc.scanbase ")) {
-        uint8_t slot = input.substring(strlen("sfc.scanbase ")).toInt();
-        g_sfc.scanBaseSyringe(slot);
-          
-    } else if (input == "sfc.scanTool") {
-      Serial.println("[SFC] scanning toolhead syringe (blocking)...");
-      if (g_sfc.scanToolheadBlocking()) {
-        Serial.println("[SFC] toolhead scan OK");
-      } else {
-        Serial.println("[SFC] toolhead scan FAILED");
+      if (input.length() == 0) {
+        input = "";
+        continue;
       }
 
+      int spaceIndex = input.indexOf(' ');
+      String verb = (spaceIndex > 0) ? input.substring(0, spaceIndex) : input;
+      String args = (spaceIndex > 0) ? input.substring(spaceIndex + 1) : "";
+      args.trim();
 
-      // ---------------- SFC CALIBRATION ----------------
-      } else if (input == "sfc.cal.t.empty") {
-        if (g_sfc.captureToolheadEmpty()) {
-          Serial.println("[SFC] toolhead EMPTY point captured.");
-        } else {
-          Serial.println("[SFC] ERROR: capture empty failed (scan toolhead first).");
-        }
-      } else if (input.startsWith("sfc.cal.t.full ")) {
-        // sfc.cal.t.full 12.0
-        float ml = input.substring(strlen("sfc.cal.t.full ")).toFloat();
-        if (ml <= 0.0f) {
-          Serial.println("[SFC] usage: sfc.cal.t.full <ml>");
-        } else {
-          if (g_sfc.captureToolheadFull(ml)) {
-            Serial.print("[SFC] toolhead FULL point captured at ");
-            Serial.print(ml, 3);
-            Serial.println(" mL.");
-          } else {
-            Serial.println("[SFC] ERROR: capture full failed (scan toolhead first).");
-          }
-        }
-      } else if (input == "sfc.cal.t.save") {
-        if (g_sfc.saveToolheadCalibration()) {
-          Serial.println("[SFC] toolhead calibration saved to NVS.");
-        } else {
-          Serial.println("[SFC] ERROR: could not save toolhead calibration.");
-        }
-
-      } else if (input == "sfc.tool.show" || input == "sfc.cal.t.show") {
-      // Print toolhead calibration + live reading
-      Serial.println("[SFC] sfc.tool.show.");
-      g_sfc.printToolheadInfo(Serial);
-
-
-      // make recipe names clearer
-      } else if (input == "sfc.recipe.save") {
-        if (g_sfc.saveToolheadRecipeToFS()) {
-          Serial.println("[SFC] recipe saved to FS.");
-        } else {
-          Serial.println("[SFC] ERROR: no toolhead RFID, cannot save recipe.");
-        }
-      } else if (input == "sfc.recipe.load") {
-        if (g_sfc.loadToolheadRecipeFromFS()) {
-          Serial.println("[SFC] recipe loaded from FS.");
-        } else {
-          Serial.println("[SFC] ERROR: no recipe for this toolhead.");
-        }
-
-      // ----- SFC base-level calibration -----
-      } else if (input == "sfc.base.setemptypos") {
-        int8_t slot = g_sfc.currentSlot();
-        if (slot < 0) {
-          Serial.println("[SFC] no current base – run sfc.scanbase N or gobase N first");
-        } else {
-          if (g_sfc.captureBaseEmpty((uint8_t)slot)) {
-            Serial.print("[SFC] empty position captured for base ");
-            Serial.println(slot);
-          } else {
-            Serial.println("[SFC] failed to capture empty position");
-          }
-        }
-      } else if (input == "sfc.base.save") {
-        if (g_sfc.saveCurrentBaseToNVS()) {
-          Serial.println("[SFC] current base saved to NVS");
-        } else {
-          Serial.println("[SFC] ERROR saving current base to NVS");
-        }
-      } else if (input == "sfc.base.show") {
-        int8_t slot = g_sfc.currentSlot();
-        if (slot < 0) {
-          Serial.println("[SFC] no current base");
-        } else {
-          g_sfc.printBaseInfo((uint8_t)slot, Serial);
-        }
-
-      // ---------------- SFC BASE CALIBRATION ----------------
-      } else if (input == "sfc.base.setemptypos") {
-        if (g_sfc.captureCurrentBaseEmpty()) {
-          Serial.println("[SFC] base EMPTY point captured and saved.");
-        } else {
-          Serial.println("[SFC] ERROR: could not capture base empty (is SFC at a base?)");
-        }
-      } else if (input == "sfc.base.setfullpos") {
-        if (g_sfc.captureCurrentBaseFull()) {
-          Serial.println("[SFC] base FULL point captured and saved.");
-        } else {
-          Serial.println("[SFC] ERROR: could not capture base full (is SFC at a base?)");
-        }
-      } else if (input.startsWith("sfc.base.setmlfull ")) {
-        float ml = input.substring(strlen("sfc.base.setmlfull ")).toFloat();
-        if (ml <= 0.0f) {
-          Serial.println("[SFC] usage: sfc.base.setmlfull <ml>");
-        } else {
-          if (g_sfc.setCurrentBaseMlFull(ml)) {
-            Serial.print("[SFC] base mlFull set to ");
-            Serial.print(ml, 3);
-            Serial.println(" mL and saved.");
-          } else {
-            Serial.println("[SFC] ERROR: could not set base mlFull.");
-          }
-        }
-      } else if (input.startsWith("sfc.tool.setmlfull ")) {
-        float ml = input.substring(strlen("sfc.tool.setmlfull ")).toFloat();
-        if (ml <= 0.0f) {
-          Serial.println("[SFC] usage: sfc.tool.setmlfull <ml>");
-        } else {
-          if (g_sfc.setToolheadMlFull(ml)) {
-            Serial.print("[SFC] toolhead mlFull set to ");
-            Serial.print(ml, 3);
-            Serial.println(" mL and saved.");
-          } else {
-            Serial.println("[SFC] ERROR: could not set toolhead mlFull (scan toolhead first).");
-          }
-        }
-
-      } else if (input.startsWith("potraw ")) {
-        uint8_t i = input.substring(7).toInt();
-        uint16_t c = Pots::readCounts(i);
-        uint16_t s = Pots::readScaled(i);
-        Serial.print("[potraw] idx="); Serial.print(i);
-        Serial.print(" counts="); Serial.print(c);
-        Serial.print(" scaled="); Serial.println(s);
-
-      } else if (input.startsWith("basepot ")) {
-        uint8_t b = input.substring(7).toInt();
-        uint8_t i = Pins::BASE_POT_IDX[i];
-        uint16_t c = Pots::readCounts(i);
-        uint16_t s = Pots::readScaled(i);
-        Serial.print("[basepot] idx="); Serial.print(b);
-        Serial.print("[potraw] idx="); Serial.print(i);
-        Serial.print(" counts="); Serial.print(c);
-        Serial.print(" scaled="); Serial.println(s);
-
-        
-      // ---------------- Pot-driven motion (kept) ----------------
-      } else if (input.startsWith("potmove ")) {
-        // "potmove <target_adc 0-1023> <sps>"  (toolhead/Axis2 only)
-        int sp = input.indexOf(' ', 8);
-        if (sp < 0) {
-          Serial.println("Usage: potmove <target_adc 0-1023> <sps>");
-        } else {
-          uint16_t target = (uint16_t)input.substring(8, sp).toInt();
-          long sps = input.substring(sp + 1).toInt();
-          bool ok = AxisPair::move2UntilPotSimple(target, sps);
-          if (ok) Serial.println("OK potmove");
-          else    Serial.println("ERR potmove");
-        }
-
+      const CommandDescriptor *cmd = lookupCommand(verb);
+      if (cmd) {
+        cmd->handler(args);
       } else {
-        Serial.println("Invalid command.");
+        ActionResult res{false, "unknown command"};
+        printStructured(verb.c_str(), res);
       }
 
       input = "";
@@ -503,5 +428,5 @@ void handleSerial() {
     }
   }
 }
-}
- // namespace CommandRouter
+
+}  // namespace CommandRouter
