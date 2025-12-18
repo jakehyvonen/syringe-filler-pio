@@ -73,27 +73,6 @@ Use examples liberally, and show the expected output if you can. It's helpful to
 ## Support
 Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
 
-## Serial command reference
-
-The firmware exposes a line-delimited command interface over serial. Each response is emitted as a single JSON object with three fields:
-
-```
-{"cmd":"<verb>","status":"ok|error","message":"<detail>","data":{...optional...}}
-```
-
-Only the `data` object is optional and is present when a command returns structured measurements. Examples include position reports (`steps` and `mm`) and sensor reads (`counts` and `scaled`).
-
-### Supported verbs
-
-- Gantry and motion: `on`, `off`, `speed <steps_per_sec>`, `dir <0|1>`, `home`, `pos`, `goto <steps>`, `gotomm <mm>`, `move2 <steps>`, `move3 <steps>`, `speed23 <steps_per_sec>`, `m23 <steps2> <steps3>`, `link <steps>`, `pos2`, `pos3`.
-- Bases: `base <idx>`, `baseoff`, `whichbase`, `gobase <idx>`.
-- Servos and toolhead: `servopulse <channel> <us>`, `servo <channel> <angle>`, `servoslow <channel> <angle> [delay_ms]`, `raise`, `couple`.
-- RFID and encoder: `rfid on|off|once`, `rfid2 on|off|once [tries]`, `enc`, `enc on|off|zero`.
-- Syringe Fill Controller: `sfc.run`, `sfc.load`, `sfc.save`, `sfc.scanBases`, `sfc.scanbase <slot>`, `sfc.scanTool`, `sfc.status`, `sfc.cal.t.empty`, `sfc.cal.t.full <ml>`, `sfc.cal.t.save`, `sfc.tool.show`, `sfc.recipe.save`, `sfc.recipe.load`, `sfc.base.setemptypos`, `sfc.base.setfullpos`, `sfc.base.setmlfull <ml>`, `sfc.base.save`, `sfc.base.show`, `sfc.tool.setmlfull <ml>`.
-- Pots and pot-driven motion: `potraw <idx>`, `basepot <base_idx>`, `potmove <target_adc> <sps>`.
-
-The `status` field is `"ok"` when a command is accepted and `"error"` when rejected (for example, missing parameters or invalid base selection). Downstream consumers can key off the `cmd` and `status` fields without parsing human-readable log lines.
-
 ## Roadmap
 If you have ideas for releases in the future, it is a good idea to list them in the README.
 
