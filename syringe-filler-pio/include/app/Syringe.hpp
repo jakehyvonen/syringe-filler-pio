@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <math.h>
 
 namespace App {
 
@@ -27,17 +28,53 @@ struct PotCalibration {
   uint16_t adcFull  = 4095;  // raw ADC at max mL
   float    mlFull   = 10.1f; // how many mL does adcFull mean?
   float    steps_mL = 1.01f; //calibrated steps per mL
-  CalibrationPoint points[kMaxPoints] = {};
-  uint8_t pointCount = 0;
   bool     legacy   = false;
+  struct CalibrationPoint {
+    float volume_ml = 0.0f;
+    float ratio     = 0.0f; // V_channel / V_ref (0..1 or 0..100)
+  };
 
-  float rawToMl(uint16_t raw) const {
-    int32_t span = (int32_t)adcFull - (int32_t)adcEmpty;
-    if (span <= 0) return 0.0f;
-    float t = ((int32_t)raw - (int32_t)adcEmpty) / (float)span;
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    return t * mlFull;
+  static constexpr uint8_t kMaxPoints = 8;
+  uint8_t         pointCount = 0;
+  CalibrationPoint points[kMaxPoints];
+  float           steps_mL = 1.01f; // calibrated steps per mL
+
+  bool addPoint(float volume_ml, float ratio) {
+    if (!isfinite(volume_ml) || !isfinite(ratio)) return false;
+    constexpr float kEps = 1e-4f;
+    for (uint8_t i = 0; i < pointCount; ++i) {
+      if (fabsf(points[i].ratio - ratio) <= kEps) {
+        points[i].volume_ml = volume_ml;
+        return true;
+      }
+    }
+    if (pointCount >= kMaxPoints) return false;
+    uint8_t insertAt = pointCount;
+    while (insertAt > 0 && ratio < points[insertAt - 1].ratio) {
+      points[insertAt] = points[insertAt - 1];
+      --insertAt;
+    }
+    points[insertAt] = {volume_ml, ratio};
+    ++pointCount;
+    return true;
+  }
+
+  float ratioToMl(float ratio) const {
+    if (pointCount == 0) return 0.0f;
+    if (pointCount == 1) return points[0].volume_ml;
+    if (ratio <= points[0].ratio) return points[0].volume_ml;
+    for (uint8_t i = 1; i < pointCount; ++i) {
+      if (ratio <= points[i].ratio) {
+        const float r0 = points[i - 1].ratio;
+        const float r1 = points[i].ratio;
+        const float v0 = points[i - 1].volume_ml;
+        const float v1 = points[i].volume_ml;
+        if (fabsf(r1 - r0) <= 1e-6f) return v0;
+        const float t = (ratio - r0) / (r1 - r0);
+        return v0 + (v1 - v0) * t;
+      }
+    }
+    return points[pointCount - 1].volume_ml;
   }
 };
 
