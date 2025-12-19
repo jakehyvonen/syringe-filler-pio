@@ -31,6 +31,17 @@ struct PotCalibration {
   }
 };
 
+struct CalibrationPoint {
+  float volumeMl = 0.0f;
+  float ratio = 0.0f;
+};
+
+struct CalibrationPoints {
+  static constexpr uint8_t kMaxPoints = 8;
+  CalibrationPoint points[kMaxPoints];
+  uint8_t count = 0;
+};
+
 // ----------------------------------------------------
 // Syringe (runtime object)
 // ----------------------------------------------------
@@ -38,6 +49,7 @@ struct Syringe {
   uint32_t     rfid      = 0;          // unique tag ID
   SyringeRole  role      = SyringeRole::Unknown;
   PotCalibration cal;                  // loaded from NVS (per RFID)
+  CalibrationPoints calPoints;         // ratiometric calibration points
   float        currentMl = 0.0f;       // last measured volume
   uint8_t      slot      = 0;          // which base position (for base syringes)
   String       colorName;              // e.g. "Cobalt Blue" (optional)

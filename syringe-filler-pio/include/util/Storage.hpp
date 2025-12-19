@@ -26,8 +26,8 @@ bool initStorage();
 // calibration + base metadata
 bool loadCalibration(uint32_t rfid, App::PotCalibration& out);
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal);
-bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal);
-bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal);
+bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal, App::CalibrationPoints& points);
+bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal, const App::CalibrationPoints& points);
 
 // base axis positions (index = 0-based base slot)
 bool loadBasePos(uint8_t idx0, long& steps);

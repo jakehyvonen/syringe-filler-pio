@@ -62,6 +62,14 @@ struct BaseBlobV1 {
   uint32_t crc;
 };
 
+struct BaseBlobV2 {
+  uint16_t version;
+  Util::BaseMeta meta;
+  App::PotCalibration cal;
+  App::CalibrationPoints points;
+  uint32_t crc;
+};
+
 bool initStorage() {
   // NVS
   if (nvs_flash_init() != ESP_OK) return false;
@@ -96,25 +104,58 @@ bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
 }
 
 // ---------------------- base meta ------------------------
-bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
-  BaseBlobV1 blob;
+bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal, App::CalibrationPoints& points) {
   String key = rfidKey(rfid, ":meta");
-  if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
-  uint32_t saved = blob.crc;
-  blob.crc = 0;
-  uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-  if (saved != calc) return false;
-  if (blob.version != 1) return false;
-  meta = blob.meta;
-  cal  = blob.cal;
-  return true;
+  nvs_handle_t h;
+  if (nvs_open("base", NVS_READONLY, &h) != ESP_OK) return false;
+  size_t required = 0;
+  esp_err_t err = nvs_get_blob(h, key.c_str(), nullptr, &required);
+  if (err != ESP_OK) {
+    nvs_close(h);
+    return false;
+  }
+
+  bool ok = false;
+  if (required == sizeof(BaseBlobV2)) {
+    BaseBlobV2 blob;
+    err = nvs_get_blob(h, key.c_str(), &blob, &required);
+    if (err == ESP_OK) {
+      uint32_t saved = blob.crc;
+      blob.crc = 0;
+      uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
+      if (saved == calc && blob.version == 2) {
+        meta = blob.meta;
+        cal = blob.cal;
+        points = blob.points;
+        ok = true;
+      }
+    }
+  } else if (required == sizeof(BaseBlobV1)) {
+    BaseBlobV1 blob;
+    err = nvs_get_blob(h, key.c_str(), &blob, &required);
+    if (err == ESP_OK) {
+      uint32_t saved = blob.crc;
+      blob.crc = 0;
+      uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
+      if (saved == calc && blob.version == 1) {
+        meta = blob.meta;
+        cal = blob.cal;
+        points.count = 0;
+        ok = true;
+      }
+    }
+  }
+
+  nvs_close(h);
+  return ok;
 }
 
-bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal) {
-  BaseBlobV1 blob;
-  blob.version = 1;
+bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal, const App::CalibrationPoints& points) {
+  BaseBlobV2 blob;
+  blob.version = 2;
   blob.meta    = meta;
   blob.cal     = cal;
+  blob.points  = points;
   blob.crc     = 0;
   blob.crc     = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
   String key   = rfidKey(rfid, ":meta");
