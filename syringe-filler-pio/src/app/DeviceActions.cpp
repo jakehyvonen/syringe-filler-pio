@@ -320,14 +320,28 @@ ActionResult sfcCaptureCurrentBaseFull(App::SyringeFillController &sfc) {
   return {ok, ok ? "base full captured" : "capture base full failed"};
 }
 
+ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, int8_t slot) {
+  String message;
+  bool ok = false;
+  if (slot < 0) {
+    ok = sfc.captureCurrentBaseCalibrationPoint(ml, message);
+    if (!ok && message.length() == 0) {
+      message = "no current base";
+    }
+  } else {
+    ok = sfc.captureBaseCalibrationPoint((uint8_t)slot, ml, message);
+  }
+  return {ok, message.length() ? message : (ok ? "calibration point saved" : "calibration point failed")};
+}
+
 ActionResult sfcSetCurrentBaseMlFull(App::SyringeFillController &sfc, float ml) {
   bool ok = sfc.setCurrentBaseMlFull(ml);
-  return {ok, ok ? "base ml full set" : "set base ml full failed"};
+  return {ok, ok ? "base ml full set (deprecated: use sfc.cal.base.point)" : "set base ml full failed"};
 }
 
 ActionResult sfcSetToolheadMlFull(App::SyringeFillController &sfc, float ml) {
   bool ok = sfc.setToolheadMlFull(ml);
-  return {ok, ok ? "tool ml full set" : "set tool ml full failed"};
+  return {ok, ok ? "tool ml full set (deprecated)" : "set tool ml full failed"};
 }
 
 // Pots
@@ -352,4 +366,3 @@ ActionResult potMove(uint16_t target, long sps) {
 
 }  // namespace DeviceActions
 }  // namespace App
-

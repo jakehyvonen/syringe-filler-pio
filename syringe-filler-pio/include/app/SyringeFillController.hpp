@@ -25,6 +25,11 @@ public:
   bool captureCurrentBaseFull() { 
     return (m_currentSlot >= 0) ? captureBaseFull((uint8_t)m_currentSlot) : false;
   }
+  bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
+  bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
+    return (m_currentSlot >= 0) ? captureBaseCalibrationPoint((uint8_t)m_currentSlot, ml, message) : false;
+  }
+  bool getCurrentBaseMlFull(float& ml) const;
   bool setCurrentBaseMlFull(float ml);
   bool setToolheadMlFull(float ml);  
   bool loadToolheadRecipeFromFS();
@@ -50,6 +55,10 @@ private:
   float    readToolheadVolumeMl();
   float    readBaseVolumeMl(uint8_t slot);
   bool     transferFromBase(uint8_t slot, float ml);
+  uint16_t readToolheadRawADC();
+  uint16_t readBaseRawADC(uint8_t slot);
+  bool readBasePotRatio(uint8_t slot, float& ratio, String& message) const;
+  static float interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok);
   float    readToolheadRatio();
   float    readBaseRatio(uint8_t slot);
 

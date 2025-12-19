@@ -7,6 +7,7 @@
 #include "hw/BaseRFID.hpp"
 #include "util/Storage.hpp"   // Util::loadBase, Util::saveBase, Util::loadRecipe, ...
 #include <Arduino.h>
+#include <math.h>
 
 namespace App {
 
@@ -199,8 +200,10 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
 // try to load from NVS
 Util::BaseMeta meta;
 PotCalibration cal;
-if (Util::loadBase(tag, meta, cal)) {
+App::CalibrationPoints points;
+if (Util::loadBase(tag, meta, cal, points)) {
   s.cal = cal;
+  s.calPoints = points;
   if (SFC_DBG) {
     Serial.print("[SFC] scanBaseSyringe(): existing base loaded from NVS for tag 0x");
     Serial.println(tag, HEX);
@@ -215,7 +218,8 @@ if (Util::loadBase(tag, meta, cal)) {
     Serial.println(tag, HEX);
   }
   memset(&meta, 0, sizeof(meta));
-  Util::saveBase(tag, meta, s.cal);
+  s.calPoints.count = 0;
+  Util::saveBase(tag, meta, s.cal, s.calPoints);
 }
 
 
@@ -265,11 +269,14 @@ bool SyringeFillController::setCurrentBaseMlFull(float ml) {
   // keep meta, overwrite cal in NVS
   Util::BaseMeta meta;
   App::PotCalibration dummy;
-  Util::loadBase(sy.rfid, meta, dummy);
-  bool saved = ok && Util::saveBase(sy.rfid, meta, sy.cal);
-  if (SFC_DBG) Serial.println(saved ? "[SFC] setCurrentBaseMlFull(): saved to NVS"
-                                    : "[SFC] setCurrentBaseMlFull(): FAILED to save to NVS");
-  return saved;
+  App::CalibrationPoints points;
+  Util::loadBase(sy.rfid, meta, dummy, points);
+  (void)dummy;
+  (void)points;
+  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+  if (SFC_DBG) Serial.println(ok ? "[SFC] setCurrentBaseMlFull(): saved to NVS"
+                                 : "[SFC] setCurrentBaseMlFull(): FAILED to save to NVS");
+  return ok;
 }
 bool SyringeFillController::setToolheadMlFull(float ml) {
   if (ml <= 0.0f) {
@@ -334,6 +341,52 @@ float SyringeFillController::readBaseRatio(uint8_t slot) {
   return ratio;
 }
 
+bool SyringeFillController::readBasePotRatio(uint8_t slot, float& ratio, String& message) const {
+  if (slot >= Bases::kCount) {
+    message = "base slot out of range";
+    return false;
+  }
+
+  int8_t potIdx = getBasePotIndex(slot);
+  if (potIdx < 0) {
+    message = "no pot mapped for base";
+    return false;
+  }
+
+  float percent = Pots::percent((uint8_t)potIdx);
+  ratio = percent / 100.0f;
+  if (ratio < 0.0f) ratio = 0.0f;
+  if (ratio > 1.0f) ratio = 1.0f;
+  return true;
+}
+
+float SyringeFillController::interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok) {
+  ok = false;
+  if (points.count < 2) return NAN;
+
+  if (ratio <= points.points[0].ratio) {
+    ok = true;
+    return points.points[0].volumeMl;
+  }
+  if (ratio >= points.points[points.count - 1].ratio) {
+    ok = true;
+    return points.points[points.count - 1].volumeMl;
+  }
+
+  for (uint8_t i = 0; i + 1 < points.count; ++i) {
+    const CalibrationPoint& a = points.points[i];
+    const CalibrationPoint& b = points.points[i + 1];
+    if (ratio >= a.ratio && ratio <= b.ratio) {
+      float denom = b.ratio - a.ratio;
+      if (denom <= 0.0f) return NAN;
+      float t = (ratio - a.ratio) / denom;
+      ok = true;
+      return a.volumeMl + t * (b.volumeMl - a.volumeMl);
+    }
+  }
+  return NAN;
+}
+
 // --------------------------------------------------
 // capture base EMPTY (pot @ fully empty)
 // --------------------------------------------------
@@ -369,11 +422,14 @@ bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
   if (tag != 0) {
     Util::BaseMeta meta;
     App::PotCalibration dummy;
+    App::CalibrationPoints points;
     // load ONLY meta, ignore old cal
-    Util::loadBase(tag, meta, dummy);
-    bool saved = ok && Util::saveBase(tag, meta, m_bases[slot].cal);
-    if (SFC_DBG) Serial.println(saved ? "[SFC] captureBaseEmpty(): saved to NVS" :
-                                        "[SFC] captureBaseEmpty(): FAILED to save to NVS");
+    Util::loadBase(tag, meta, dummy, points);
+    (void)dummy;
+    (void)points;
+    bool ok = Util::saveBase(tag, meta, m_bases[slot].cal, m_bases[slot].calPoints);
+    if (SFC_DBG) Serial.println(ok ? "[SFC] captureBaseEmpty(): saved to NVS" :
+                                     "[SFC] captureBaseEmpty(): FAILED to save to NVS");
   }
 
   return ok;
@@ -409,13 +465,104 @@ bool SyringeFillController::captureBaseFull(uint8_t slot) {
   if (tag != 0) {
     Util::BaseMeta meta;
     App::PotCalibration dummy;
-    Util::loadBase(tag, meta, dummy);               // keep meta
-    bool saved = ok && Util::saveBase(tag, meta, m_bases[slot].cal);
-    if (SFC_DBG) Serial.println(saved ? "[SFC] captureBaseFull(): saved to NVS" :
-                                        "[SFC] captureBaseFull(): FAILED to save to NVS");
+    App::CalibrationPoints points;
+    Util::loadBase(tag, meta, dummy, points);               // keep meta
+    (void)dummy;
+    (void)points;
+    bool ok = Util::saveBase(tag, meta, m_bases[slot].cal, m_bases[slot].calPoints);
+    if (SFC_DBG) Serial.println(ok ? "[SFC] captureBaseFull(): saved to NVS" :
+                                     "[SFC] captureBaseFull(): FAILED to save to NVS");
   }
 
   return ok;
+}
+
+bool SyringeFillController::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
+  if (slot >= Bases::kCount) {
+    message = "base slot out of range";
+    return false;
+  }
+  if (ml < 0.0f) {
+    message = "volume must be >= 0";
+    return false;
+  }
+
+  Syringe& sy = m_bases[slot];
+  if (sy.rfid == 0) {
+    message = "base has no RFID; run sfc.scanbase first";
+    return false;
+  }
+
+  float ratio = 0.0f;
+  String ratioMessage;
+  if (!readBasePotRatio(slot, ratio, ratioMessage)) {
+    message = ratioMessage;
+    return false;
+  }
+
+  CalibrationPoints& points = sy.calPoints;
+  const float kRatioEpsilon = 0.0025f;
+  for (uint8_t i = 0; i < points.count; ++i) {
+    if (fabsf(points.points[i].ratio - ratio) <= kRatioEpsilon) {
+      points.points[i].volumeMl = ml;
+      Util::BaseMeta meta;
+      App::PotCalibration cal;
+      App::CalibrationPoints savedPoints;
+      if (!Util::loadBase(sy.rfid, meta, cal, savedPoints)) {
+        memset(&meta, 0, sizeof(meta));
+      }
+      (void)cal;
+      (void)savedPoints;
+      bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+      message = ok ? "updated calibration point" : "failed to save calibration point";
+      return ok;
+    }
+  }
+
+  if (points.count >= CalibrationPoints::kMaxPoints) {
+    message = "calibration point list full";
+    return false;
+  }
+
+  uint8_t insertAt = 0;
+  while (insertAt < points.count && points.points[insertAt].ratio < ratio) {
+    insertAt++;
+  }
+  for (uint8_t i = points.count; i > insertAt; --i) {
+    points.points[i] = points.points[i - 1];
+  }
+  points.points[insertAt].volumeMl = ml;
+  points.points[insertAt].ratio = ratio;
+  points.count++;
+
+  Util::BaseMeta meta;
+  App::PotCalibration cal;
+  App::CalibrationPoints savedPoints;
+  if (!Util::loadBase(sy.rfid, meta, cal, savedPoints)) {
+    memset(&meta, 0, sizeof(meta));
+  }
+  (void)cal;
+  (void)savedPoints;
+  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+  if (!ok) {
+    message = "failed to save calibration point";
+    return false;
+  }
+
+  if (points.count < 2) {
+    message = "point saved; add at least 2 points to enable interpolation";
+  } else {
+    message = "point saved";
+  }
+  return true;
+}
+
+bool SyringeFillController::getCurrentBaseMlFull(float& ml) const {
+  if (m_currentSlot < 0 || m_currentSlot >= (int)Bases::kCount) {
+    return false;
+  }
+  ml = m_bases[m_currentSlot].cal.mlFull;
+  return ml > 0.0f;
 }
 
 // --------------------------------------------------
@@ -435,14 +582,16 @@ bool SyringeFillController::saveCurrentBaseToNVS() {
 
   Util::BaseMeta meta;
   PotCalibration cal;
-  if (Util::loadBase(sy.rfid, meta, cal)) {
+  App::CalibrationPoints points;
+  if (Util::loadBase(sy.rfid, meta, cal, points)) {
     // update cal
     cal = sy.cal;
     if (SFC_DBG) {
       Serial.print("[SFC] saveCurrentBaseToNVS(): updating existing base 0x");
       Serial.println(sy.rfid, HEX);
     }
-    return Util::saveBase(sy.rfid, meta, cal);
+    (void)points;
+    return Util::saveBase(sy.rfid, meta, cal, sy.calPoints);
   } else {
     // create new
     if (SFC_DBG) {
@@ -450,7 +599,7 @@ bool SyringeFillController::saveCurrentBaseToNVS() {
       Serial.println(sy.rfid, HEX);
     }
     memset(&meta, 0, sizeof(meta));
-    return Util::saveBase(sy.rfid, meta, sy.cal);
+    return Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
   }
 }
 
@@ -476,6 +625,18 @@ void SyringeFillController::printBaseInfo(uint8_t slot, Stream& s) {
     s.print("]");
   }
   s.print(" steps_mL=");   s.print(sy.cal.steps_mL, 3);
+  s.print(" calPoints="); s.print(sy.calPoints.count);
+  if (sy.calPoints.count > 0) {
+    s.print(" [");
+    for (uint8_t i = 0; i < sy.calPoints.count; ++i) {
+      if (i > 0) s.print(", ");
+      s.print(sy.calPoints.points[i].volumeMl, 3);
+      s.print("ml@");
+      s.print(sy.calPoints.points[i].ratio * 100.0f, 2);
+      s.print("%");
+    }
+    s.print("]");
+  }
   s.println();
 }
 // ------------------------------------------------------------
@@ -866,12 +1027,36 @@ float SyringeFillController::readBaseVolumeMl(uint8_t slot) {
     }
     return 0.0f;
   }
-  float ratio = readBaseRatio(slot);
-  float ml = m_bases[slot].cal.ratioToMl(ratio);
+
+  float ratio = 0.0f;
+  String ratioMessage;
+  bool ratioOk = readBasePotRatio(slot, ratio, ratioMessage);
+  if (ratioOk && m_bases[slot].calPoints.count >= 2) {
+    bool ok = false;
+    float ml = interpolateVolumeFromPoints(m_bases[slot].calPoints, ratio, ok);
+    if (ok) {
+      if (SFC_DBG) {
+        Serial.print("[SFC] readBaseVolumeMl(slot=");
+        Serial.print(slot);
+        Serial.print("): ratio=");
+        Serial.print(ratio, 4);
+        Serial.print(" -> ");
+        Serial.println(ml, 3);
+      }
+      return ml;
+    }
+  } else if (SFC_DBG && ratioOk) {
+    Serial.print("[SFC] readBaseVolumeMl(slot=");
+    Serial.print(slot);
+    Serial.println("): insufficient calibration points for interpolation");
+  }
+
+  uint16_t raw = readBaseRawADC(slot);
+  float ml = m_bases[slot].cal.rawToMl(raw);
   if (SFC_DBG) {
     Serial.print("[SFC] readBaseVolumeMl(slot=");
     Serial.print(slot);
-    Serial.print("): stub -> ");
+    Serial.print("): fallback -> ");
     Serial.println(ml, 3);
   }
   return ml;

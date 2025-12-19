@@ -76,6 +76,7 @@ ActionResult sfcSaveCurrentBase(App::SyringeFillController &sfc);
 ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc);
 ActionResult sfcCaptureCurrentBaseEmpty(App::SyringeFillController &sfc);
 ActionResult sfcCaptureCurrentBaseFull(App::SyringeFillController &sfc);
+ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, int8_t slot);
 ActionResult sfcSetCurrentBaseMlFull(App::SyringeFillController &sfc, float ml);
 ActionResult sfcSetToolheadMlFull(App::SyringeFillController &sfc, float ml);
 
@@ -88,4 +89,3 @@ ActionResult potMove(uint16_t target, long sps);
 
 }  // namespace DeviceActions
 }  // namespace App
-
