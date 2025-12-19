@@ -21,6 +21,10 @@ struct RecipeDTO {
   uint8_t count = 0;
 };
 
+using CalPoint = App::PotCalibration::CalibrationPoint;
+
+constexpr uint8_t kCalPointCount = App::PotCalibration::kMaxPoints;
+
 bool initStorage();
 
 // calibration + base metadata
