@@ -12,6 +12,7 @@ namespace App {
 
 namespace {
   constexpr bool SFC_DBG = true;
+  constexpr uint8_t TOOLHEAD_POT_IDX = 0;  // TODO: set your toolhead pot index
 
   // used by BaseRFID listener
   struct BaseTagCapture {
@@ -70,14 +71,15 @@ int8_t SyringeFillController::getBasePotIndex(uint8_t baseSlot) const {
 // ------------------------------------------------------------
 // toolhead calibration helpers
 // ------------------------------------------------------------
-uint16_t SyringeFillController::readToolheadRawADC() {
-  // TODO: hook to real Pots API
-  uint16_t raw = 0;
+float SyringeFillController::readToolheadRatio() {
+  float ratio = Pots::percent(TOOLHEAD_POT_IDX);
   if (SFC_DBG) {
-    Serial.print("[SFC] readToolheadRawADC(): stub -> ");
-    Serial.println(raw);
+    Serial.print("[SFC] readToolheadRatio(): pot=");
+    Serial.print(TOOLHEAD_POT_IDX);
+    Serial.print(" ratio=");
+    Serial.println(ratio, 3);
   }
-  return raw;
+  return ratio;
 }
 
 bool SyringeFillController::captureToolheadEmpty() {
@@ -88,11 +90,15 @@ bool SyringeFillController::captureToolheadEmpty() {
   uint16_t raw = readToolheadRawADC();
   m_toolhead.cal.adcEmpty = raw;
   m_toolhead.cal.legacy = false;
+  float ratio = readToolheadRatio();
+  bool ok = m_toolhead.cal.addPoint(0.0f, ratio);
   if (SFC_DBG) {
-    Serial.print("[SFC] toolhead empty ADC = ");
-    Serial.println(raw);
+    Serial.print("[SFC] toolhead empty ratio = ");
+    Serial.print(ratio, 3);
+    Serial.print(" -> ");
+    Serial.println(ok ? "saved" : "FAILED");
   }
-  return true;
+  return ok;
 }
 
 bool SyringeFillController::captureToolheadFull(float mlFull) {
@@ -104,13 +110,17 @@ bool SyringeFillController::captureToolheadFull(float mlFull) {
   m_toolhead.cal.adcFull = raw;
   m_toolhead.cal.mlFull  = mlFull;
   m_toolhead.cal.legacy = false;
+  float ratio = readToolheadRatio();
+  bool ok = m_toolhead.cal.addPoint(mlFull, ratio);
   if (SFC_DBG) {
-    Serial.print("[SFC] toolhead full ADC = ");
-    Serial.print(raw);
+    Serial.print("[SFC] toolhead full ratio = ");
+    Serial.print(ratio, 3);
     Serial.print("  mlFull = ");
-    Serial.println(mlFull, 3);
+    Serial.print(mlFull, 3);
+    Serial.print(" -> ");
+    Serial.println(ok ? "saved" : "FAILED");
   }
-  return true;
+  return ok;
 }
 
 bool SyringeFillController::saveToolheadCalibration() {
@@ -238,22 +248,28 @@ bool SyringeFillController::setCurrentBaseMlFull(float ml) {
   // update RAM
   sy.cal.mlFull = ml;
   sy.cal.legacy = false;
+  float ratio = readBaseRatio((uint8_t)m_currentSlot);
+  bool ok = sy.cal.addPoint(ml, ratio);
 
   if (SFC_DBG) {
     Serial.print("[SFC] setCurrentBaseMlFull(): slot=");
     Serial.print(m_currentSlot);
     Serial.print(" mlFull=");
-    Serial.println(ml, 3);
+    Serial.print(ml, 3);
+    Serial.print(" ratio=");
+    Serial.print(ratio, 3);
+    Serial.print(" -> ");
+    Serial.println(ok ? "saved" : "FAILED");
   }
 
   // keep meta, overwrite cal in NVS
   Util::BaseMeta meta;
   App::PotCalibration dummy;
   Util::loadBase(sy.rfid, meta, dummy);
-  bool ok = Util::saveBase(sy.rfid, meta, sy.cal);
-  if (SFC_DBG) Serial.println(ok ? "[SFC] setCurrentBaseMlFull(): saved to NVS"
-                                 : "[SFC] setCurrentBaseMlFull(): FAILED to save to NVS");
-  return ok;
+  bool saved = ok && Util::saveBase(sy.rfid, meta, sy.cal);
+  if (SFC_DBG) Serial.println(saved ? "[SFC] setCurrentBaseMlFull(): saved to NVS"
+                                    : "[SFC] setCurrentBaseMlFull(): FAILED to save to NVS");
+  return saved;
 }
 bool SyringeFillController::setToolheadMlFull(float ml) {
   if (ml <= 0.0f) {
@@ -267,50 +283,55 @@ bool SyringeFillController::setToolheadMlFull(float ml) {
 
   m_toolhead.cal.mlFull = ml;
   m_toolhead.cal.legacy = false;
+  float ratio = readToolheadRatio();
+  bool ok = m_toolhead.cal.addPoint(ml, ratio);
 
   if (SFC_DBG) {
     Serial.print("[SFC] setToolheadMlFull(): mlFull=");
-    Serial.println(ml, 3);
+    Serial.print(ml, 3);
+    Serial.print(" ratio=");
+    Serial.print(ratio, 3);
+    Serial.print(" -> ");
+    Serial.println(ok ? "saved" : "FAILED");
   }
 
-  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
-  if (SFC_DBG) Serial.println(ok ? "[SFC] ...toolhead cal saved to NVS"
-                                 : "[SFC] ...FAILED to save toolhead cal");
-  return ok;
+  bool saved = ok && Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  if (SFC_DBG) Serial.println(saved ? "[SFC] ...toolhead cal saved to NVS"
+                                    : "[SFC] ...FAILED to save toolhead cal");
+  return saved;
 }
 
 
-uint16_t SyringeFillController::readBaseRawADC(uint8_t slot) {
+float SyringeFillController::readBaseRatio(uint8_t slot) {
   if (slot >= Bases::kCount) {
     if (SFC_DBG) {
-      Serial.print("[SFC] readBaseRawADC(): slot OOR ");
+      Serial.print("[SFC] readBaseRatio(): slot OOR ");
       Serial.println(slot);
     }
-    return 0;
+    return 0.0f;
   }
 
   int8_t potIdx = getBasePotIndex(slot);
   if (potIdx < 0) {
     if (SFC_DBG) {
-      Serial.print("[SFC] readBaseRawADC(): no pot mapped for base ");
+      Serial.print("[SFC] readBaseRatio(): no pot mapped for base ");
       Serial.println(slot);
     }
-    return 0;
+    return 0.0f;
   }
 
-  // real ADS counts
-  uint16_t counts = Pots::readCounts((uint8_t)potIdx);
+  float ratio = Pots::percent((uint8_t)potIdx);
 
   if (SFC_DBG) {
-    Serial.print("[SFC] readBaseRawADC(base=");
+    Serial.print("[SFC] readBaseRatio(base=");
     Serial.print(slot);
     Serial.print(" pot=");
     Serial.print(potIdx);
-    Serial.print("): counts=");
-    Serial.print(counts);
+    Serial.print("): ratio=");
+    Serial.print(ratio, 3);
   }
 
-  return counts;
+  return ratio;
 }
 
 // --------------------------------------------------
@@ -331,12 +352,16 @@ bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
   // update runtime copy
   m_bases[slot].cal.adcEmpty = raw;
   m_bases[slot].cal.legacy = false;
+  float ratio = readBaseRatio(slot);
+  bool ok = m_bases[slot].cal.addPoint(0.0f, ratio);
 
   if (SFC_DBG) {
     Serial.print("[SFC] captureBaseEmpty(): slot=");
     Serial.print(slot);
-    Serial.print(" adcEmpty=");
-    Serial.println(raw);
+    Serial.print(" ratio=");
+    Serial.print(ratio, 3);
+    Serial.print(" -> ");
+    Serial.println(ok ? "saved" : "FAILED");
   }
 
   // if this base has an RFID, persist immediately
@@ -346,12 +371,12 @@ bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
     App::PotCalibration dummy;
     // load ONLY meta, ignore old cal
     Util::loadBase(tag, meta, dummy);
-    bool ok = Util::saveBase(tag, meta, m_bases[slot].cal);
-    if (SFC_DBG) Serial.println(ok ? "[SFC] captureBaseEmpty(): saved to NVS" :
-                                     "[SFC] captureBaseEmpty(): FAILED to save to NVS");
+    bool saved = ok && Util::saveBase(tag, meta, m_bases[slot].cal);
+    if (SFC_DBG) Serial.println(saved ? "[SFC] captureBaseEmpty(): saved to NVS" :
+                                        "[SFC] captureBaseEmpty(): FAILED to save to NVS");
   }
 
-  return true;
+  return ok;
 }
 bool SyringeFillController::captureBaseFull(uint8_t slot) {
   if (slot >= Bases::kCount) {
@@ -365,12 +390,19 @@ bool SyringeFillController::captureBaseFull(uint8_t slot) {
   uint16_t raw = readBaseRawADC(slot);
   m_bases[slot].cal.adcFull = raw;
   m_bases[slot].cal.legacy = false;
+  float ratio = readBaseRatio(slot);
+  float currentMaxMl = (m_bases[slot].cal.pointCount > 0)
+                         ? m_bases[slot].cal.points[m_bases[slot].cal.pointCount - 1].volume_ml
+                         : 0.0f;
+  bool ok = m_bases[slot].cal.addPoint(currentMaxMl, ratio);
 
   if (SFC_DBG) {
     Serial.print("[SFC] captureBaseFull(): slot=");
     Serial.print(slot);
-    Serial.print(" adcFull=");
-    Serial.println(raw);
+    Serial.print(" ratio=");
+    Serial.print(ratio, 3);
+    Serial.print(" -> ");
+    Serial.println(ok ? "saved" : "FAILED");
   }
 
   uint32_t tag = m_bases[slot].rfid;
@@ -378,12 +410,12 @@ bool SyringeFillController::captureBaseFull(uint8_t slot) {
     Util::BaseMeta meta;
     App::PotCalibration dummy;
     Util::loadBase(tag, meta, dummy);               // keep meta
-    bool ok = Util::saveBase(tag, meta, m_bases[slot].cal);
-    if (SFC_DBG) Serial.println(ok ? "[SFC] captureBaseFull(): saved to NVS" :
-                                     "[SFC] captureBaseFull(): FAILED to save to NVS");
+    bool saved = ok && Util::saveBase(tag, meta, m_bases[slot].cal);
+    if (SFC_DBG) Serial.println(saved ? "[SFC] captureBaseFull(): saved to NVS" :
+                                        "[SFC] captureBaseFull(): FAILED to save to NVS");
   }
 
-  return true;
+  return ok;
 }
 
 // --------------------------------------------------
@@ -433,9 +465,16 @@ void SyringeFillController::printBaseInfo(uint8_t slot, Stream& s) {
   const Syringe& sy = m_bases[slot];
   s.print("[SFC] base "); s.print(slot);
   s.print(" RFID=0x"); s.print(sy.rfid, HEX);
-  s.print(" adcEmpty="); s.print(sy.cal.adcEmpty);
-  s.print(" adcFull=");  s.print(sy.cal.adcFull);
-  s.print(" mlFull=");   s.print(sy.cal.mlFull, 3);
+  s.print(" points="); s.print(sy.cal.pointCount);
+  for (uint8_t i = 0; i < sy.cal.pointCount; ++i) {
+    s.print(" [");
+    s.print(i);
+    s.print(":");
+    s.print(sy.cal.points[i].volume_ml, 3);
+    s.print("ml@");
+    s.print(sy.cal.points[i].ratio, 3);
+    s.print("]");
+  }
   s.print(" steps_mL=");   s.print(sy.cal.steps_mL, 3);
   s.println();
 }
@@ -612,15 +651,8 @@ uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
   return cap.packed;
 }
 
-float App::SyringeFillController::mlFromCounts_(const App::PotCalibration& cal, uint16_t counts) {
-  // Assumes PotCalibration has: emptyCounts, fullCounts, mlFull
-  int32_t denom = (int32_t)cal.adcFull - (int32_t)cal.adcEmpty;
-  if (denom == 0) return NAN;
-
-  float t = (float)((int32_t)counts - (int32_t)cal.adcEmpty) / (float)denom;
-  if (t < 0.0f) t = 0.0f;
-  if (t > 1.0f) t = 1.0f;
-  return t * cal.mlFull;
+float App::SyringeFillController::mlFromRatio_(const App::PotCalibration& cal, float ratio) {
+  return cal.ratioToMl(ratio);
 }
 
 void App::SyringeFillController::printToolheadInfo(Stream& out) {
@@ -644,23 +676,29 @@ void App::SyringeFillController::printToolheadInfo(Stream& out) {
   out.println(ok ? F("yes") : F("no"));
 
   if (ok) {
-    out.print(F("  cal.emptyCounts: ")); out.println(m_toolCal.adcEmpty);
-    out.print(F("  cal.fullCounts : ")); out.println(m_toolCal.adcFull);
-    out.print(F("  cal.mlFull     : ")); out.println(m_toolCal.mlFull, 3);
+    out.print(F("  cal.points(")); out.print(m_toolCal.pointCount); out.println(F("):"));
+    for (uint8_t i = 0; i < m_toolCal.pointCount; ++i) {
+      out.print(F("    ["));
+      out.print(i);
+      out.print(F("] "));
+      out.print(m_toolCal.points[i].volume_ml, 3);
+      out.print(F(" ml @ "));
+      out.print(m_toolCal.points[i].ratio, 3);
+      out.println(F(" ratio"));
+    }
     out.print(F("  cal.steps_mL     : ")); out.println(m_toolCal.steps_mL, 3);
     out.print(F("  cal.legacy     : ")); out.println(m_toolCal.legacy ? F("yes") : F("no"));
   }
 
   // Live pot read (set this index correctly for the toolhead pot)
-  const uint8_t TOOLHEAD_POT_IDX = 0;  // TODO: set your toolhead pot index
-  uint16_t counts = Pots::readCounts(TOOLHEAD_POT_IDX);
+  float ratio = Pots::percent(TOOLHEAD_POT_IDX);
   uint16_t scaled = Pots::readScaled(TOOLHEAD_POT_IDX);
 
-  out.print(F("  pot.counts: ")); out.println(counts);
+  out.print(F("  pot.ratio: ")); out.println(ratio, 3);
   out.print(F("  pot.scaled: ")); out.println(scaled);
 
   if (ok) {
-    float ml = mlFromCounts_(m_toolCal, counts);
+    float ml = mlFromRatio_(m_toolCal, ratio);
     out.print(F("  computed mL: "));
     if (isnan(ml)) out.println(F("(n/a)"));
     else out.println(ml, 3);
@@ -811,7 +849,8 @@ uint32_t SyringeFillController::readRFIDNow() {
 // volume helpers (still stubs)
 // ------------------------------------------------------------
 float SyringeFillController::readToolheadVolumeMl() {
-  float ml = m_toolhead.cal.rawToMl(0);
+  float ratio = readToolheadRatio();
+  float ml = m_toolhead.cal.ratioToMl(ratio);
   if (SFC_DBG) {
     Serial.print("[SFC] readToolheadVolumeMl(): stub -> ");
     Serial.println(ml, 3);
@@ -827,7 +866,8 @@ float SyringeFillController::readBaseVolumeMl(uint8_t slot) {
     }
     return 0.0f;
   }
-  float ml = m_bases[slot].cal.rawToMl(0);
+  float ratio = readBaseRatio(slot);
+  float ml = m_bases[slot].cal.ratioToMl(ratio);
   if (SFC_DBG) {
     Serial.print("[SFC] readBaseVolumeMl(slot=");
     Serial.print(slot);

@@ -75,12 +75,13 @@ struct PotCalibrationV1 {
 };
 
 struct CalBlobV1 {
+struct CalBlobV2 {
   uint16_t version;
   PotCalibrationV1 cal;
   uint32_t crc;
 };
 
-struct BaseBlobV1 {
+struct BaseBlobV2 {
   uint16_t version;
   Util::BaseMeta meta;
   PotCalibrationV1 cal;
@@ -153,81 +154,51 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
     return true;
   }
   return false;
+  CalBlobV2 blob;
+  String key = rfidKey(rfid, ":cal");
+  if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
+  uint32_t saved = blob.crc;
+  blob.crc = 0;
+  uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
+  if (saved != calc) return false;
+  if (blob.version != 2) return false;
+  out = blob.cal;
+  return true;
 }
 
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
   CalBlobV2 blob;
-  blob.version = kBlobVersionV2;
-  blob.flags = cal.legacy ? kCalFlagLegacy : 0;
-  blob.pointCount = Util::kCalPointCount;
-  blob.points[0].ml = 0.0f;
-  blob.points[0].ratio = Pots::ratioFromCounts(cal.adcEmpty);
-  blob.points[1].ml = cal.mlFull;
-  blob.points[1].ratio = Pots::ratioFromCounts(cal.adcFull);
-  blob.steps_mL = cal.steps_mL;
-  blob.crc = 0;
-  blob.crc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-  String key = rfidKey(rfid, ":cal");
+  blob.version = 2;
+  blob.cal     = cal;
+  blob.crc     = 0;
+  blob.crc     = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
+  String key   = rfidKey(rfid, ":cal");
   return nvsSaveBlob("cal", key.c_str(), &blob, sizeof(blob));
 }
 
 // ---------------------- base meta ------------------------
 bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
+  BaseBlobV2 blob;
   String key = rfidKey(rfid, ":meta");
-  size_t required = 0;
-  if (!nvsGetBlobSize("base", key.c_str(), required)) return false;
-  if (required == sizeof(BaseBlobV2)) {
-    BaseBlobV2 blob;
-    if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
-    uint32_t saved = blob.crc;
-    blob.crc = 0;
-    uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-    if (saved != calc) return false;
-    if (blob.version != kBlobVersionV2) return false;
-    if (blob.pointCount < 2) return false;
-    meta = blob.meta;
-    cal.adcEmpty = Pots::countsFromRatio(blob.points[0].ratio);
-    cal.adcFull  = Pots::countsFromRatio(blob.points[1].ratio);
-    cal.mlFull   = blob.points[1].ml;
-    cal.steps_mL = blob.steps_mL;
-    cal.legacy   = (blob.flags & kCalFlagLegacy) != 0;
-    return true;
-  }
-  if (required == sizeof(BaseBlobV1)) {
-    BaseBlobV1 blob;
-    if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
-    uint32_t saved = blob.crc;
-    blob.crc = 0;
-    uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-    if (saved != calc) return false;
-    if (blob.version != kBlobVersionV1) return false;
-    meta = blob.meta;
-    float emptyRatio = Pots::ratioFromCounts(blob.cal.adcEmpty);
-    float fullRatio  = Pots::ratioFromCounts(blob.cal.adcFull);
-    cal.adcEmpty = Pots::countsFromRatio(emptyRatio);
-    cal.adcFull  = Pots::countsFromRatio(fullRatio);
-    cal.mlFull   = blob.cal.mlFull;
-    cal.steps_mL = blob.cal.steps_mL;
-    cal.legacy   = true;
-    return true;
-  }
-  return false;
+  if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
+  uint32_t saved = blob.crc;
+  blob.crc = 0;
+  uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
+  if (saved != calc) return false;
+  if (blob.version != 2) return false;
+  meta = blob.meta;
+  cal  = blob.cal;
+  return true;
 }
 
 bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal) {
   BaseBlobV2 blob;
-  blob.version = kBlobVersionV2;
-  blob.meta = meta;
-  blob.flags = cal.legacy ? kCalFlagLegacy : 0;
-  blob.pointCount = Util::kCalPointCount;
-  blob.points[0].ml = 0.0f;
-  blob.points[0].ratio = Pots::ratioFromCounts(cal.adcEmpty);
-  blob.points[1].ml = cal.mlFull;
-  blob.points[1].ratio = Pots::ratioFromCounts(cal.adcFull);
-  blob.steps_mL = cal.steps_mL;
-  blob.crc = 0;
-  blob.crc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-  String key = rfidKey(rfid, ":meta");
+  blob.version = 2;
+  blob.meta    = meta;
+  blob.cal     = cal;
+  blob.crc     = 0;
+  blob.crc     = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
+  String key   = rfidKey(rfid, ":meta");
   return nvsSaveBlob("base", key.c_str(), &blob, sizeof(blob));
 }
 
