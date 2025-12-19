@@ -88,8 +88,7 @@ bool SyringeFillController::captureToolheadEmpty() {
     if (SFC_DBG) Serial.println("[SFC] captureToolheadEmpty(): no toolhead RFID yet");
     return false;
   }
-  uint16_t raw = readToolheadRawADC();
-  m_toolhead.cal.adcEmpty = raw;
+  
   m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(0.0f, ratio);
@@ -107,8 +106,7 @@ bool SyringeFillController::captureToolheadFull(float mlFull) {
     if (SFC_DBG) Serial.println("[SFC] captureToolheadFull(): no toolhead RFID yet");
     return false;
   }
-  uint16_t raw = readToolheadRawADC();
-  m_toolhead.cal.adcFull = raw;
+  
   m_toolhead.cal.mlFull  = mlFull;
   m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
@@ -273,7 +271,7 @@ bool SyringeFillController::setCurrentBaseMlFull(float ml) {
   Util::loadBase(sy.rfid, meta, dummy, points);
   (void)dummy;
   (void)points;
-  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+  ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
   if (SFC_DBG) Serial.println(ok ? "[SFC] setCurrentBaseMlFull(): saved to NVS"
                                  : "[SFC] setCurrentBaseMlFull(): FAILED to save to NVS");
   return ok;
@@ -399,11 +397,6 @@ bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
     return false;
   }
 
-  // read the actual pot channel for this base
-  uint16_t raw = readBaseRawADC(slot);
-
-  // update runtime copy
-  m_bases[slot].cal.adcEmpty = raw;
   m_bases[slot].cal.legacy = false;
   float ratio = readBaseRatio(slot);
   bool ok = m_bases[slot].cal.addPoint(0.0f, ratio);
@@ -443,8 +436,6 @@ bool SyringeFillController::captureBaseFull(uint8_t slot) {
     return false;
   }
 
-  uint16_t raw = readBaseRawADC(slot);
-  m_bases[slot].cal.adcFull = raw;
   m_bases[slot].cal.legacy = false;
   float ratio = readBaseRatio(slot);
   float currentMaxMl = (m_bases[slot].cal.pointCount > 0)
@@ -1051,15 +1042,6 @@ float SyringeFillController::readBaseVolumeMl(uint8_t slot) {
     Serial.println("): insufficient calibration points for interpolation");
   }
 
-  uint16_t raw = readBaseRawADC(slot);
-  float ml = m_bases[slot].cal.rawToMl(raw);
-  if (SFC_DBG) {
-    Serial.print("[SFC] readBaseVolumeMl(slot=");
-    Serial.print(slot);
-    Serial.print("): fallback -> ");
-    Serial.println(ml, 3);
-  }
-  return ml;
 }
 
 // ------------------------------------------------------------

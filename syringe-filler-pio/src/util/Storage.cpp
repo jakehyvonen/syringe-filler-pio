@@ -68,7 +68,11 @@ constexpr uint16_t kBlobVersionV2 = 2;
 constexpr uint8_t  kCalFlagLegacy = 0x01;
 }
 
-// --------- Legacy V1 payload (raw ADC counts) ----------
+// ---------------------------
+// Calibration blobs
+// ---------------------------
+
+// Legacy V1 payload (raw ADC counts)
 struct PotCalibrationV1 {
   uint16_t adcEmpty;
   uint16_t adcFull;
@@ -77,12 +81,12 @@ struct PotCalibrationV1 {
 };
 
 struct CalBlobV1 {
-  uint16_t        version;
+  uint16_t         version;
   PotCalibrationV1 cal;
-  uint32_t        crc;
+  uint32_t         crc;
 };
 
-// --------- Current V2 payload (ratios + points) ----------
+// Current V2 payload (ratios + points)
 struct CalBlobV2 {
   uint16_t version;     // kBlobVersionV2
   uint8_t  flags;       // kCalFlagLegacy etc
@@ -92,23 +96,28 @@ struct CalBlobV2 {
   uint32_t crc;
 };
 
-struct BaseBlobV2 {
-  uint16_t version;     // kBlobVersionV2
-  Util::BaseMeta meta;
-  uint8_t  flags;
-  uint8_t  pointCount;
-  Util::CalPoint points[Util::kCalPointCount];
-  float    steps_mL;
-  uint32_t crc;
+// ---------------------------
+// Base blobs
+// ---------------------------
+
+// V1: meta + cal only (no points)
+struct BaseBlobV1 {
+  uint16_t         version;
+  Util::BaseMeta   meta;
+  App::PotCalibration cal;
+  uint32_t         crc;
 };
 
+// V2: meta + cal + explicit points (yes, redundant with cal.points, but we keep it
+// to avoid breaking any code that expects separate points persistence)
 struct BaseBlobV2 {
-  uint16_t version;
-  Util::BaseMeta meta;
-  App::PotCalibration cal;
+  uint16_t              version;
+  Util::BaseMeta        meta;
+  App::PotCalibration   cal;
   App::CalibrationPoints points;
-  uint32_t crc;
+  uint32_t              crc;
 };
+
 static uint32_t crcForBlob(void* blob, size_t len, uint32_t* crcField) {
   uint32_t saved = *crcField;
   *crcField = 0;
@@ -118,11 +127,9 @@ static uint32_t crcForBlob(void* blob, size_t len, uint32_t* crcField) {
 }
 
 bool initStorage() {
-  // NVS
   if (nvs_flash_init() != ESP_OK) return false;
 
-  // FS
-  if (!LittleFS.begin(true)) return false; // true = format if needed
+  if (!LittleFS.begin(true)) return false; // format if needed
   LittleFS.mkdir("/recipes");
   return true;
 }
@@ -142,20 +149,24 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
     uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
     if (blob.crc != calc) return false;
     if (blob.version != kBlobVersionV2) return false;
+    if (blob.pointCount < 2 || blob.pointCount > Util::kCalPointCount) return false;
 
-    if (blob.pointCount < 2) return false;
-    if (blob.pointCount > Util::kCalPointCount) return false;
-
-    // Use first two points as empty/full anchors.
     out.adcEmpty = Pots::countsFromRatio(blob.points[0].ratio);
     out.adcFull  = Pots::countsFromRatio(blob.points[1].ratio);
     out.mlFull   = blob.points[1].ml;
     out.steps_mL = blob.steps_mL;
     out.legacy   = (blob.flags & kCalFlagLegacy) != 0;
+
+    // If your App::PotCalibration also supports multi-points, populate first two.
+    // (We keep this minimal to avoid assuming layout beyond what you already use.)
+    out.pointCount = 0;
+    out.addPoint(0.0f, blob.points[0].ratio);
+    out.addPoint(blob.points[1].ml, blob.points[1].ratio);
+
     return true;
   }
 
-  // V1 (legacy)
+  // V1
   if (required == sizeof(CalBlobV1)) {
     CalBlobV1 blob;
     if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
@@ -164,7 +175,6 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
     if (blob.crc != calc) return false;
     if (blob.version != kBlobVersionV1) return false;
 
-    // Convert legacy counts -> ratios -> counts (so if Pots mapping changes, you normalize)
     float emptyRatio = Pots::ratioFromCounts(blob.cal.adcEmpty);
     float fullRatio  = Pots::ratioFromCounts(blob.cal.adcFull);
 
@@ -173,6 +183,11 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
     out.mlFull   = blob.cal.mlFull;
     out.steps_mL = blob.cal.steps_mL;
     out.legacy   = true;
+
+    out.pointCount = 0;
+    out.addPoint(0.0f, emptyRatio);
+    out.addPoint(out.mlFull, fullRatio);
+
     return true;
   }
 
@@ -185,7 +200,6 @@ bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
   blob.flags      = cal.legacy ? kCalFlagLegacy : 0;
   blob.pointCount = 2;
 
-  // Store as ratios (device-independent) + ml anchors.
   blob.points[0].ratio = Pots::ratioFromCounts(cal.adcEmpty);
   blob.points[0].ml    = 0.0f;
 
@@ -202,109 +216,89 @@ bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
 }
 
 // ---------------------- base meta ------------------------
-bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal, App::CalibrationPoints& points) {
-  String key = rfidKey(rfid, ":meta");
-  nvs_handle_t h;
-  if (nvs_open("base", NVS_READONLY, &h) != ESP_OK) return false;
-  size_t required = 0;
-  esp_err_t err = nvs_get_blob(h, key.c_str(), nullptr, &required);
-  if (err != ESP_OK) {
-    nvs_close(h);
-    return false;
-  }
-
-  bool ok = false;
-  if (required == sizeof(BaseBlobV2)) {
-    BaseBlobV2 blob;
-    err = nvs_get_blob(h, key.c_str(), &blob, &required);
-    if (err == ESP_OK) {
-      uint32_t saved = blob.crc;
-      blob.crc = 0;
-      uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-      if (saved == calc && blob.version == 2) {
-        meta = blob.meta;
-        cal = blob.cal;
-        points = blob.points;
-        ok = true;
-      }
-    }
-  } else if (required == sizeof(BaseBlobV1)) {
-    BaseBlobV1 blob;
-    err = nvs_get_blob(h, key.c_str(), &blob, &required);
-    if (err == ESP_OK) {
-      uint32_t saved = blob.crc;
-      blob.crc = 0;
-      uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-      if (saved == calc && blob.version == 1) {
-        meta = blob.meta;
-        cal = blob.cal;
-        points.count = 0;
-        ok = true;
-      }
-    }
-  }
-
-  nvs_close(h);
-  return ok;
-}
-
-bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal, const App::CalibrationPoints& points) {
-  BaseBlobV2 blob;
-  blob.version = 2;
-  blob.meta    = meta;
-  blob.cal     = cal;
-  blob.points  = points;
-  blob.crc     = 0;
-  blob.crc     = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
-  String key   = rfidKey(rfid, ":meta");
-// ---------------------- base meta + cal ------------------------
-bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
+// Primary API (with points)
+bool loadBase(uint32_t rfid,
+              BaseMeta& meta,
+              App::PotCalibration& cal,
+              App::CalibrationPoints& points) {
   String key = rfidKey(rfid, ":meta");
 
   size_t required = 0;
   if (!nvsGetBlobSize("base", key.c_str(), required)) return false;
-  if (required != sizeof(BaseBlobV2)) return false;
 
-  BaseBlobV2 blob;
-  if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
+  // V2
+  if (required == sizeof(BaseBlobV2)) {
+    BaseBlobV2 blob;
+    if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
 
-  uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-  if (blob.crc != calc) return false;
-  if (blob.version != kBlobVersionV2) return false;
+    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
+    if (blob.crc != calc) return false;
+    if (blob.version != kBlobVersionV2) return false;
 
-  meta = blob.meta;
+    meta   = blob.meta;
+    cal    = blob.cal;
+    points = blob.points;
+    return true;
+  }
 
-  if (blob.pointCount < 2 || blob.pointCount > Util::kCalPointCount) return false;
+  // V1
+  if (required == sizeof(BaseBlobV1)) {
+    BaseBlobV1 blob;
+    if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
 
-  cal.adcEmpty = Pots::countsFromRatio(blob.points[0].ratio);
-  cal.adcFull  = Pots::countsFromRatio(blob.points[1].ratio);
-  cal.mlFull   = blob.points[1].ml;
-  cal.steps_mL = blob.steps_mL;
-  cal.legacy   = (blob.flags & kCalFlagLegacy) != 0;
+    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
+    if (blob.crc != calc) return false;
+    if (blob.version != kBlobVersionV1) return false;
 
-  return true;
+    meta = blob.meta;
+    cal  = blob.cal;
+    points.count = 0; // no points persisted in V1
+    return true;
+  }
+
+  return false;
 }
 
-bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal) {
+bool saveBase(uint32_t rfid,
+              const BaseMeta& meta,
+              const App::PotCalibration& cal,
+              const App::CalibrationPoints& points) {
   BaseBlobV2 blob{};
-  blob.version    = kBlobVersionV2;
-  blob.meta       = meta;
-  blob.flags      = cal.legacy ? kCalFlagLegacy : 0;
-  blob.pointCount = 2;
-
-  blob.points[0].ratio = Pots::ratioFromCounts(cal.adcEmpty);
-  blob.points[0].ml    = 0.0f;
-
-  blob.points[1].ratio = Pots::ratioFromCounts(cal.adcFull);
-  blob.points[1].ml    = cal.mlFull;
-
-  blob.steps_mL = cal.steps_mL;
+  blob.version = kBlobVersionV2;
+  blob.meta    = meta;
+  blob.cal     = cal;
+  blob.points  = points;
 
   blob.crc = 0;
   blob.crc = crc32_acc(reinterpret_cast<const uint8_t*>(&blob), sizeof(blob));
 
   String key = rfidKey(rfid, ":meta");
   return nvsSaveBlob("base", key.c_str(), &blob, sizeof(blob));
+}
+
+// Convenience overloads (keep existing call sites working)
+bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
+  App::CalibrationPoints dummy{};
+  bool ok = loadBase(rfid, meta, cal, dummy);
+
+  // If callers don’t use points, we still try to fold them into cal if present.
+  // Only do this if your PotCalibration has compatible fields (as in your Syringe.hpp).
+  if (ok && dummy.count > 0) {
+    cal.pointCount = 0;
+    for (uint8_t i = 0; i < dummy.count && i < App::PotCalibration::kMaxPoints; ++i) {
+      cal.addPoint(dummy.points[i].volumeMl, dummy.points[i].ratio);
+    }
+  }
+
+  return ok;
+}
+
+bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal) {
+  // If no explicit points provided, serialize an empty set.
+  // (Safer than guessing how you want to pack cal.points into CalibrationPoints.)
+  App::CalibrationPoints empty{};
+  empty.count = 0;
+  return saveBase(rfid, meta, cal, empty);
 }
 
 // ---------------------- recipes --------------------------
@@ -318,7 +312,7 @@ static String recipePath(uint32_t toolheadRfid) {
   return p;
 }
 
-// If you still use RecipeDTO somewhere:
+// RecipeDTO version
 bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
   DynamicJsonDocument doc(2048);
   char buf[16];
@@ -359,7 +353,7 @@ bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
   return true;
 }
 
-// If you migrated to Util::Recipe:
+// Util::Recipe version
 bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
   if (toolheadRfid == 0) return false;
   File f = LittleFS.open(recipePath(toolheadRfid), "w");
