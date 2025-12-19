@@ -119,6 +119,19 @@ float percent(uint8_t i) {
   return ratio_percent(pot_filt[i], vref);
 }
 
+float ratioFromCounts(uint16_t potCounts) {
+  uint16_t vref = read_vref_counts();
+  return ratio_percent(potCounts, vref);
+}
+
+uint16_t countsFromRatio(float ratio) {
+  if (ratio <= 0.0f) return 0;
+  uint16_t vref = read_vref_counts();
+  if (vref < 16) return 0;
+  if (ratio >= 100.0f) return vref;
+  return static_cast<uint16_t>(lroundf((ratio * 0.01f) * vref));
+}
+
 uint16_t readCounts(uint8_t i) {
   if (i >= NUM_POTS) return 0;
   return read_counts(POT_MAP[i].ads, POT_MAP[i].ch);

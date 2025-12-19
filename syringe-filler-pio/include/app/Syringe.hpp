@@ -17,6 +17,11 @@ enum class SyringeRole : uint8_t {
 // Calibration (persisted in NVS)
 // ----------------------------------------------------
 struct PotCalibration {
+  uint16_t adcEmpty = 0;     // raw ADC at 0 mL
+  uint16_t adcFull  = 4095;  // raw ADC at max mL
+  float    mlFull   = 10.1f; // how many mL does adcFull mean?
+  float    steps_mL = 1.01f; //calibrated steps per mL
+  bool     legacy   = false;
   struct CalibrationPoint {
     float volume_ml = 0.0f;
     float ratio     = 0.0f; // V_channel / V_ref (0..1 or 0..100)

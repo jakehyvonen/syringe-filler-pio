@@ -87,6 +87,9 @@ bool SyringeFillController::captureToolheadEmpty() {
     if (SFC_DBG) Serial.println("[SFC] captureToolheadEmpty(): no toolhead RFID yet");
     return false;
   }
+  uint16_t raw = readToolheadRawADC();
+  m_toolhead.cal.adcEmpty = raw;
+  m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(0.0f, ratio);
   if (SFC_DBG) {
@@ -103,6 +106,10 @@ bool SyringeFillController::captureToolheadFull(float mlFull) {
     if (SFC_DBG) Serial.println("[SFC] captureToolheadFull(): no toolhead RFID yet");
     return false;
   }
+  uint16_t raw = readToolheadRawADC();
+  m_toolhead.cal.adcFull = raw;
+  m_toolhead.cal.mlFull  = mlFull;
+  m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(mlFull, ratio);
   if (SFC_DBG) {
@@ -198,6 +205,9 @@ if (Util::loadBase(tag, meta, cal)) {
     Serial.print("[SFC] scanBaseSyringe(): existing base loaded from NVS for tag 0x");
     Serial.println(tag, HEX);
   }
+  if (SFC_DBG && s.cal.legacy) {
+    Serial.println("[SFC] scanBaseSyringe(): base calibration is legacy; re-calibration recommended");
+  }
 } else {
   // NEW BASE: create minimal meta and save immediately (no slot stored)
   if (SFC_DBG) {
@@ -236,6 +246,8 @@ bool SyringeFillController::setCurrentBaseMlFull(float ml) {
   }
 
   // update RAM
+  sy.cal.mlFull = ml;
+  sy.cal.legacy = false;
   float ratio = readBaseRatio((uint8_t)m_currentSlot);
   bool ok = sy.cal.addPoint(ml, ratio);
 
@@ -269,6 +281,8 @@ bool SyringeFillController::setToolheadMlFull(float ml) {
     return false;
   }
 
+  m_toolhead.cal.mlFull = ml;
+  m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(ml, ratio);
 
@@ -333,6 +347,11 @@ bool SyringeFillController::captureBaseEmpty(uint8_t slot) {
   }
 
   // read the actual pot channel for this base
+  uint16_t raw = readBaseRawADC(slot);
+
+  // update runtime copy
+  m_bases[slot].cal.adcEmpty = raw;
+  m_bases[slot].cal.legacy = false;
   float ratio = readBaseRatio(slot);
   bool ok = m_bases[slot].cal.addPoint(0.0f, ratio);
 
@@ -368,6 +387,9 @@ bool SyringeFillController::captureBaseFull(uint8_t slot) {
     return false;
   }
 
+  uint16_t raw = readBaseRawADC(slot);
+  m_bases[slot].cal.adcFull = raw;
+  m_bases[slot].cal.legacy = false;
   float ratio = readBaseRatio(slot);
   float currentMaxMl = (m_bases[slot].cal.pointCount > 0)
                          ? m_bases[slot].cal.points[m_bases[slot].cal.pointCount - 1].volume_ml
@@ -547,6 +569,9 @@ bool SyringeFillController::scanToolheadBlocking() {
     m_toolhead.cal = cal;
     Serial.print("[SFC] loaded toolhead cal for 0x");
     Serial.println(tag, HEX);
+    if (m_toolhead.cal.legacy) {
+      Serial.println("[SFC] toolhead calibration is legacy; re-calibration recommended");
+    }
   } else {
     Serial.print("[SFC] no toolhead cal for 0x");
     Serial.println(tag, HEX);
@@ -662,6 +687,7 @@ void App::SyringeFillController::printToolheadInfo(Stream& out) {
       out.println(F(" ratio"));
     }
     out.print(F("  cal.steps_mL     : ")); out.println(m_toolCal.steps_mL, 3);
+    out.print(F("  cal.legacy     : ")); out.println(m_toolCal.legacy ? F("yes") : F("no"));
   }
 
   // Live pot read (set this index correctly for the toolhead pot)

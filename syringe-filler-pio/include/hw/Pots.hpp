@@ -14,6 +14,8 @@ namespace Pots {
 
   // 0..100% (ratiometric vs live VREF on ADS0:A0)
   float percent(uint8_t i);
+  float ratioFromCounts(uint16_t potCounts);
+  uint16_t countsFromRatio(float ratio);
 
   // One-shot ADS native counts
   uint16_t readCounts(uint8_t i);
