@@ -21,6 +21,13 @@ struct RecipeDTO {
   uint8_t count = 0;
 };
 
+struct CalPoint {
+  float ml = 0.0f;
+  float ratio = 0.0f;
+};
+
+constexpr uint8_t kCalPointCount = 2;
+
 bool initStorage();
 
 // calibration + base metadata
