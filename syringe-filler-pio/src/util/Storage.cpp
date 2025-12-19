@@ -49,13 +49,13 @@ bool nvsLoadBlob(const char* ns, const char* key, void* data, size_t len) {
 
 namespace Util {
 
-struct CalBlobV1 {
+struct CalBlobV2 {
   uint16_t version;
   App::PotCalibration cal;
   uint32_t crc;
 };
 
-struct BaseBlobV1 {
+struct BaseBlobV2 {
   uint16_t version;
   Util::BaseMeta meta;
   App::PotCalibration cal;
@@ -73,21 +73,21 @@ bool initStorage() {
 
 // ---------------------- calibration ----------------------
 bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
-  CalBlobV1 blob;
+  CalBlobV2 blob;
   String key = rfidKey(rfid, ":cal");
   if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
   uint32_t saved = blob.crc;
   blob.crc = 0;
   uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
   if (saved != calc) return false;
-  if (blob.version != 1) return false;
+  if (blob.version != 2) return false;
   out = blob.cal;
   return true;
 }
 
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
-  CalBlobV1 blob;
-  blob.version = 1;
+  CalBlobV2 blob;
+  blob.version = 2;
   blob.cal     = cal;
   blob.crc     = 0;
   blob.crc     = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
@@ -97,22 +97,22 @@ bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
 
 // ---------------------- base meta ------------------------
 bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
-  BaseBlobV1 blob;
+  BaseBlobV2 blob;
   String key = rfidKey(rfid, ":meta");
   if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
   uint32_t saved = blob.crc;
   blob.crc = 0;
   uint32_t calc = crc32_acc(reinterpret_cast<uint8_t*>(&blob), sizeof(blob));
   if (saved != calc) return false;
-  if (blob.version != 1) return false;
+  if (blob.version != 2) return false;
   meta = blob.meta;
   cal  = blob.cal;
   return true;
 }
 
 bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal) {
-  BaseBlobV1 blob;
-  blob.version = 1;
+  BaseBlobV2 blob;
+  blob.version = 2;
   blob.meta    = meta;
   blob.cal     = cal;
   blob.crc     = 0;
