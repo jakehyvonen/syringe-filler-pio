@@ -59,6 +59,8 @@ private:
   uint16_t readBaseRawADC(uint8_t slot);
   bool readBasePotRatio(uint8_t slot, float& ratio, String& message) const;
   static float interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok);
+  float    readToolheadRatio();
+  float    readBaseRatio(uint8_t slot);
 
   Syringe m_toolhead;
   Syringe m_bases[Bases::kCount];
@@ -66,7 +68,7 @@ private:
   App::PotCalibration m_toolCal;   // loaded from NVS via Util::loadCalibration()
   bool m_toolCalValid = false;
 
-  static float mlFromCounts_(const App::PotCalibration& cal, uint16_t counts);
+  static float mlFromRatio_(const App::PotCalibration& cal, float ratio);
 
   uint8_t  m_baseToPot[Bases::kCount];
   int8_t  m_currentSlot = -1;
