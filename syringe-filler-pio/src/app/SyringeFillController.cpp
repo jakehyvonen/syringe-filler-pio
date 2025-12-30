@@ -73,6 +73,7 @@ int8_t SyringeFillController::getBasePotIndex(uint8_t baseSlot) const {
 // toolhead calibration helpers
 // ------------------------------------------------------------
 float SyringeFillController::readToolheadRatio() {
+  Pots::poll();
   float ratio = Pots::percent(TOOLHEAD_POT_IDX);
   if (SFC_DBG) {
     Serial.print("[SFC] readToolheadRatio(): pot=");
@@ -325,6 +326,7 @@ float SyringeFillController::readBaseRatio(uint8_t slot) {
     return 0.0f;
   }
 
+  Pots::poll();
   float ratio = Pots::percent((uint8_t)potIdx);
 
   if (SFC_DBG) {
@@ -350,7 +352,8 @@ bool SyringeFillController::readBasePotRatio(uint8_t slot, float& ratio, String&
     message = "no pot mapped for base";
     return false;
   }
-
+  
+  Pots::poll();
   float percent = Pots::percent((uint8_t)potIdx);
   ratio = percent / 100.0f;
   if (ratio < 0.0f) ratio = 0.0f;
@@ -1040,6 +1043,7 @@ float SyringeFillController::readBaseVolumeMl(uint8_t slot) {
     Serial.print("[SFC] readBaseVolumeMl(slot=");
     Serial.print(slot);
     Serial.println("): insufficient calibration points for interpolation");
+    return 0.0f;
   }
 
 }
