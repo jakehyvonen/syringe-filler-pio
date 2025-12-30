@@ -3,29 +3,33 @@
 #include "hw/Pots.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Bases.hpp"
+
 #include <Arduino.h>
+#include "soc/gpio_struct.h"
+#include "esp_rom_sys.h"   // esp_rom_delay_us()
 
 namespace AxisPair {
 
-// -----------------------------
+// ============================================================
 // Public position readback
-// -----------------------------
+// ============================================================
 static volatile long s_pos2 = 0;  // toolhead syringe (STEP2/DIR2/EN2)
 static volatile long s_pos3 = 0;  // selected base syringe (STEP3/DIR3 + Bases::hold())
 
 long pos2() { return s_pos2; }
 long pos3() { return s_pos3; }
 
-// -----------------------------
+// ============================================================
 // Speed (FULL PERIOD model)
-// -----------------------------
-static volatile long          s_speedSPS  = 800;
-static volatile unsigned long s_period_us = 1000000UL / 800UL;
+// ============================================================
+// Keep consistent: s_speedSPS <-> s_period_us derived together.
+static volatile long          s_speedSPS  = 100;                 // steps/sec (dominant axis tick rate)
+static volatile unsigned long s_period_us = 1000000UL / 100UL;   // 1e6 / sps
 
-// -----------------------------
+// ============================================================
 // Timer + motion state
-// -----------------------------
-static hw_timer_t *s_timer = nullptr;
+// ============================================================
+static hw_timer_t* s_timer = nullptr;
 
 enum class Mode : uint8_t { IDLE=0, MOVE2, MOVE3, SYNC };
 static volatile Mode s_mode = Mode::IDLE;
@@ -45,52 +49,74 @@ static volatile long s_syncN = 0;  // max(a,b)
 static volatile long s_acc2  = 0;
 static volatile long s_acc3  = 0;
 
-// Remember which axes were pulsed on this tick (for SYNC decrement)
-static volatile bool s_do2 = false;
-static volatile bool s_do3 = false;
-
-// Cached safe pulse width (us)
+// ============================================================
+// Pulse width and timing clamps
+// ============================================================
 static inline uint32_t pulseWidthUs() {
+  // Minimum 8us is a decent safety floor for real-world wiring.
   uint32_t pw = (Pins::STEP_PULSE_US < 8) ? 8u : (uint32_t)Pins::STEP_PULSE_US;
-  // very long wiring + 5 drivers: feel free to bump to 12–20 us
   return pw;
 }
 
-// -----------------------------
-// TIMER ISR (two-phase in one visit)
-// We run one interrupt per step period. Inside it we:
-//   1) compute who steps this tick (Bresenham for SYNC)
-//   2) drive STEP HIGH, delay 'pw', drive LOW
-// This avoids fragile multi-alarm juggling.
-// -----------------------------
+static inline unsigned long clampPeriodUs(unsigned long p) {
+  // Ensure the step period is longer than the high-pulse time.
+  // Give it a few extra microseconds so we're not right on the edge.
+  const uint32_t pw = pulseWidthUs();
+  const unsigned long minp = (unsigned long)(pw + 8u);
+  if (p < minp) p = minp;
+  return p;
+}
+
+// ============================================================
+// Fast GPIO for STEP pins (your STEP2=15, STEP3=12 are safe)
+// ============================================================
+static inline void IRAM_ATTR step2High() { GPIO.out_w1ts = (1UL << Pins::STEP2); }
+static inline void IRAM_ATTR step2Low()  { GPIO.out_w1tc = (1UL << Pins::STEP2); }
+static inline void IRAM_ATTR step3High() { GPIO.out_w1ts = (1UL << Pins::STEP3); }
+static inline void IRAM_ATTR step3Low()  { GPIO.out_w1tc = (1UL << Pins::STEP3); }
+
+// ============================================================
+// TIMER ISR (single interrupt per step period; IRAM-safe)
+// IMPORTANT: no timerAlarmWrite/Enable calls here.
+// ============================================================
 static void IRAM_ATTR onStepTimer() {
   const Mode mode = s_mode;
   if (mode == Mode::IDLE) return;
 
-  // Decide who steps on this tick
   bool do2 = false, do3 = false;
 
   switch (mode) {
-    case Mode::MOVE2: do2 = (s_rem2 > 0); break;
-    case Mode::MOVE3: do3 = (s_rem3 > 0); break;
+    case Mode::MOVE2:
+      do2 = (s_rem2 > 0);
+      break;
+
+    case Mode::MOVE3:
+      do3 = (s_rem3 > 0);
+      break;
+
     case Mode::SYNC:
       if (s_rem2 > 0 || s_rem3 > 0) {
-        s_acc2 += s_syncA; if (s_acc2 >= s_syncN) { s_acc2 -= s_syncN; do2 = (s_rem2 > 0); }
-        s_acc3 += s_syncB; if (s_acc3 >= s_syncN) { s_acc3 -= s_syncN; do3 = (s_rem3 > 0); }
+        // Bresenham-style: each ISR tick is one "time slice" for the dominant axis.
+        s_acc2 += s_syncA;
+        if (s_acc2 >= s_syncN) { s_acc2 -= s_syncN; do2 = (s_rem2 > 0); }
+
+        s_acc3 += s_syncB;
+        if (s_acc3 >= s_syncN) { s_acc3 -= s_syncN; do3 = (s_rem3 > 0); }
       }
       break;
-    default: break;
+
+    default:
+      break;
   }
 
-  s_do2 = do2;
-  s_do3 = do3;
-
-  // Emit pulses (short HIGH, then LOW). Using digitalWrite for robustness.
-  if (do2) digitalWrite(Pins::STEP2, HIGH);
-  if (do3) digitalWrite(Pins::STEP3, HIGH);
-  delayMicroseconds(pulseWidthUs());
-  if (do2) digitalWrite(Pins::STEP2, LOW);
-  if (do3) digitalWrite(Pins::STEP3, LOW);
+  // Emit pulses (HIGH then LOW) using IRAM-safe delay.
+  // This is the stable version (no timer re-arming inside ISR).
+  const uint32_t pw = pulseWidthUs();
+  if (do2) step2High();
+  if (do3) step3High();
+  esp_rom_delay_us(pw);
+  if (do2) step2Low();
+  if (do3) step3Low();
 
   // Update counters/positions
   if (do2 && s_rem2 > 0) { s_rem2--; s_pos2 += s_dir2High ? +1 : -1; }
@@ -107,65 +133,76 @@ static void IRAM_ATTR onStepTimer() {
   if (done) s_mode = Mode::IDLE;
 }
 
-// -----------------------------
+// ============================================================
 // Init
-// -----------------------------
+// ============================================================
 void init() {
   // TOOLHEAD (Axis 2)
   pinMode(Pins::STEP2, OUTPUT);
   pinMode(Pins::DIR2,  OUTPUT);
   pinMode(Pins::EN2,   OUTPUT);
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
+  digitalWrite(Pins::STEP2, LOW);
 
   // BASES (Axis 3)
   pinMode(Pins::STEP3, OUTPUT);
   pinMode(Pins::DIR3,  OUTPUT);
+  digitalWrite(Pins::STEP3, LOW);
 
   // Hardware timer 0, prescaler 80 => 1 tick = 1 us
   s_timer = timerBegin(0, 80, true);
   timerAttachInterrupt(s_timer, &onStepTimer, true);
-  timerAlarmWrite(s_timer, s_period_us, true); // auto-reload each period
+
+  // Auto-reload at constant period. We do NOT change this inside ISR.
+  s_period_us = clampPeriodUs(1000000UL / (unsigned long)s_speedSPS);
+  timerAlarmWrite(s_timer, s_period_us, true);
   timerAlarmDisable(s_timer);
 
   s_mode = Mode::IDLE;
-  Serial.println("[AxisPair] init (timer ready).");
+  Serial.print("[AxisPair] init (timer ready). period_us=");
+  Serial.print((unsigned long)s_period_us);
+  Serial.print(" pw_us=");
+  Serial.println((uint32_t)pulseWidthUs());
 }
 
-// -----------------------------
+// ============================================================
 // Speed setter
-// -----------------------------
+// ============================================================
 void setSpeedSPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
-  s_speedSPS  = sps;
-  s_period_us = (unsigned long)(1000000.0 / (double)sps);
 
-  // Update timer period immediately
+  const unsigned long newPeriod = clampPeriodUs((unsigned long)(1000000.0 / (double)sps));
+
   noInterrupts();
+  s_speedSPS  = sps;
+  s_period_us = newPeriod;
+  // Safe to update timer outside ISR
   timerAlarmDisable(s_timer);
   timerAlarmWrite(s_timer, s_period_us, true);
   timerAlarmEnable(s_timer);
   interrupts();
 
-  Serial.print("[AxisPair] speed set to "); Serial.print(s_speedSPS);
-  Serial.print(" sps (period=");  Serial.print(s_period_us);
+  Serial.print("[AxisPair] speed set to ");
+  Serial.print((long)s_speedSPS);
+  Serial.print(" sps (period=");
+  Serial.print((unsigned long)s_period_us);
   Serial.println(" us)");
 }
 
-// -----------------------------
+// ============================================================
 // Blocking helper: wait until ISR marks IDLE
-// -----------------------------
+// ============================================================
 static void waitForIdle() {
   while (s_mode != Mode::IDLE) {
     delay(1);
   }
-  // After motion completes, stop timer to avoid free-running ISR
   timerAlarmDisable(s_timer);
 }
 
-// -----------------------------
+// ============================================================
 // AXIS 2: Toolhead syringe (EN2)
-// -----------------------------
+// ============================================================
 void move2(long steps) {
   if (steps == 0) return;
 
@@ -173,7 +210,8 @@ void move2(long steps) {
   const long todo    = labs(steps);
 
   Serial.print("[AxisPair] move2 steps="); Serial.println(steps);
-  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
+
+  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL); // keep gantry off if that's your intent
 
   digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
   delayMicroseconds(500);
@@ -184,7 +222,6 @@ void move2(long steps) {
   s_dir2High = dirHigh;
   s_rem2     = todo;
   s_mode     = Mode::MOVE2;
-  timerAlarmWrite(s_timer, s_period_us, true); // ensure latest period
   timerAlarmEnable(s_timer);
   interrupts();
 
@@ -192,9 +229,9 @@ void move2(long steps) {
   digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
 }
 
-// -----------------------------
+// ============================================================
 // AXIS 3: Selected base syringe (Bases::hold)
-// -----------------------------
+// ============================================================
 void move3(long steps) {
   if (steps == 0) return;
 
@@ -212,7 +249,6 @@ void move3(long steps) {
   s_dir3High = dirHigh;
   s_rem3     = todo;
   s_mode     = Mode::MOVE3;
-  timerAlarmWrite(s_timer, s_period_us, true);
   timerAlarmEnable(s_timer);
   interrupts();
 
@@ -220,9 +256,9 @@ void move3(long steps) {
   Bases::hold(false);
 }
 
-// -----------------------------
+// ============================================================
 // Synchronous move (toolhead + base)
-// -----------------------------
+// ============================================================
 void moveSync(long steps2, long steps3) {
   const long a = labs(steps2), b = labs(steps3);
   if (a == 0 && b == 0) return;
@@ -244,15 +280,18 @@ void moveSync(long steps2, long steps3) {
   noInterrupts();
   s_dir2High = dir2High;
   s_dir3High = dir3High;
-  s_rem2     = a;
-  s_rem3     = b;
-  s_syncA    = a;
-  s_syncB    = b;
-  s_syncN    = (a > b) ? a : b;
-  s_acc2     = 0;
-  s_acc3     = 0;
-  s_mode     = Mode::SYNC;
-  timerAlarmWrite(s_timer, s_period_us, true);
+
+  s_rem2  = a;
+  s_rem3  = b;
+
+  s_syncA = a;
+  s_syncB = b;
+  s_syncN = (a > b) ? a : b;
+
+  s_acc2  = 0;
+  s_acc3  = 0;
+
+  s_mode  = Mode::SYNC;
   timerAlarmEnable(s_timer);
   interrupts();
 
@@ -264,9 +303,9 @@ void moveSync(long steps2, long steps3) {
 
 void link(long steps) { moveSync(steps, -steps); }
 
-// -----------------------------
+// ============================================================
 // Axis 2 closed-loop helper (unchanged blocking path)
-// -----------------------------
+// ============================================================
 bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   if (!Drivers::hasADS()) {
     Serial.println("[AxisPair] move2UntilPot: ADS not present.");
@@ -276,7 +315,7 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
 
-  const unsigned long period_us = (unsigned long)(1000000.0 / (double)sps);
+  const unsigned long period_us = clampPeriodUs((unsigned long)(1000000.0 / (double)sps));
   const uint8_t hysteresis = 3;
   const unsigned long timeout_ms = 20000UL;
 
@@ -304,7 +343,7 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
     nextEdge += period_us;
 
     digitalWrite(Pins::STEP2, HIGH);
-    delayMicroseconds(pulseWidthUs());
+    esp_rom_delay_us(pulseWidthUs());
     digitalWrite(Pins::STEP2, LOW);
 
     s_pos2 += dirHigh ? +1 : -1;
