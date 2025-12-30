@@ -40,6 +40,18 @@ namespace {
       Serial.println(msg);
     }
   }
+
+  void syncLegacyFields(PotCalibration& cal) {
+    if (cal.pointCount == 0) return;
+    cal.adcEmpty = Pots::countsFromRatio(cal.points[0].ratio);
+    if (cal.pointCount > 1) {
+      cal.adcFull = Pots::countsFromRatio(cal.points[cal.pointCount - 1].ratio);
+      cal.mlFull  = cal.points[cal.pointCount - 1].volume_ml;
+    } else {
+      cal.adcFull = cal.adcEmpty;
+      cal.mlFull  = cal.points[0].volume_ml;
+    }
+  }
 }
 
 // ------------------------------------------------------------
@@ -93,6 +105,9 @@ bool SyringeFillController::captureToolheadEmpty() {
   m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(0.0f, ratio);
+  if (ok) {
+    syncLegacyFields(m_toolhead.cal);
+  }
   if (SFC_DBG) {
     Serial.print("[SFC] toolhead empty ratio = ");
     Serial.print(ratio, 3);
@@ -112,6 +127,9 @@ bool SyringeFillController::captureToolheadFull(float mlFull) {
   m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(mlFull, ratio);
+  if (ok) {
+    syncLegacyFields(m_toolhead.cal);
+  }
   if (SFC_DBG) {
     Serial.print("[SFC] toolhead full ratio = ");
     Serial.print(ratio, 3);
@@ -128,6 +146,7 @@ bool SyringeFillController::saveToolheadCalibration() {
     if (SFC_DBG) Serial.println("[SFC] saveToolheadCalibration(): no toolhead RFID");
     return false;
   }
+  syncLegacyFields(m_toolhead.cal);
   bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
   if (SFC_DBG) {
     Serial.print("[SFC] saveToolheadCalibration(): ");
@@ -291,6 +310,9 @@ bool SyringeFillController::setToolheadMlFull(float ml) {
   m_toolhead.cal.legacy = false;
   float ratio = readToolheadRatio();
   bool ok = m_toolhead.cal.addPoint(ml, ratio);
+  if (ok) {
+    syncLegacyFields(m_toolhead.cal);
+  }
 
   if (SFC_DBG) {
     Serial.print("[SFC] setToolheadMlFull(): mlFull=");
@@ -305,6 +327,124 @@ bool SyringeFillController::setToolheadMlFull(float ml) {
   if (SFC_DBG) Serial.println(saved ? "[SFC] ...toolhead cal saved to NVS"
                                     : "[SFC] ...FAILED to save toolhead cal");
   return saved;
+}
+
+bool SyringeFillController::captureToolheadCalibrationPoint(float ml, String& message) {
+  if (ml < 0.0f) {
+    message = "volume must be >= 0";
+    return false;
+  }
+  if (m_toolhead.rfid == 0) {
+    message = "no toolhead RFID; run sfc.scanTool first";
+    return false;
+  }
+
+  float ratio = readToolheadRatio();
+  bool ok = m_toolhead.cal.addPoint(ml, ratio);
+  if (!ok) {
+    message = (m_toolhead.cal.pointCount >= PotCalibration::kMaxPoints)
+                ? "toolhead calibration point list full"
+                : "failed to add toolhead calibration point";
+    return false;
+  }
+
+  m_toolhead.cal.legacy = false;
+  syncLegacyFields(m_toolhead.cal);
+  if (m_toolhead.cal.pointCount < 2) {
+    message = "point saved; add at least 2 points to enable interpolation";
+  } else {
+    message = "point saved";
+  }
+  return true;
+}
+
+bool SyringeFillController::clearCurrentBaseCalibrationPoints(String& message) {
+  if (m_currentSlot < 0 || m_currentSlot >= (int)Bases::kCount) {
+    message = "no current base";
+    return false;
+  }
+
+  Syringe& sy = m_bases[m_currentSlot];
+  if (sy.rfid == 0) {
+    message = "base has no RFID; run sfc.scanbase first";
+    return false;
+  }
+
+  sy.calPoints = {};
+  Util::BaseMeta meta;
+  App::PotCalibration cal;
+  App::CalibrationPoints savedPoints;
+  if (!Util::loadBase(sy.rfid, meta, cal, savedPoints)) {
+    memset(&meta, 0, sizeof(meta));
+  }
+  (void)cal;
+  (void)savedPoints;
+  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+  message = ok ? "base calibration points cleared" : "failed to clear base calibration points";
+  return ok;
+}
+
+bool SyringeFillController::clearToolheadCalibrationPoints(String& message) {
+  if (m_toolhead.rfid == 0) {
+    message = "no toolhead RFID; run sfc.scanTool first";
+    return false;
+  }
+
+  m_toolhead.cal.pointCount = 0;
+  m_toolhead.cal.legacy = false;
+  m_toolhead.cal.adcEmpty = 0;
+  m_toolhead.cal.adcFull = 0;
+  m_toolhead.cal.mlFull = 0.0f;
+  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  message = ok ? "toolhead calibration points cleared" : "failed to clear toolhead calibration points";
+  return ok;
+}
+
+bool SyringeFillController::forceCurrentBaseCalibrationZero(String& message) {
+  if (m_currentSlot < 0 || m_currentSlot >= (int)Bases::kCount) {
+    message = "no current base";
+    return false;
+  }
+
+  Syringe& sy = m_bases[m_currentSlot];
+  if (sy.rfid == 0) {
+    message = "base has no RFID; run sfc.scanbase first";
+    return false;
+  }
+  if (sy.calPoints.count == 0) {
+    message = "no base calibration points to update";
+    return false;
+  }
+
+  sy.calPoints.points[0].volumeMl = 0.0f;
+  Util::BaseMeta meta;
+  App::PotCalibration cal;
+  App::CalibrationPoints savedPoints;
+  if (!Util::loadBase(sy.rfid, meta, cal, savedPoints)) {
+    memset(&meta, 0, sizeof(meta));
+  }
+  (void)cal;
+  (void)savedPoints;
+  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+  message = ok ? "base calibration forced through 0 mL" : "failed to update base calibration";
+  return ok;
+}
+
+bool SyringeFillController::forceToolheadCalibrationZero(String& message) {
+  if (m_toolhead.rfid == 0) {
+    message = "no toolhead RFID; run sfc.scanTool first";
+    return false;
+  }
+  if (m_toolhead.cal.pointCount == 0) {
+    message = "no toolhead calibration points to update";
+    return false;
+  }
+
+  m_toolhead.cal.points[0].volume_ml = 0.0f;
+  syncLegacyFields(m_toolhead.cal);
+  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  message = ok ? "toolhead calibration forced through 0 mL" : "failed to update toolhead calibration";
+  return ok;
 }
 
 
