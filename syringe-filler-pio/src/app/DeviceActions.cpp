@@ -277,6 +277,12 @@ ActionResult sfcCaptureToolFull(App::SyringeFillController &sfc, float ml) {
   return {ok, ok ? "toolhead full captured" : "capture full failed"};
 }
 
+ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml) {
+  String message;
+  bool ok = sfc.captureToolheadCalibrationPoint(ml, message);
+  return {ok, message.length() ? message : (ok ? "toolhead point saved" : "toolhead point failed")};
+}
+
 ActionResult sfcSaveToolCalibration(App::SyringeFillController &sfc) {
   bool ok = sfc.saveToolheadCalibration();
   return {ok, ok ? "toolhead calibration saved" : "save calibration failed"};
@@ -332,6 +338,30 @@ ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, i
     ok = sfc.captureBaseCalibrationPoint((uint8_t)slot, ml, message);
   }
   return {ok, message.length() ? message : (ok ? "calibration point saved" : "calibration point failed")};
+}
+
+ActionResult sfcClearBaseCalPoints(App::SyringeFillController &sfc) {
+  String message;
+  bool ok = sfc.clearCurrentBaseCalibrationPoints(message);
+  return {ok, message.length() ? message : (ok ? "base calibration points cleared" : "clear failed")};
+}
+
+ActionResult sfcClearToolCalPoints(App::SyringeFillController &sfc) {
+  String message;
+  bool ok = sfc.clearToolheadCalibrationPoints(message);
+  return {ok, message.length() ? message : (ok ? "toolhead calibration points cleared" : "clear failed")};
+}
+
+ActionResult sfcForceBaseCalZero(App::SyringeFillController &sfc) {
+  String message;
+  bool ok = sfc.forceCurrentBaseCalibrationZero(message);
+  return {ok, message.length() ? message : (ok ? "base calibration forced to 0 mL" : "update failed")};
+}
+
+ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc) {
+  String message;
+  bool ok = sfc.forceToolheadCalibrationZero(message);
+  return {ok, message.length() ? message : (ok ? "toolhead calibration forced to 0 mL" : "update failed")};
 }
 
 ActionResult sfcSetCurrentBaseMlFull(App::SyringeFillController &sfc, float ml) {

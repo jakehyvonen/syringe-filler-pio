@@ -26,7 +26,8 @@ struct CalPoint {
   float ratio = 0.0f;
 };
 
-constexpr uint8_t kCalPointCount = 2;
+constexpr uint8_t kCalPointCountLegacy = 2;
+constexpr uint8_t kCalPointCount = App::PotCalibration::kMaxPoints;
 
 bool initStorage();
 

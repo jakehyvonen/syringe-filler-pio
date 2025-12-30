@@ -32,6 +32,10 @@ public:
   bool getCurrentBaseMlFull(float& ml) const;
   bool setCurrentBaseMlFull(float ml);
   bool setToolheadMlFull(float ml);  
+  bool clearCurrentBaseCalibrationPoints(String& message);
+  bool clearToolheadCalibrationPoints(String& message);
+  bool forceCurrentBaseCalibrationZero(String& message);
+  bool forceToolheadCalibrationZero(String& message);
   bool loadToolheadRecipeFromFS();
   bool saveToolheadRecipeToFS();
   void runRecipe();
@@ -39,6 +43,7 @@ public:
   // calibration for toolhead already here...
   bool captureToolheadEmpty();
   bool captureToolheadFull(float mlFull);
+  bool captureToolheadCalibrationPoint(float ml, String& message);
   bool saveToolheadCalibration();
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();

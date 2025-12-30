@@ -67,6 +67,7 @@ ActionResult sfcScanBase(App::SyringeFillController &sfc, uint8_t slot);
 ActionResult sfcScanTool(App::SyringeFillController &sfc);
 ActionResult sfcCaptureToolEmpty(App::SyringeFillController &sfc);
 ActionResult sfcCaptureToolFull(App::SyringeFillController &sfc, float ml);
+ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml);
 ActionResult sfcSaveToolCalibration(App::SyringeFillController &sfc);
 ActionResult sfcShowTool(App::SyringeFillController &sfc);
 ActionResult sfcRecipeSave(App::SyringeFillController &sfc);
@@ -77,6 +78,10 @@ ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc);
 ActionResult sfcCaptureCurrentBaseEmpty(App::SyringeFillController &sfc);
 ActionResult sfcCaptureCurrentBaseFull(App::SyringeFillController &sfc);
 ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, int8_t slot);
+ActionResult sfcClearBaseCalPoints(App::SyringeFillController &sfc);
+ActionResult sfcClearToolCalPoints(App::SyringeFillController &sfc);
+ActionResult sfcForceBaseCalZero(App::SyringeFillController &sfc);
+ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc);
 ActionResult sfcSetCurrentBaseMlFull(App::SyringeFillController &sfc, float ml);
 ActionResult sfcSetToolheadMlFull(App::SyringeFillController &sfc, float ml);
 

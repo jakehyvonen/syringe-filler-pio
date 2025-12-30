@@ -65,6 +65,7 @@ namespace Util {
 namespace {
 constexpr uint16_t kBlobVersionV1 = 1;
 constexpr uint16_t kBlobVersionV2 = 2;
+constexpr uint16_t kBlobVersionV3 = 3;
 constexpr uint8_t  kCalFlagLegacy = 0x01;
 }
 
@@ -89,6 +90,15 @@ struct CalBlobV1 {
 // Current V2 payload (ratios + points)
 struct CalBlobV2 {
   uint16_t version;     // kBlobVersionV2
+  uint8_t  flags;       // kCalFlagLegacy etc
+  uint8_t  pointCount;  // number of valid points in points[]
+  Util::CalPoint points[Util::kCalPointCountLegacy]; // expects .ratio and .ml
+  float    steps_mL;
+  uint32_t crc;
+};
+
+struct CalBlobV3 {
+  uint16_t version;     // kBlobVersionV3
   uint8_t  flags;       // kCalFlagLegacy etc
   uint8_t  pointCount;  // number of valid points in points[]
   Util::CalPoint points[Util::kCalPointCount]; // expects .ratio and .ml
@@ -141,6 +151,41 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
   size_t required = 0;
   if (!nvsGetBlobSize("cal", key.c_str(), required)) return false;
 
+  // V3
+  if (required == sizeof(CalBlobV3)) {
+    CalBlobV3 blob;
+    if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
+
+    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
+    if (blob.crc != calc) return false;
+    if (blob.version != kBlobVersionV3) return false;
+    if (blob.pointCount > Util::kCalPointCount) return false;
+
+    out.steps_mL = blob.steps_mL;
+    out.legacy   = (blob.flags & kCalFlagLegacy) != 0;
+    out.pointCount = 0;
+    for (uint8_t i = 0; i < blob.pointCount; ++i) {
+      out.addPoint(blob.points[i].ml, blob.points[i].ratio);
+    }
+
+    if (out.pointCount > 0) {
+      out.adcEmpty = Pots::countsFromRatio(out.points[0].ratio);
+      if (out.pointCount > 1) {
+        out.adcFull = Pots::countsFromRatio(out.points[out.pointCount - 1].ratio);
+        out.mlFull = out.points[out.pointCount - 1].volume_ml;
+      } else {
+        out.adcFull = out.adcEmpty;
+        out.mlFull = out.points[0].volume_ml;
+      }
+    } else {
+      out.adcEmpty = 0;
+      out.adcFull  = 0;
+      out.mlFull   = 0.0f;
+    }
+
+    return true;
+  }
+
   // V2
   if (required == sizeof(CalBlobV2)) {
     CalBlobV2 blob;
@@ -149,7 +194,7 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
     uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
     if (blob.crc != calc) return false;
     if (blob.version != kBlobVersionV2) return false;
-    if (blob.pointCount < 2 || blob.pointCount > Util::kCalPointCount) return false;
+    if (blob.pointCount < 2 || blob.pointCount > Util::kCalPointCountLegacy) return false;
 
     out.adcEmpty = Pots::countsFromRatio(blob.points[0].ratio);
     out.adcFull  = Pots::countsFromRatio(blob.points[1].ratio);
@@ -195,16 +240,17 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
 }
 
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
-  CalBlobV2 blob{};
-  blob.version    = kBlobVersionV2;
+  CalBlobV3 blob{};
+  blob.version    = kBlobVersionV3;
   blob.flags      = cal.legacy ? kCalFlagLegacy : 0;
-  blob.pointCount = 2;
-
-  blob.points[0].ratio = Pots::ratioFromCounts(cal.adcEmpty);
-  blob.points[0].ml    = 0.0f;
-
-  blob.points[1].ratio = Pots::ratioFromCounts(cal.adcFull);
-  blob.points[1].ml    = cal.mlFull;
+  blob.pointCount = cal.pointCount;
+  if (blob.pointCount > Util::kCalPointCount) {
+    blob.pointCount = Util::kCalPointCount;
+  }
+  for (uint8_t i = 0; i < blob.pointCount; ++i) {
+    blob.points[i].ratio = cal.points[i].ratio;
+    blob.points[i].ml    = cal.points[i].volume_ml;
+  }
 
   blob.steps_mL = cal.steps_mL;
 
