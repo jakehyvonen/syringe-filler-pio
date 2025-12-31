@@ -4,7 +4,6 @@
 
 #include "hw/Bases.hpp"
 #include "hw/Drivers.hpp"
-#include "hw/Encoder.hpp"
 #include "hw/Pots.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
@@ -31,19 +30,9 @@ PositionResult gantryPosition() {
   return res;
 }
 
-ActionResult enableGantry(bool on) {
-  Axis::enable(on);
-  return {true, on ? "gantry enabled" : "gantry disabled"};
-}
-
 ActionResult setGantrySpeed(long sps) {
   Axis::setSpeedSPS(sps);
   return {true, "gantry speed updated"};
-}
-
-ActionResult setGantryDirection(int dirLevel) {
-  Axis::dir(dirLevel ? HIGH : LOW);
-  return {true, "gantry direction set"};
 }
 
 ActionResult homeGantry() {
@@ -145,14 +134,6 @@ ActionResult moveAxisSync(long steps2, long steps3, bool requireBaseSelected) {
   return {true, "axes moved"};
 }
 
-ActionResult linkAxis(long steps) {
-  if (Bases::selected() == 0) {
-    return {false, "base not selected"};
-  }
-  AxisPair::link(steps);
-  return {true, "axes linked"};
-}
-
 PositionResult axis2Position() {
   PositionResult res{};
   res.steps = AxisPair::pos2();
@@ -208,29 +189,6 @@ ActionResult handleBaseRfidCommand(const String &arg) {
     return {true, "base rfid detect once"};
   }
   return {false, "usage: rfid2 on|off|once [tries]"};
-}
-
-// Encoder
-ActionResult encoderStatus(long &count, float &mm, bool &hasReading) {
-  hasReading = true;
-  count = EncoderHW::count();
-  mm = EncoderHW::mm();
-  return {true, "encoder reading"};
-}
-
-ActionResult encoderOn() {
-  EncoderHW::setPolling(true);
-  return {true, "encoder polling on"};
-}
-
-ActionResult encoderOff() {
-  EncoderHW::setPolling(false);
-  return {true, "encoder polling off"};
-}
-
-ActionResult encoderZero() {
-  EncoderHW::reset();
-  return {true, "encoder zeroed"};
 }
 
 // Syringe fill controller helpers
