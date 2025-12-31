@@ -225,16 +225,6 @@ ActionResult sfcScanTool(App::SyringeFillController &sfc) {
   return {ok, ok ? "toolhead scan ok" : "toolhead scan failed"};
 }
 
-ActionResult sfcCaptureToolEmpty(App::SyringeFillController &sfc) {
-  bool ok = sfc.captureToolheadEmpty();
-  return {ok, ok ? "toolhead empty captured" : "capture empty failed"};
-}
-
-ActionResult sfcCaptureToolFull(App::SyringeFillController &sfc, float ml) {
-  bool ok = sfc.captureToolheadFull(ml);
-  return {ok, ok ? "toolhead full captured" : "capture full failed"};
-}
-
 ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml) {
   String message;
   bool ok = sfc.captureToolheadCalibrationPoint(ml, message);
@@ -255,11 +245,6 @@ ActionResult sfcRecipeSave(App::SyringeFillController &sfc) { return sfcSaveReci
 
 ActionResult sfcRecipeLoad(App::SyringeFillController &sfc) { return sfcLoadRecipe(sfc); }
 
-ActionResult sfcSetBaseEmpty(App::SyringeFillController &sfc) {
-  bool ok = sfc.captureBaseEmpty((uint8_t)sfc.currentSlot());
-  return {ok, ok ? "base empty captured" : "capture base empty failed"};
-}
-
 ActionResult sfcSaveCurrentBase(App::SyringeFillController &sfc) {
   bool ok = sfc.saveCurrentBaseToNVS();
   return {ok, ok ? "current base saved" : "save current base failed"};
@@ -272,16 +257,6 @@ ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc) {
   }
   sfc.printBaseInfo((uint8_t)slot, Serial);
   return {true, "base info printed"};
-}
-
-ActionResult sfcCaptureCurrentBaseEmpty(App::SyringeFillController &sfc) {
-  bool ok = sfc.captureCurrentBaseEmpty();
-  return {ok, ok ? "base empty captured" : "capture base empty failed"};
-}
-
-ActionResult sfcCaptureCurrentBaseFull(App::SyringeFillController &sfc) {
-  bool ok = sfc.captureCurrentBaseFull();
-  return {ok, ok ? "base full captured" : "capture base full failed"};
 }
 
 ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, int8_t slot) {
@@ -320,16 +295,6 @@ ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc) {
   String message;
   bool ok = sfc.forceToolheadCalibrationZero(message);
   return {ok, message.length() ? message : (ok ? "toolhead calibration forced to 0 mL" : "update failed")};
-}
-
-ActionResult sfcSetCurrentBaseMlFull(App::SyringeFillController &sfc, float ml) {
-  bool ok = sfc.setCurrentBaseMlFull(ml);
-  return {ok, ok ? "base ml full set (deprecated: use sfc.cal.base.point)" : "set base ml full failed"};
-}
-
-ActionResult sfcSetToolheadMlFull(App::SyringeFillController &sfc, float ml) {
-  bool ok = sfc.setToolheadMlFull(ml);
-  return {ok, ok ? "tool ml full set (deprecated)" : "set tool ml full failed"};
 }
 
 // Pots

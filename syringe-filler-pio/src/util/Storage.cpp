@@ -62,44 +62,11 @@ bool nvsGetBlobSize(const char* ns, const char* key, size_t& outSize) {
 
 namespace Util {
 
-namespace {
-constexpr uint16_t kBlobVersionV1 = 1;
-constexpr uint16_t kBlobVersionV2 = 2;
-constexpr uint16_t kBlobVersionV3 = 3;
-constexpr uint8_t  kCalFlagLegacy = 0x01;
-}
-
 // ---------------------------
 // Calibration blobs
 // ---------------------------
 
-// Legacy V1 payload (raw ADC counts)
-struct PotCalibrationV1 {
-  uint16_t adcEmpty;
-  uint16_t adcFull;
-  float    mlFull;
-  float    steps_mL;
-};
-
-struct CalBlobV1 {
-  uint16_t         version;
-  PotCalibrationV1 cal;
-  uint32_t         crc;
-};
-
-// Current V2 payload (ratios + points)
-struct CalBlobV2 {
-  uint16_t version;     // kBlobVersionV2
-  uint8_t  flags;       // kCalFlagLegacy etc
-  uint8_t  pointCount;  // number of valid points in points[]
-  Util::CalPoint points[Util::kCalPointCountLegacy]; // expects .ratio and .ml
-  float    steps_mL;
-  uint32_t crc;
-};
-
-struct CalBlobV3 {
-  uint16_t version;     // kBlobVersionV3
-  uint8_t  flags;       // kCalFlagLegacy etc
+struct CalBlob {
   uint8_t  pointCount;  // number of valid points in points[]
   Util::CalPoint points[Util::kCalPointCount]; // expects .ratio and .ml
   float    steps_mL;
@@ -110,22 +77,11 @@ struct CalBlobV3 {
 // Base blobs
 // ---------------------------
 
-// V1: meta + cal only (no points)
-struct BaseBlobV1 {
-  uint16_t         version;
-  Util::BaseMeta   meta;
-  App::PotCalibration cal;
-  uint32_t         crc;
-};
-
-// V2: meta + cal + explicit points (yes, redundant with cal.points, but we keep it
-// to avoid breaking any code that expects separate points persistence)
-struct BaseBlobV2 {
-  uint16_t              version;
-  Util::BaseMeta        meta;
-  App::PotCalibration   cal;
+struct BaseBlob {
+  Util::BaseMeta         meta;
+  App::PotCalibration    cal;
   App::CalibrationPoints points;
-  uint32_t              crc;
+  uint32_t               crc;
 };
 
 static uint32_t crcForBlob(void* blob, size_t len, uint32_t* crcField) {
@@ -151,98 +107,41 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
   size_t required = 0;
   if (!nvsGetBlobSize("cal", key.c_str(), required)) return false;
 
-  // V3
-  if (required == sizeof(CalBlobV3)) {
-    CalBlobV3 blob;
-    if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
+  if (required != sizeof(CalBlob)) return false;
 
-    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-    if (blob.crc != calc) return false;
-    if (blob.version != kBlobVersionV3) return false;
-    if (blob.pointCount > Util::kCalPointCount) return false;
+  CalBlob blob;
+  if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
 
-    out.steps_mL = blob.steps_mL;
-    out.legacy   = (blob.flags & kCalFlagLegacy) != 0;
-    out.pointCount = 0;
-    for (uint8_t i = 0; i < blob.pointCount; ++i) {
-      out.addPoint(blob.points[i].ml, blob.points[i].ratio);
-    }
+  uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
+  if (blob.crc != calc) return false;
+  if (blob.pointCount > Util::kCalPointCount) return false;
 
-    if (out.pointCount > 0) {
-      out.adcEmpty = Pots::countsFromRatio(out.points[0].ratio);
-      if (out.pointCount > 1) {
-        out.adcFull = Pots::countsFromRatio(out.points[out.pointCount - 1].ratio);
-        out.mlFull = out.points[out.pointCount - 1].volume_ml;
-      } else {
-        out.adcFull = out.adcEmpty;
-        out.mlFull = out.points[0].volume_ml;
-      }
+  out.steps_mL = blob.steps_mL;
+  out.pointCount = 0;
+  for (uint8_t i = 0; i < blob.pointCount; ++i) {
+    out.addPoint(blob.points[i].ml, blob.points[i].ratio);
+  }
+
+  if (out.pointCount > 0) {
+    out.adcEmpty = Pots::countsFromRatio(out.points[0].ratio);
+    if (out.pointCount > 1) {
+      out.adcFull = Pots::countsFromRatio(out.points[out.pointCount - 1].ratio);
+      out.mlFull = out.points[out.pointCount - 1].volume_ml;
     } else {
-      out.adcEmpty = 0;
-      out.adcFull  = 0;
-      out.mlFull   = 0.0f;
+      out.adcFull = out.adcEmpty;
+      out.mlFull = out.points[0].volume_ml;
     }
-
-    return true;
+  } else {
+    out.adcEmpty = 0;
+    out.adcFull  = 0;
+    out.mlFull   = 0.0f;
   }
 
-  // V2
-  if (required == sizeof(CalBlobV2)) {
-    CalBlobV2 blob;
-    if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
-
-    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-    if (blob.crc != calc) return false;
-    if (blob.version != kBlobVersionV2) return false;
-    if (blob.pointCount < 2 || blob.pointCount > Util::kCalPointCountLegacy) return false;
-
-    out.adcEmpty = Pots::countsFromRatio(blob.points[0].ratio);
-    out.adcFull  = Pots::countsFromRatio(blob.points[1].ratio);
-    out.mlFull   = blob.points[1].ml;
-    out.steps_mL = blob.steps_mL;
-    out.legacy   = (blob.flags & kCalFlagLegacy) != 0;
-
-    // If your App::PotCalibration also supports multi-points, populate first two.
-    // (We keep this minimal to avoid assuming layout beyond what you already use.)
-    out.pointCount = 0;
-    out.addPoint(0.0f, blob.points[0].ratio);
-    out.addPoint(blob.points[1].ml, blob.points[1].ratio);
-
-    return true;
-  }
-
-  // V1
-  if (required == sizeof(CalBlobV1)) {
-    CalBlobV1 blob;
-    if (!nvsLoadBlob("cal", key.c_str(), &blob, sizeof(blob))) return false;
-
-    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-    if (blob.crc != calc) return false;
-    if (blob.version != kBlobVersionV1) return false;
-
-    float emptyRatio = Pots::ratioFromCounts(blob.cal.adcEmpty);
-    float fullRatio  = Pots::ratioFromCounts(blob.cal.adcFull);
-
-    out.adcEmpty = Pots::countsFromRatio(emptyRatio);
-    out.adcFull  = Pots::countsFromRatio(fullRatio);
-    out.mlFull   = blob.cal.mlFull;
-    out.steps_mL = blob.cal.steps_mL;
-    out.legacy   = true;
-
-    out.pointCount = 0;
-    out.addPoint(0.0f, emptyRatio);
-    out.addPoint(out.mlFull, fullRatio);
-
-    return true;
-  }
-
-  return false;
+  return true;
 }
 
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
-  CalBlobV3 blob{};
-  blob.version    = kBlobVersionV3;
-  blob.flags      = cal.legacy ? kCalFlagLegacy : 0;
+  CalBlob blob{};
   blob.pointCount = cal.pointCount;
   if (blob.pointCount > Util::kCalPointCount) {
     blob.pointCount = Util::kCalPointCount;
@@ -272,45 +171,25 @@ bool loadBase(uint32_t rfid,
   size_t required = 0;
   if (!nvsGetBlobSize("base", key.c_str(), required)) return false;
 
-  // V2
-  if (required == sizeof(BaseBlobV2)) {
-    BaseBlobV2 blob;
-    if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
+  if (required != sizeof(BaseBlob)) return false;
 
-    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-    if (blob.crc != calc) return false;
-    if (blob.version != kBlobVersionV2) return false;
+  BaseBlob blob;
+  if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
 
-    meta   = blob.meta;
-    cal    = blob.cal;
-    points = blob.points;
-    return true;
-  }
+  uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
+  if (blob.crc != calc) return false;
 
-  // V1
-  if (required == sizeof(BaseBlobV1)) {
-    BaseBlobV1 blob;
-    if (!nvsLoadBlob("base", key.c_str(), &blob, sizeof(blob))) return false;
-
-    uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-    if (blob.crc != calc) return false;
-    if (blob.version != kBlobVersionV1) return false;
-
-    meta = blob.meta;
-    cal  = blob.cal;
-    points.count = 0; // no points persisted in V1
-    return true;
-  }
-
-  return false;
+  meta   = blob.meta;
+  cal    = blob.cal;
+  points = blob.points;
+  return true;
 }
 
 bool saveBase(uint32_t rfid,
               const BaseMeta& meta,
               const App::PotCalibration& cal,
               const App::CalibrationPoints& points) {
-  BaseBlobV2 blob{};
-  blob.version = kBlobVersionV2;
+  BaseBlob blob{};
   blob.meta    = meta;
   blob.cal     = cal;
   blob.points  = points;
