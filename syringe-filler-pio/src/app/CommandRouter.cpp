@@ -16,15 +16,10 @@ using App::PositionResult;
 using App::DeviceActions::axis2Position;
 using App::DeviceActions::axis3Position;
 using App::DeviceActions::coupleSyringes;
-using App::DeviceActions::encoderOff;
-using App::DeviceActions::encoderOn;
-using App::DeviceActions::encoderStatus;
-using App::DeviceActions::encoderZero;
 using App::DeviceActions::gantryPosition;
 using App::DeviceActions::handleBaseRfidCommand;
 using App::DeviceActions::handleRfidCommand;
 using App::DeviceActions::homeGantry;
-using App::DeviceActions::linkAxis;
 using App::DeviceActions::moveAxis2;
 using App::DeviceActions::moveAxis3;
 using App::DeviceActions::moveAxisSync;
@@ -60,12 +55,10 @@ using App::DeviceActions::sfcStatus;
 using App::DeviceActions::selectedBase;
 using App::DeviceActions::selectBase;
 using App::DeviceActions::setAxis23Speed;
-using App::DeviceActions::setGantryDirection;
 using App::DeviceActions::setGantrySpeed;
 using App::DeviceActions::setServoAngle;
 using App::DeviceActions::setServoAngleSlow;
 using App::DeviceActions::setServoPulseRaw;
-using App::DeviceActions::enableGantry;
 using App::DeviceActions::readBasePot;
 using App::DeviceActions::readPot;
 
@@ -104,10 +97,6 @@ void printStructured(const char *cmd, const PositionResult &res) {
   printStructured(cmd, static_cast<const ActionResult &>(res), data);
 }
 
-void handleOnOff(const String &args) { printStructured("on", enableGantry(true)); }
-
-void handleOff(const String &args) { printStructured("off", enableGantry(false)); }
-
 void handleSpeed(const String &args) {
   long sps = args.toInt();
   if (sps > 0) {
@@ -116,8 +105,6 @@ void handleSpeed(const String &args) {
     printStructured("speed", {false, "missing speed"});
   }
 }
-
-void handleDir(const String &args) { printStructured("dir", setGantryDirection(args.toInt())); }
 
 void handleHome(const String &args) { printStructured("home", homeGantry()); }
 
@@ -135,10 +122,6 @@ void handleBase(const String &args) {
 void handleWhichBase(const String &args) {
   ActionResult res{true, "base query"};
   printStructured("whichbase", res, "{\"selected\":" + String(selectedBase()) + "}");
-}
-
-void handleBaseOff(const String &args) {
-  printStructured("baseoff", selectBase(0), "{\"selected\":0}");
 }
 
 void handleGoBase(const String &args) {
@@ -218,8 +201,6 @@ void handleM23(const String &args) {
   }
 }
 
-void handleLink(const String &args) { printStructured("link", linkAxis(args.toInt())); }
-
 void handlePos2(const String &args) { printStructured("pos2", axis2Position()); }
 
 void handlePos3(const String &args) { printStructured("pos3", axis3Position()); }
@@ -227,32 +208,6 @@ void handlePos3(const String &args) { printStructured("pos3", axis3Position()); 
 void handleRfid(const String &args) { printStructured("rfid", handleRfidCommand(args)); }
 
 void handleRfid2(const String &args) { printStructured("rfid2", handleBaseRfidCommand(args)); }
-
-void handleEncoder(const String &args) {
-  String lowered = args;
-  lowered.trim();
-  lowered.toLowerCase();
-  if (lowered.length() == 0) {
-    long count = 0;
-    float mm = 0.0f;
-    bool hasReading = false;
-    ActionResult res = encoderStatus(count, mm, hasReading);
-    if (hasReading) {
-      String data = "{\"count\":" + String(count) + ",\"mm\":" + String(mm, 3) + "}";
-      printStructured("enc", res, data);
-    } else {
-      printStructured("enc", res);
-    }
-  } else if (lowered == "on") {
-    printStructured("enc", encoderOn());
-  } else if (lowered == "off") {
-    printStructured("enc", encoderOff());
-  } else if (lowered == "zero" || lowered == "reset") {
-    printStructured("enc", encoderZero());
-  } else {
-    printStructured("enc", {false, "usage: enc|enc on|enc off|enc zero"});
-  }
-}
 
 void handleSfcScanBases(const String &args) { printStructured("sfc.scanBases", sfcScanBases(g_sfc)); }
 
@@ -408,17 +363,13 @@ void handlePotMove(const String &args) {
 }
 
 const CommandDescriptor COMMANDS[] = {
-    {"on", "enable gantry motor", handleOnOff},
-    {"off", "disable gantry motor", handleOff},
     {"speed", "set gantry speed (steps/sec)", handleSpeed},
-    {"dir", "set gantry direction", handleDir},
     {"home", "home gantry", handleHome},
     {"pos", "report gantry position", handlePos},
     {"goto", "move gantry to steps", handleGoto},
     {"gotomm", "move gantry to mm", handleGotoMm},
     {"base", "select base", handleBase},
     {"whichbase", "report selected base", handleWhichBase},
-    {"baseoff", "deselect base", handleBaseOff},
     {"gobase", "move to base", handleGoBase},
     {"servopulse", "set servo pulse", handleServoPulse},
     {"servo", "set servo angle", handleServo},
@@ -430,12 +381,10 @@ const CommandDescriptor COMMANDS[] = {
     {"move3", "move axis3", handleMove3},
     {"speed23", "set axis2/3 speed", handleSpeed23},
     {"m23", "move axis2 and 3", handleM23},
-    {"link", "link axes", handleLink},
     {"pos2", "report axis2 position", handlePos2},
     {"pos3", "report axis3 position", handlePos3},
     {"rfid", "rfid controls", handleRfid},
     {"rfid2", "base rfid controls", handleRfid2},
-    {"enc", "encoder controls", handleEncoder},
     {"sfc.scanBases", "scan all base syringes", handleSfcScanBases},
     {"sfc.run", "run current recipe", handleSfcRun},
     {"sfc.load", "load recipe", handleSfcLoad},

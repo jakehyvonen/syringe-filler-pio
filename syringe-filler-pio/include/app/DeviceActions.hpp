@@ -19,9 +19,7 @@ namespace DeviceActions {
 
 // Gantry / axis 1
 PositionResult gantryPosition();
-ActionResult enableGantry(bool on);
 ActionResult setGantrySpeed(long sps);
-ActionResult setGantryDirection(int dirLevel);
 ActionResult homeGantry();
 ActionResult moveGantryToSteps(long targetSteps);
 ActionResult moveGantryToMm(float targetMm);
@@ -43,19 +41,12 @@ ActionResult moveAxis2(long steps);
 ActionResult moveAxis3(long steps);
 ActionResult setAxis23Speed(long sps);
 ActionResult moveAxisSync(long steps2, long steps3, bool requireBaseSelected);
-ActionResult linkAxis(long steps);
 PositionResult axis2Position();
 PositionResult axis3Position();
 
 // RFID
 ActionResult handleRfidCommand(const String &arg);
 ActionResult handleBaseRfidCommand(const String &arg);
-
-// Encoder
-ActionResult encoderStatus(long &count, float &mm, bool &hasReading);
-ActionResult encoderOn();
-ActionResult encoderOff();
-ActionResult encoderZero();
 
 // Syringe fill controller helpers
 ActionResult sfcScanBases(App::SyringeFillController &sfc);
