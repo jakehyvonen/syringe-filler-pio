@@ -28,10 +28,7 @@ using App::DeviceActions::moveGantryToSteps;
 using App::DeviceActions::moveToBase;
 using App::DeviceActions::potMove;
 using App::DeviceActions::raiseToolhead;
-using App::DeviceActions::sfcCaptureCurrentBaseEmpty;
 using App::DeviceActions::sfcCaptureBaseCalPoint;
-using App::DeviceActions::sfcCaptureToolEmpty;
-using App::DeviceActions::sfcCaptureToolFull;
 using App::DeviceActions::sfcCaptureToolCalPoint;
 using App::DeviceActions::sfcClearBaseCalPoints;
 using App::DeviceActions::sfcClearToolCalPoints;
@@ -47,8 +44,6 @@ using App::DeviceActions::sfcSaveToolCalibration;
 using App::DeviceActions::sfcScanBase;
 using App::DeviceActions::sfcScanBases;
 using App::DeviceActions::sfcScanTool;
-using App::DeviceActions::sfcSetCurrentBaseMlFull;
-using App::DeviceActions::sfcSetToolheadMlFull;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
 using App::DeviceActions::sfcStatus;
@@ -223,17 +218,6 @@ void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfc
 
 void handleSfcScanTool(const String &args) { printStructured("sfc.scanTool", sfcScanTool(g_sfc)); }
 
-void handleSfcCalTEmpty(const String &args) { printStructured("sfc.cal.t.empty", sfcCaptureToolEmpty(g_sfc)); }
-
-void handleSfcCalTFull(const String &args) {
-  float ml = args.toFloat();
-  if (ml <= 0.0f) {
-    printStructured("sfc.cal.t.full", {false, "usage: sfc.cal.t.full <ml>"});
-  } else {
-    printStructured("sfc.cal.t.full", sfcCaptureToolFull(g_sfc, ml));
-  }
-}
-
 void handleSfcCalTSave(const String &args) { printStructured("sfc.cal.t.save", sfcSaveToolCalibration(g_sfc)); }
 
 void handleSfcCalTPoint(const String &args) {
@@ -255,30 +239,9 @@ void handleSfcRecipeSave(const String &args) { printStructured("sfc.recipe.save"
 
 void handleSfcRecipeLoad(const String &args) { printStructured("sfc.recipe.load", sfcRecipeLoad(g_sfc)); }
 
-void handleSfcBaseSetEmptyPos(const String &args) {
-  ActionResult res = sfcCaptureBaseCalPoint(g_sfc, 0.0f, -1);
-  if (res.ok) {
-    res.message = "deprecated: use sfc.cal.base.point; " + res.message;
-  }
-  printStructured("sfc.base.setemptypos", res);
-}
-
 void handleSfcBaseSave(const String &args) { printStructured("sfc.base.save", sfcSaveCurrentBase(g_sfc)); }
 
 void handleSfcBaseShow(const String &args) { printStructured("sfc.base.show", sfcShowCurrentBase(g_sfc)); }
-
-void handleSfcBaseSetFullPos(const String &args) {
-  float ml = 0.0f;
-  if (!g_sfc.getCurrentBaseMlFull(ml)) {
-    printStructured("sfc.base.setfullpos", {false, "deprecated: set ml with sfc.cal.base.point <ml> [slot]"} );
-    return;
-  }
-  ActionResult res = sfcCaptureBaseCalPoint(g_sfc, ml, -1);
-  if (res.ok) {
-    res.message = "deprecated: use sfc.cal.base.point; " + res.message;
-  }
-  printStructured("sfc.base.setfullpos", res);
-}
 
 void handleSfcCalBasePoint(const String &args) {
   int sp = args.indexOf(' ');
@@ -316,24 +279,6 @@ void handleSfcCalBaseForceZero(const String &args) {
 
 void handleSfcCalToolForceZero(const String &args) {
   printStructured("sfc.cal.t.force0", sfcForceToolCalZero(g_sfc));
-}
-
-void handleSfcBaseSetMlFull(const String &args) {
-  float ml = args.toFloat();
-  if (ml <= 0.0f) {
-    printStructured("sfc.base.setmlfull", {false, "usage: sfc.base.setmlfull <ml>"});
-  } else {
-    printStructured("sfc.base.setmlfull", sfcSetCurrentBaseMlFull(g_sfc, ml));
-  }
-}
-
-void handleSfcToolSetMlFull(const String &args) {
-  float ml = args.toFloat();
-  if (ml <= 0.0f) {
-    printStructured("sfc.tool.setmlfull", {false, "usage: sfc.tool.setmlfull <ml>"});
-  } else {
-    printStructured("sfc.tool.setmlfull", sfcSetToolheadMlFull(g_sfc, ml));
-  }
 }
 
 void handlePotRaw(const String &args) {
@@ -392,8 +337,6 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.status", "sfc status", handleSfcStatus},
     {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
     {"sfc.scanTool", "scan toolhead syringe", handleSfcScanTool},
-    {"sfc.cal.t.empty", "capture toolhead empty", handleSfcCalTEmpty},
-    {"sfc.cal.t.full", "capture toolhead full", handleSfcCalTFull},
     {"sfc.cal.t.save", "save toolhead calibration", handleSfcCalTSave},
     {"sfc.cal.t.point", "add toolhead calibration point <ml>", handleSfcCalTPoint},
     {"sfc.cal.t.clear", "clear toolhead calibration points", handleSfcCalToolClear},
@@ -401,15 +344,11 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
     {"sfc.recipe.save", "save toolhead recipe", handleSfcRecipeSave},
     {"sfc.recipe.load", "load toolhead recipe", handleSfcRecipeLoad},
-    {"sfc.base.setemptypos", "deprecated: use sfc.cal.base.point 0 [slot]", handleSfcBaseSetEmptyPos},
     {"sfc.base.save", "save current base", handleSfcBaseSave},
     {"sfc.base.show", "show current base", handleSfcBaseShow},
-    {"sfc.base.setfullpos", "deprecated: use sfc.cal.base.point <ml> [slot]", handleSfcBaseSetFullPos},
     {"sfc.cal.base.point", "add base calibration point <ml> [slot]", handleSfcCalBasePoint},
     {"sfc.cal.base.clear", "clear current base calibration points", handleSfcCalBaseClear},
     {"sfc.cal.base.force0", "force base calibration to 0 mL", handleSfcCalBaseForceZero},
-    {"sfc.base.setmlfull", "deprecated: use sfc.cal.base.point <ml> [slot]", handleSfcBaseSetMlFull},
-    {"sfc.tool.setmlfull", "deprecated: use sfc.cal.t.full <ml>", handleSfcToolSetMlFull},
     {"potraw", "read pot", handlePotRaw},
     {"basepot", "read base pot", handleBasePot},
     {"potmove", "pot driven move", handlePotMove},

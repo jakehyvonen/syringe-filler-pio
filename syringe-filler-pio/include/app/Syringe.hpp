@@ -24,13 +24,12 @@ struct PotCalibration {
 
   static constexpr uint8_t kMaxPoints = 8;
 
-  // Legacy-ish single-span fields (kept for compatibility / convenience)
+  // Single-span fields (kept for compatibility / convenience)
   uint16_t adcEmpty = 0;     // raw ADC at 0 mL
   uint16_t adcFull  = 4095;  // raw ADC at max mL
   float    mlFull   = 10.1f; // how many mL does adcFull mean?
 
   // Current multi-point model
-  bool             legacy     = false;
   uint8_t          pointCount = 0;
   CalibrationPoint points[kMaxPoints];
   float            steps_mL   = 1.01f; // calibrated steps per mL

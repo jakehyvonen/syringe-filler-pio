@@ -17,21 +17,10 @@ public:
   int8_t currentSlot() const { return m_currentSlot; }
   void   printBaseInfo(uint8_t slot, Stream& s);
   bool   saveCurrentBaseToNVS();   // create/update entry for the base we’re parked at
-  bool captureBaseEmpty(uint8_t slot);
-  bool captureCurrentBaseEmpty() { 
-    return (m_currentSlot >= 0) ? captureBaseEmpty((uint8_t)m_currentSlot) : false;
-  }
-  bool captureBaseFull(uint8_t slot);
-  bool captureCurrentBaseFull() { 
-    return (m_currentSlot >= 0) ? captureBaseFull((uint8_t)m_currentSlot) : false;
-  }
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
   bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
     return (m_currentSlot >= 0) ? captureBaseCalibrationPoint((uint8_t)m_currentSlot, ml, message) : false;
   }
-  bool getCurrentBaseMlFull(float& ml) const;
-  bool setCurrentBaseMlFull(float ml);
-  bool setToolheadMlFull(float ml);  
   bool clearCurrentBaseCalibrationPoints(String& message);
   bool clearToolheadCalibrationPoints(String& message);
   bool forceCurrentBaseCalibrationZero(String& message);
@@ -41,8 +30,6 @@ public:
   void runRecipe();
 
   // calibration for toolhead already here...
-  bool captureToolheadEmpty();
-  bool captureToolheadFull(float mlFull);
   bool captureToolheadCalibrationPoint(float ml, String& message);
   bool saveToolheadCalibration();
   bool printCurrentBaseInfo(Stream& s = Serial);
