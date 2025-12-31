@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include "app/SyringeCalibration.hpp"
 #include "app/Syringe.hpp"
 #include "hw/Bases.hpp"
 #include "util/Storage.hpp"   // for loadBase/saveBase etc.
@@ -44,26 +45,15 @@ private:
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);
-  float    readToolheadVolumeMl();
-  float    readBaseVolumeMl(uint8_t slot);
   bool     transferFromBase(uint8_t slot, float ml);
   uint16_t readToolheadRawADC();
   uint16_t readBaseRawADC(uint8_t slot);
-  bool readBasePotRatio(uint8_t slot, float& ratio, String& message) const;
-  static float interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok);
-  float    readToolheadRatio();
-  float    readBaseRatio(uint8_t slot);
 
   Syringe m_toolhead;
   Syringe m_bases[Bases::kCount];
-  int8_t getBasePotIndex(uint8_t baseSlot) const;
-  App::PotCalibration m_toolCal;   // loaded from NVS via Util::loadCalibration()
-  bool m_toolCalValid = false;
-
-  static float mlFromRatio_(const App::PotCalibration& cal, float ratio);
-
   uint8_t  m_baseToPot[Bases::kCount];
   int8_t  m_currentSlot = -1;
+  SyringeCalibration m_calibration;
   Util::RecipeDTO m_recipe;  // or Util::Recipe, whatever you called it
 };
 
