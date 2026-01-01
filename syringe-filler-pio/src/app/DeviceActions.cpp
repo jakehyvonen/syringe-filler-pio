@@ -228,12 +228,7 @@ ActionResult sfcScanTool(App::SyringeFillController &sfc) {
 ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml) {
   String message;
   bool ok = sfc.captureToolheadCalibrationPoint(ml, message);
-  return {ok, message.length() ? message : (ok ? "toolhead point saved" : "toolhead point failed")};
-}
-
-ActionResult sfcSaveToolCalibration(App::SyringeFillController &sfc) {
-  bool ok = sfc.saveToolheadCalibration();
-  return {ok, ok ? "toolhead calibration saved" : "save calibration failed"};
+  return {ok, message.length() ? message : (ok ? "toolhead syringe point saved" : "toolhead syringe point failed")};
 }
 
 ActionResult sfcShowTool(App::SyringeFillController &sfc) {
@@ -250,11 +245,6 @@ ActionResult showVolumes(App::SyringeFillController &sfc, String &data) {
 ActionResult sfcRecipeSave(App::SyringeFillController &sfc) { return sfcSaveRecipe(sfc); }
 
 ActionResult sfcRecipeLoad(App::SyringeFillController &sfc) { return sfcLoadRecipe(sfc); }
-
-ActionResult sfcSaveCurrentBase(App::SyringeFillController &sfc) {
-  bool ok = sfc.saveCurrentBaseToNVS();
-  return {ok, ok ? "current base saved" : "save current base failed"};
-}
 
 ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc) {
   int8_t slot = sfc.currentSlot();

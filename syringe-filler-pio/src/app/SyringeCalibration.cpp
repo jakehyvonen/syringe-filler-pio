@@ -104,27 +104,13 @@ float SyringeCalibration::readToolheadRatio() {
   return ratio;
 }
 
-bool SyringeCalibration::saveToolheadCalibration() {
-  if (m_toolhead.rfid == 0) {
-    if (CAL_DBG) Serial.println("[SFC] saveToolheadCalibration(): no toolhead RFID");
-    return false;
-  }
-  syncLegacyFields(m_toolhead.cal);
-  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
-  if (CAL_DBG) {
-    Serial.print("[SFC] saveToolheadCalibration(): ");
-    Serial.println(ok ? "OK" : "FAIL");
-  }
-  return ok;
-}
-
 bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& message) {
   if (ml < 0.0f) {
     message = "volume must be >= 0";
     return false;
   }
   if (m_toolhead.rfid == 0) {
-    message = "no toolhead RFID; run sfc.scanTool first";
+    message = "no toolhead RFID; scan the toolhead first";
     return false;
   }
 
@@ -138,10 +124,15 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
   }
 
   syncLegacyFields(m_toolhead.cal);
+  bool saved = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  if (!saved) {
+    message = "failed to save toolhead syringe calibration point";
+    return false;
+  }
   if (m_toolhead.cal.pointCount < 2) {
-    message = "point saved; add at least 2 points to enable interpolation";
+    message = "toolhead syringe point saved; add at least 2 points to enable interpolation";
   } else {
-    message = "point saved";
+    message = "toolhead syringe point saved";
   }
   return true;
 }
@@ -154,7 +145,7 @@ bool SyringeCalibration::clearCurrentBaseCalibrationPoints(String& message) {
 
   Syringe& sy = m_bases[m_currentSlot];
   if (sy.rfid == 0) {
-    message = "base has no RFID; run sfc.scanbase first";
+    message = "base has no RFID; scan the base first";
     return false;
   }
 
@@ -174,7 +165,7 @@ bool SyringeCalibration::clearCurrentBaseCalibrationPoints(String& message) {
 
 bool SyringeCalibration::clearToolheadCalibrationPoints(String& message) {
   if (m_toolhead.rfid == 0) {
-    message = "no toolhead RFID; run sfc.scanTool first";
+    message = "no toolhead RFID; scan the toolhead first";
     return false;
   }
 
@@ -195,7 +186,7 @@ bool SyringeCalibration::forceCurrentBaseCalibrationZero(String& message) {
 
   Syringe& sy = m_bases[m_currentSlot];
   if (sy.rfid == 0) {
-    message = "base has no RFID; run sfc.scanbase first";
+    message = "base has no RFID; scan the base first";
     return false;
   }
   if (sy.calPoints.count == 0) {
@@ -219,7 +210,7 @@ bool SyringeCalibration::forceCurrentBaseCalibrationZero(String& message) {
 
 bool SyringeCalibration::forceToolheadCalibrationZero(String& message) {
   if (m_toolhead.rfid == 0) {
-    message = "no toolhead RFID; run sfc.scanTool first";
+    message = "no toolhead RFID; scan the toolhead first";
     return false;
   }
   if (m_toolhead.cal.pointCount == 0) {
@@ -326,7 +317,7 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
 
   Syringe& sy = m_bases[slot];
   if (sy.rfid == 0) {
-    message = "base has no RFID; run sfc.scanbase first";
+    message = "base has no RFID; scan the base first";
     return false;
   }
 
@@ -394,39 +385,6 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
   return true;
 }
 
-bool SyringeCalibration::saveCurrentBaseToNVS() {
-  if (m_currentSlot < 0 || m_currentSlot >= (int8_t)m_baseCount) {
-    if (CAL_DBG) Serial.println("[SFC] saveCurrentBaseToNVS(): no current slot");
-    return false;
-  }
-
-  Syringe& sy = m_bases[m_currentSlot];
-  if (sy.rfid == 0) {
-    if (CAL_DBG) Serial.println("[SFC] saveCurrentBaseToNVS(): no RFID cached for this slot");
-    return false;
-  }
-
-  Util::BaseMeta meta;
-  PotCalibration cal;
-  App::CalibrationPoints points;
-  if (Util::loadBase(sy.rfid, meta, cal, points)) {
-    cal = sy.cal;
-    if (CAL_DBG) {
-      Serial.print("[SFC] saveCurrentBaseToNVS(): updating existing base 0x");
-      Serial.println(sy.rfid, HEX);
-    }
-    (void)points;
-    return Util::saveBase(sy.rfid, meta, cal, sy.calPoints);
-  }
-
-  if (CAL_DBG) {
-    Serial.print("[SFC] saveCurrentBaseToNVS(): creating new base 0x");
-    Serial.println(sy.rfid, HEX);
-  }
-  memset(&meta, 0, sizeof(meta));
-  return Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
-}
-
 void SyringeCalibration::printBaseInfo(uint8_t slot, Stream& s) {
   if (slot >= m_baseCount) {
     s.println("[SFC] base info: slot OOR");
@@ -469,7 +427,7 @@ void SyringeCalibration::printToolheadInfo(Stream& out) {
   out.println(F("[SFC] Toolhead calibration:"));
 
   if (m_toolhead.rfid == 0) {
-    out.println(F("  RFID: (none)  tip: run 'sfc.scanTool'"));
+    out.println(F("  RFID: (none)  tip: scan the toolhead first"));
     return;
   }
 

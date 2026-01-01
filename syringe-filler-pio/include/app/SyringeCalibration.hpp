@@ -16,13 +16,11 @@ public:
   bool initializeToolheadFromTag(uint32_t tag);
 
   bool captureToolheadCalibrationPoint(float ml, String& message);
-  bool saveToolheadCalibration();
   bool clearCurrentBaseCalibrationPoints(String& message);
   bool clearToolheadCalibrationPoints(String& message);
   bool forceCurrentBaseCalibrationZero(String& message);
   bool forceToolheadCalibrationZero(String& message);
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
-  bool saveCurrentBaseToNVS();
   void printBaseInfo(uint8_t slot, Stream& s);
   void printToolheadInfo(Stream& out);
   float readToolheadVolumeMl();

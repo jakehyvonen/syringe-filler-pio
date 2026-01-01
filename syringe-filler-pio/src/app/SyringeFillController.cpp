@@ -63,10 +63,6 @@ SyringeFillController::SyringeFillController()
 }
 
 
-bool SyringeFillController::saveToolheadCalibration() {
-  return m_calibration.saveToolheadCalibration();
-}
-
 // ------------------------------------------------------------
 // scan all / scan one base
 // ------------------------------------------------------------
@@ -155,10 +151,6 @@ bool SyringeFillController::forceToolheadCalibrationZero(String& message) {
 }
 bool SyringeFillController::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
   return m_calibration.captureBaseCalibrationPoint(slot, ml, message);
-}
-
-bool SyringeFillController::saveCurrentBaseToNVS() {
-  return m_calibration.saveCurrentBaseToNVS();
 }
 
 void SyringeFillController::printBaseInfo(uint8_t slot, Stream& s) {
