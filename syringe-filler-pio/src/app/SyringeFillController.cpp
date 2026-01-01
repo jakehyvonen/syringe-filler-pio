@@ -11,7 +11,7 @@
 namespace App {
 
 namespace {
-  constexpr bool SFC_DBG = true;
+  constexpr bool DEBUG_FLAG = true;
 
   // used by BaseRFID listener
   struct BaseTagCapture {
@@ -33,7 +33,7 @@ namespace {
   }
 
   void dbg(const char* msg) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] ");
       Serial.println(msg);
     }
@@ -46,7 +46,7 @@ namespace {
 // ------------------------------------------------------------
 SyringeFillController::SyringeFillController()
   : m_calibration(m_toolhead, m_bases, Bases::kCount, m_baseToPot, m_currentSlot) {
-  if (SFC_DBG) {
+  if (DEBUG_FLAG) {
     Serial.println("[SFC] ctor: init base slots");
   }
   for (uint8_t i = 0; i < Bases::kCount; ++i) {
@@ -70,7 +70,7 @@ void SyringeFillController::scanAllBaseSyringes() {
   dbg("scanAllBaseSyringes() start");
   for (uint8_t i = 0; i < Bases::kCount; ++i) {
     if (!scanBaseSyringe(i)) {
-      if (SFC_DBG) {
+      if (DEBUG_FLAG) {
         Serial.print("[SFC] WARN: scanBaseSyringe(");
         Serial.print(i);
         Serial.println(") failed");
@@ -85,7 +85,7 @@ void SyringeFillController::scanAllBaseSyringes() {
 // --------------------------------------------------
 bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
   if (slot >= Bases::kCount) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] scanBaseSyringe(): slot out of range ");
       Serial.println(slot);
     }
@@ -93,7 +93,7 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
   }
 
   if (!goToBase(slot)) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] scanBaseSyringe(): goToBase(");
       Serial.print(slot);
       Serial.println(") failed");
@@ -101,17 +101,17 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
     return false;
   }
 
-  if (SFC_DBG) Serial.println("[SFC] scanBaseSyringe(): calling readBaseRFIDBlocking()");
+  if (DEBUG_FLAG) Serial.println("[SFC] scanBaseSyringe(): calling readBaseRFIDBlocking()");
   uint32_t tag = readBaseRFIDBlocking(2000); // 2s timeout
   if (tag == 0) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] scanBaseSyringe(): no tag at slot ");
       Serial.println(slot);
     }
     return false;
   }
 
-  if (SFC_DBG) {
+  if (DEBUG_FLAG) {
     Serial.print("[SFC] scanBaseSyringe(): slot ");
     Serial.print(slot);
     Serial.print(" -> tag 0x");
@@ -122,7 +122,7 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
 
   Syringe& s = m_bases[slot];
   s.currentMl = m_calibration.readBaseVolumeMl(slot);
-  if (SFC_DBG) {
+  if (DEBUG_FLAG) {
     Serial.print("[SFC] scanBaseSyringe(): measured ~");
     Serial.print(s.currentMl, 3);
     Serial.println(" mL");
@@ -330,7 +330,7 @@ bool SyringeFillController::loadToolheadRecipeFromFS() {
     return false;
   }
   bool ok = Util::loadRecipe(m_toolhead.rfid, m_recipe);
-  if (!ok && SFC_DBG) {
+  if (!ok && DEBUG_FLAG) {
     Serial.print("[SFC] loadToolheadRecipeFromFS(): failed for tag 0x");
     Serial.println(m_toolhead.rfid, HEX);
   }
@@ -343,7 +343,7 @@ bool SyringeFillController::saveToolheadRecipeToFS() {
     return false;
   }
   bool ok = Util::saveRecipe(m_toolhead.rfid, m_recipe);
-  if (!ok && SFC_DBG) {
+  if (!ok && DEBUG_FLAG) {
     Serial.print("[SFC] saveToolheadRecipeToFS(): failed for tag 0x");
     Serial.println(m_toolhead.rfid, HEX);
   }
@@ -357,7 +357,7 @@ void SyringeFillController::runRecipe() {
   dbg("runRecipe() start");
   for (uint8_t i = 0; i < m_recipe.count; ++i) {
     auto& step = m_recipe.steps[i];
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] step ");
       Serial.print(i);
       Serial.print(": base=");
@@ -366,7 +366,7 @@ void SyringeFillController::runRecipe() {
       Serial.println(step.ml, 3);
     }
     if (!transferFromBase(step.baseSlot, step.ml)) {
-      if (SFC_DBG) {
+      if (DEBUG_FLAG) {
         Serial.print("[SFC] ERROR: transferFromBase failed at step ");
         Serial.println(i);
       }
@@ -381,7 +381,7 @@ void SyringeFillController::runRecipe() {
 // ------------------------------------------------------------
 bool SyringeFillController::goToBase(uint8_t slot) {
   if (slot >= Bases::kCount) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] goToBase(): slot out of range: ");
       Serial.println(slot);
     }
@@ -389,14 +389,14 @@ bool SyringeFillController::goToBase(uint8_t slot) {
   }
   long target = Bases::positionSteps(slot);
   if (target < 0) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] goToBase(): no position for slot ");
       Serial.println(slot);
     }
     return false;
   }
 
-  if (SFC_DBG) {
+  if (DEBUG_FLAG) {
     Serial.print("[SFC] goToBase(");
     Serial.print(slot);
     Serial.print(") -> steps=");
@@ -405,7 +405,7 @@ bool SyringeFillController::goToBase(uint8_t slot) {
 
   Axis::moveTo(target);
   m_currentSlot = slot;
-  if (SFC_DBG) {
+  if (DEBUG_FLAG) {
     Serial.println("[SFC] goToBase: finished successfully");
   }
   return true;
@@ -422,10 +422,10 @@ uint32_t SyringeFillController::readRFIDNow() {
   const bool wasEnabled = RFID::enabled();
   if (!wasEnabled) {
     RFID::enable(true);
-    if (SFC_DBG) Serial.println("[SFC] readRFIDNow(): RFID was disabled, enabling temporarily");
+    if (DEBUG_FLAG) Serial.println("[SFC] readRFIDNow(): RFID was disabled, enabling temporarily");
   }
 
-  if (SFC_DBG) Serial.println("[SFC] readRFIDNow(): waiting for tag...");
+  if (DEBUG_FLAG) Serial.println("[SFC] readRFIDNow(): waiting for tag...");
 
   while (millis() - startMs < timeoutMs) {
     // note: App::loop() normally calls RFID::tick(), but we’re blocking here
@@ -435,7 +435,7 @@ uint32_t SyringeFillController::readRFIDNow() {
       uint8_t len        = RFID::uidLen();
 
       if (len == 0 || uid == nullptr) {
-        if (SFC_DBG) Serial.println("[SFC] readRFIDNow(): available() but empty UID");
+        if (DEBUG_FLAG) Serial.println("[SFC] readRFIDNow(): available() but empty UID");
         if (!wasEnabled) RFID::enable(false);
         return 0;
       }
@@ -445,7 +445,7 @@ uint32_t SyringeFillController::readRFIDNow() {
         packed = (packed << 8) | uid[i];
       }
 
-      if (SFC_DBG) {
+      if (DEBUG_FLAG) {
         Serial.print("[SFC] readRFIDNow(): got UID len=");
         Serial.print(len);
         Serial.print(" packed=0x");
@@ -458,7 +458,7 @@ uint32_t SyringeFillController::readRFIDNow() {
     delay(10);
   }
 
-  if (SFC_DBG) Serial.println("[SFC] readRFIDNow(): timeout, no tag");
+  if (DEBUG_FLAG) Serial.println("[SFC] readRFIDNow(): timeout, no tag");
   if (!wasEnabled) RFID::enable(false);
   return 0;
 }
@@ -468,14 +468,14 @@ uint32_t SyringeFillController::readRFIDNow() {
 // ------------------------------------------------------------
 bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   if (slot >= Bases::kCount) {
-    if (SFC_DBG) {
+    if (DEBUG_FLAG) {
       Serial.print("[SFC] transferFromBase(): slot out of range: ");
       Serial.println(slot);
     }
     return false;
   }
 
-  if (SFC_DBG) {
+  if (DEBUG_FLAG) {
     Serial.print("[SFC] transferFromBase(slot=");
     Serial.print(slot);
     Serial.print(", ml=");

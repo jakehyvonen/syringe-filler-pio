@@ -322,7 +322,6 @@ const CommandDescriptor COMMANDS[] = {
     {"raise", "raise toolhead", handleRaise},
     {"servoslow", "set servo slowly", handleServoSlow},
     {"couple", "couple syringes", handleCouple},
-    {"couplesyringes", "couple syringes", handleCouple},
     {"move2", "move axis2", handleMove2},
     {"move3", "move axis3", handleMove3},
     {"speed23", "set axis2/3 speed", handleSpeed23},
