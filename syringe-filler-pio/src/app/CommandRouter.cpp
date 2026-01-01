@@ -54,6 +54,7 @@ using App::DeviceActions::setServoAngle;
 using App::DeviceActions::setServoAngleSlow;
 using App::DeviceActions::setServoPulseRaw;
 using App::DeviceActions::readBasePot;
+using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
 
 namespace {
@@ -293,8 +294,18 @@ void handleBasePot(const String &args) {
   uint8_t potIdx = 0;
   uint16_t counts = 0, scaled = 0;
   ActionResult res = readBasePot((uint8_t)args.toInt(), potIdx, counts, scaled);
-  String data = "{\"base\":" + String(args.toInt()) + ",\"potIndex\":" + String(potIdx) + ",\"counts\":" + String(counts) + ",\"scaled\":" + String(scaled) + "}";
+  float percent = Pots::ratioFromCounts(counts);
+  float ratio = percent / 100.0f;
+  String data = "{\"base\":" + String(args.toInt()) + ",\"potIndex\":" + String(potIdx) + ",\"counts\":" + String(counts) + ",\"scaled\":" + String(scaled);
+  data += ",\"ratio\":" + String(ratio, 5) + ",\"percent\":" + String(percent, 3) + "}";
   printStructured("basepot", res, data);
+}
+
+void handlePotReport(const String &args) {
+  (void)args;
+  String data;
+  ActionResult res = readAllPots(data);
+  printStructured("pots", res, data);
 }
 
 void handlePotMove(const String &args) {
@@ -350,6 +361,7 @@ const CommandDescriptor COMMANDS[] = {
     {"cal.base.force0", "force base calibration to 0 mL", handleSfcCalBaseForceZero},
     {"potraw", "read pot", handlePotRaw},
     {"basepot", "read base pot", handleBasePot},
+    {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
 };
 

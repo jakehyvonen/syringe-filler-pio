@@ -71,6 +71,7 @@ ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc);
 // Pots
 ActionResult readPot(uint8_t idx, uint16_t &counts, uint16_t &scaled);
 ActionResult readBasePot(uint8_t base, uint8_t &potIdx, uint16_t &counts, uint16_t &scaled);
+ActionResult readAllPots(String &data);
 
 // Pot-driven motion
 ActionResult potMove(uint16_t target, long sps);
