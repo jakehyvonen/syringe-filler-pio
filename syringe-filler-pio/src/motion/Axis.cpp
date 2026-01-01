@@ -1,7 +1,11 @@
+/**
+ * @file Axis.cpp
+ * @brief Timer-driven motion control for the main axis.
+ */
 #include "motion/Axis.hpp"
 #include "servo/Toolhead.hpp"
 #include "hw/Pins.hpp"
-#include "hw/Encoder.hpp"    // <-- NEW
+#include "hw/Encoder.hpp"
 #include <Arduino.h>
 
 namespace Axis {
@@ -10,7 +14,9 @@ namespace Axis {
 // Public position readback
 // -----------------------------
 static volatile long s_pos = 0;  // logical position in steps
+// Return the current logical position in steps.
 long current() { long v; noInterrupts(); v = s_pos; interrupts(); return v; }
+// Set the current logical position in steps.
 void setCurrent(long s) { noInterrupts(); s_pos = s; interrupts(); }
 
 // -----------------------------
@@ -40,6 +46,7 @@ static inline uint32_t pulseWidthUs() {
 static volatile bool s_phaseHigh = false;
 
 // ISR
+// Timer ISR that emits step pulses and updates position.
 static void IRAM_ATTR onStepTimer() {
   const Mode mode = s_mode;
   if (mode == Mode::IDLE) return;
@@ -63,6 +70,7 @@ static void IRAM_ATTR onStepTimer() {
   }
 }
 
+// Block until motion completes and disable the timer alarm.
 static void waitForIdle() {
   while (s_mode != Mode::IDLE) {
     delay(1);
@@ -73,6 +81,7 @@ static void waitForIdle() {
 // -----------------------------
 // Init
 // -----------------------------
+// Initialize GPIO and the hardware timer for axis stepping.
 void init() {
   pinMode(Pins::STEP1, OUTPUT);
   pinMode(Pins::DIR1,  OUTPUT);
@@ -93,6 +102,7 @@ void init() {
 // -----------------------------
 // Speed setter
 // -----------------------------
+// Update the step period based on steps per second.
 void setSpeedSPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
@@ -113,15 +123,18 @@ void setSpeedSPS(long sps) {
 // -----------------------------
 // Enable/disable
 // -----------------------------
+// Enable or disable the stepper driver.
 void enable(bool on) {
   digitalWrite(Pins::EN1, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
 }
 
 // Optional helpers
+// Set the direction pin state.
 void dir(bool high) {
   digitalWrite(Pins::DIR1, high ? HIGH : LOW);
   delayMicroseconds(3);
 }
+// Emit a single blocking step pulse.
 void stepBlocking() {
   digitalWrite(Pins::STEP1, HIGH);
   delayMicroseconds(pulseWidthUs());
@@ -131,6 +144,7 @@ void stepBlocking() {
 // -----------------------------
 // Low-level motion (no encoder)
 // -----------------------------
+// Move a signed number of steps with toolhead safety checks.
 void moveSteps(long steps) {
   if (steps == 0) return;
 
@@ -161,6 +175,7 @@ void moveSteps(long steps) {
 // -----------------------------
 // Helper: read encoder position in *steps*
 // -----------------------------
+// Convert encoder position to step units.
 static long encPosSteps() {
   // encoder.mm() is already (encoderCount / COUNTS_PER_MM)
   float mm = EncoderHW::mm();
@@ -171,6 +186,7 @@ static long encPosSteps() {
 // -----------------------------
 // High-level moveTo using encoder
 // -----------------------------
+// Move to a target position using encoder feedback.
 void moveTo(long targetSteps) {
   // Clamp to soft limits
   long tgt = targetSteps;
@@ -183,7 +199,7 @@ void moveTo(long targetSteps) {
   const long tolSteps  = 4;     // ~0.05 mm tolerance
   const long maxChunk  = 400;   // max move per iteration (~5 mm)
   const int  maxIters  = 53;    // safety cap
-  const int  debugEvery = 1;    // print every iteration (you can raise to 2–3 to reduce spam)
+  const int  debugEvery = 1;    // print every iteration (increase to reduce spam)
 
   for (int i = 0; i < maxIters; ++i) {
     long curEnc = encPosSteps();
@@ -227,8 +243,9 @@ void moveTo(long targetSteps) {
   Serial.println("[Axis.moveTo] logical axis synced to encoder position.");
 }
 
+// Move to a target position in millimeters.
 void moveToMM(float mmTarget) {
-  // convert mm to steps using your existing scale
+  // Convert mm to steps using configured scale.
   long targetSteps = (long)lround(mmTarget * Pins::STEPS_PER_MM);
   moveTo(targetSteps);
 }

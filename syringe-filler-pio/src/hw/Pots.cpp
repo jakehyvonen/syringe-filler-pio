@@ -1,3 +1,7 @@
+/**
+ * @file Pots.cpp
+ * @brief ADS1115-backed potentiometer sampling and filtering.
+ */
 #include "hw/Pots.hpp"
 #include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
@@ -54,6 +58,7 @@ static inline float ratio_percent(uint16_t pot_counts, uint16_t vref_counts) {
 }
 
 // ---- API --------------------------------------------------------------------
+// Initialize ADS1115 devices and seed filter state.
 void init() {
   // If Drivers/Wire aren’t already up elsewhere, ensure I2C is started there.
 
@@ -89,6 +94,7 @@ void init() {
   inited = true;
 }
 
+// Poll all pots, update filters, and emit changes.
 void poll() {
   if (!inited) init();
 
@@ -110,20 +116,25 @@ void poll() {
   }
 }
 
+// Return the last raw counts for a pot index.
 uint16_t raw(uint8_t i)  { return (i < NUM_POTS) ? pot_raw[i]  : 0; }
+// Return the filtered counts for a pot index.
 uint16_t filt(uint8_t i) { return (i < NUM_POTS) ? pot_filt[i] : 0; }
 
+// Return the pot position as a percent of Vref.
 float percent(uint8_t i) {
   if (i >= NUM_POTS) return 0.0f;
   uint16_t vref = read_vref_counts();
   return ratio_percent(pot_filt[i], vref);
 }
 
+// Convert ADS counts to a percent ratio.
 float ratioFromCounts(uint16_t potCounts) {
   uint16_t vref = read_vref_counts();
   return ratio_percent(potCounts, vref);
 }
 
+// Convert a percent ratio back to ADS counts.
 uint16_t countsFromRatio(float ratio) {
   if (ratio <= 0.0f) return 0;
   uint16_t vref = read_vref_counts();
@@ -132,6 +143,7 @@ uint16_t countsFromRatio(float ratio) {
   return static_cast<uint16_t>(lroundf((ratio * 0.01f) * vref));
 }
 
+// Read a single pot channel in native ADS counts.
 uint16_t readCounts(uint8_t i) {
   if (i >= NUM_POTS) return 0;
   return read_counts(POT_MAP[i].ads, POT_MAP[i].ch);
@@ -139,6 +151,7 @@ uint16_t readCounts(uint8_t i) {
 
 // ---- Legacy shim ------------------------------------------------------------
 // Keep AxisPair happy for now, but make it ratiometric and well-behaved.
+// Read a pot channel on the legacy 0..1023 scale.
 uint16_t readScaled(uint8_t i) {
   if (i >= NUM_POTS) return 0;
   float p = percent(i);                 // 0..100

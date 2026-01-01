@@ -1,14 +1,17 @@
+/**
+ * @file Encoder.hpp
+ * @brief Linear encoder interface backed by ESP32Encoder.
+ */
 #pragma once
 #include <Arduino.h>
-#include "hw/Pins.hpp"   // for ENC_A / ENC_B / ENC_Z if you want, or you can repeat pins here
+#include "hw/Pins.hpp"   // ENC_A / ENC_B / ENC_Z
 
 namespace EncoderHW {
 
-// Logical counts/mm we derived earlier for your Phidgets strip
+// Logical counts/mm for the encoder strip.
 constexpr float COUNTS_PER_MM = 200.0f;
 
-// Pin assignments (you can keep them here or in Pins.hpp; you're already putting them in Pins.hpp,
-// so if you prefer, remove these 3 lines and just include Pins.hpp in Encoder.cpp)
+// Pin assignments (kept here for clarity; they mirror Pins.hpp).
 constexpr uint8_t PIN_A   = Pins::ENC_A;
 constexpr uint8_t PIN_B   = Pins::ENC_B;
 constexpr uint8_t PIN_IDX = Pins::ENC_Z;
@@ -41,7 +44,7 @@ bool polling();
 // to be called from App::loop() so "enc on" can print
 void service();
 
-// optional, in case you re-enable the real index ISR path
+// Optional hook for an index interrupt path.
 void onIndexPulse();
 
 } // namespace EncoderHW

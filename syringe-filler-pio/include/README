@@ -1,9 +1,12 @@
+This directory contains public headers for the syringe filler firmware
+modules (hardware drivers, motion control, servo tooling, and application
+logic).
 
 This directory is intended for project header files.
 
 A header file is a file containing C declarations and macro definitions
 to be shared between several project source files. You request the use of a
-header file in your project source file (C, C++, etc) located in `src` folder
+header file in a project source file (C, C++, etc) located in `src` folder
 by including it, with the C preprocessing directive `#include'.
 
 ```src/main.c

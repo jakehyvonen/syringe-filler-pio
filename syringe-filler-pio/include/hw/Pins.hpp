@@ -1,3 +1,7 @@
+/**
+ * @file Pins.hpp
+ * @brief Centralized pin assignments and motion constants for the ESP32 build.
+ */
 #pragma once
 #include <Arduino.h>
 
@@ -27,7 +31,7 @@ constexpr uint8_t EN2   = 5;   // keep as-is
 // ---------- Stepper #3 (toolhead syringe / base drive) ----------
 constexpr uint8_t STEP3 = 12;
 constexpr uint8_t DIR3  = 14;
-// constexpr uint8_t EN3 = ...; // if you ever want one, we can revisit
+// constexpr uint8_t EN3 = ...; // optional enable pin for a third driver
 
 
 // =======================================================

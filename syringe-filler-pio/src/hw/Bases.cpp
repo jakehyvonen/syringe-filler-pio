@@ -1,8 +1,12 @@
+/**
+ * @file Bases.cpp
+ * @brief Base selection and persisted base position handling.
+ */
 #include <Arduino.h>
 #include "hw/Bases.hpp"
 #include "hw/Pins.hpp"
 #include "motion/Axis.hpp"
-#include "util/Storage.hpp"     // <-- NEW
+#include "util/Storage.hpp"
 
 namespace Bases {
 
@@ -18,11 +22,13 @@ static long basePos[Pins::NUM_BASES] = {
 // 0 = none selected; else 1..NUM_BASES
 static uint8_t s_selected = 0;
 
+// Return the enable pin for the currently selected base.
 static inline uint8_t selectedEnPin() {
   if (s_selected == 0) return 255;
   return Pins::BASE_EN[s_selected - 1];
 }
 
+// Print current base enable pin states to serial.
 static void debugDumpEN(const char* label) {
   Serial.print("[Bases] "); Serial.print(label);
   Serial.print("  sel=");  Serial.print(s_selected);
@@ -37,6 +43,7 @@ static void debugDumpEN(const char* label) {
   Serial.println();
 }
 
+// Initialize base enable pins and load saved positions.
 void init() {
   // pins
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
@@ -56,16 +63,19 @@ void init() {
   debugDumpEN("init");
 }
 
+// Disable all base enable outputs.
 void disableAll() {
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
     digitalWrite(Pins::BASE_EN[i], Pins::DISABLE_LEVEL);
   }
 }
 
+// Return the currently selected base (1-based, 0 for none).
 uint8_t selected() {
   return s_selected;
 }
 
+// Select a base by 1-based index; 0 disables all bases.
 bool select(uint8_t idx1) {
   // idx1: 0 = none, 1..NUM_BASES valid
   if (idx1 == 0) {
@@ -89,6 +99,7 @@ bool select(uint8_t idx1) {
   return true;
 }
 
+// Enable or disable the currently selected base.
 void hold(bool on) {
   if (s_selected == 0) {
     Serial.println("[Bases] hold() called with no selection; ignoring");
@@ -108,11 +119,13 @@ void hold(bool on) {
   debugDumpEN("after hold");
 }
 
+// Get the stored position for a base index.
 long getPos(uint8_t idx1) {
   if (idx1 == 0 || idx1 > Pins::NUM_BASES) return -1;
   return basePos[idx1 - 1];
 }
 
+// Set and persist the stored position for a base index.
 bool setPos(uint8_t idx1, long steps) {
   if (idx1 == 0 || idx1 > Pins::NUM_BASES) return false;
   basePos[idx1 - 1] = steps;
@@ -121,6 +134,7 @@ bool setPos(uint8_t idx1, long steps) {
   return true;
 }
 
+// Store the current axis position as the base position.
 bool setHere(uint8_t idx1, long current) {
   if (idx1 == 0 || idx1 > Pins::NUM_BASES) return false;
   basePos[idx1 - 1] = current;

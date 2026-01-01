@@ -1,3 +1,7 @@
+/**
+ * @file AxisPair.cpp
+ * @brief Timer-driven motion control for axes 2 and 3.
+ */
 #include "motion/AxisPair.hpp"
 #include "hw/Drivers.hpp"
 #include "hw/Pots.hpp"
@@ -16,7 +20,9 @@ namespace AxisPair {
 static volatile long s_pos2 = 0;  // toolhead syringe (STEP2/DIR2/EN2)
 static volatile long s_pos3 = 0;  // selected base syringe (STEP3/DIR3 + Bases::hold())
 
+// Return the current position of axis 2 in steps.
 long pos2() { return s_pos2; }
+// Return the current position of axis 3 in steps.
 long pos3() { return s_pos3; }
 
 // ============================================================
@@ -68,7 +74,7 @@ static inline unsigned long clampPeriodUs(unsigned long p) {
 }
 
 // ============================================================
-// Fast GPIO for STEP pins (your STEP2=15, STEP3=12 are safe)
+// Fast GPIO for STEP pins
 // ============================================================
 static inline void IRAM_ATTR step2High() { GPIO.out_w1ts = (1UL << Pins::STEP2); }
 static inline void IRAM_ATTR step2Low()  { GPIO.out_w1tc = (1UL << Pins::STEP2); }
@@ -79,6 +85,7 @@ static inline void IRAM_ATTR step3Low()  { GPIO.out_w1tc = (1UL << Pins::STEP3);
 // TIMER ISR (single interrupt per step period; IRAM-safe)
 // IMPORTANT: no timerAlarmWrite/Enable calls here.
 // ============================================================
+// Timer ISR that emits pulses for axes 2/3 and updates positions.
 static void IRAM_ATTR onStepTimer() {
   const Mode mode = s_mode;
   if (mode == Mode::IDLE) return;
@@ -136,6 +143,7 @@ static void IRAM_ATTR onStepTimer() {
 // ============================================================
 // Init
 // ============================================================
+// Initialize GPIO and timer for axes 2 and 3.
 void init() {
   // TOOLHEAD (Axis 2)
   pinMode(Pins::STEP2, OUTPUT);
@@ -168,6 +176,7 @@ void init() {
 // ============================================================
 // Speed setter
 // ============================================================
+// Update the shared step period for axes 2 and 3.
 void setSpeedSPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
@@ -193,6 +202,7 @@ void setSpeedSPS(long sps) {
 // ============================================================
 // Blocking helper: wait until ISR marks IDLE
 // ============================================================
+// Block until the ISR completes the current motion.
 static void waitForIdle() {
   while (s_mode != Mode::IDLE) {
     delay(1);
@@ -203,6 +213,7 @@ static void waitForIdle() {
 // ============================================================
 // AXIS 2: Toolhead syringe (EN2)
 // ============================================================
+// Move axis 2 by a signed step count.
 void move2(long steps) {
   if (steps == 0) return;
 
@@ -211,7 +222,7 @@ void move2(long steps) {
 
   Serial.print("[AxisPair] move2 steps="); Serial.println(steps);
 
-  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL); // keep gantry off if that's your intent
+  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL); // keep gantry disabled during axis 2 moves
 
   digitalWrite(Pins::EN2, Pins::ENABLE_LEVEL);
   delayMicroseconds(500);
@@ -232,6 +243,7 @@ void move2(long steps) {
 // ============================================================
 // AXIS 3: Selected base syringe (Bases::hold)
 // ============================================================
+// Move axis 3 by a signed step count.
 void move3(long steps) {
   if (steps == 0) return;
 
@@ -259,6 +271,7 @@ void move3(long steps) {
 // ============================================================
 // Synchronous move (toolhead + base)
 // ============================================================
+// Move axes 2 and 3 synchronously.
 void moveSync(long steps2, long steps3) {
   const long a = labs(steps2), b = labs(steps3);
   if (a == 0 && b == 0) return;
@@ -301,11 +314,13 @@ void moveSync(long steps2, long steps3) {
   Bases::hold(false);
 }
 
+// Convenience move that links axes in opposite directions.
 void link(long steps) { moveSync(steps, -steps); }
 
 // ============================================================
-// Axis 2 closed-loop helper (unchanged blocking path)
+// Axis 2 closed-loop helper (blocking)
 // ============================================================
+// Move axis 2 until the pot reaches the target ADC count.
 bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   if (!Drivers::hasADS()) {
     Serial.println("[AxisPair] move2UntilPot: ADS not present.");

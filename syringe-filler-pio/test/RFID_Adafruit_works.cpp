@@ -1,8 +1,12 @@
+/**
+ * @file RFID_Adafruit_works.cpp
+ * @brief Standalone PN532 I2C sanity test using Adafruit_PN532.
+ */
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_PN532.h>
 
-// I2C pins (ESP32 defaults; match your project)
+// I2C pins (ESP32 defaults; adjust to match wiring).
 constexpr int SDA_PIN = 21;
 constexpr int SCL_PIN = 22;
 
@@ -12,11 +16,12 @@ constexpr int PN532_RESET = 14;  // from PN532 "RST" / "RSTO" pin
 
 Adafruit_PN532 nfc(PN532_IRQ, PN532_RESET); // I2C ctor uses IRQ/RESET
 
+// Initialize I2C and PN532 for a basic read test.
 void setup() {
   Serial.begin(115200);
   delay(100);
 
-  // If you already call Wire.begin elsewhere, you can omit this:
+  // If Wire.begin() is already called elsewhere, this can be omitted.
   Wire.begin(SDA_PIN, SCL_PIN, 100000); // 100 kHz is fine
 
   // Init PN532
@@ -37,6 +42,7 @@ void setup() {
   Serial.println(F("Waiting for an ISO14443A tag..."));
 }
 
+// Poll for tags and print UIDs when detected.
 void loop() {
   // Look for new cards (non-blocking when using IRQ)
   boolean success;
@@ -56,7 +62,7 @@ void loop() {
     }
     Serial.println();
 
-    // Simple debounce so you don’t spam while the tag lingers
+    // Simple debounce to avoid spamming while the tag lingers.
     delay(300);
   }
 

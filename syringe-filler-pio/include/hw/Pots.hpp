@@ -1,3 +1,7 @@
+/**
+ * @file Pots.hpp
+ * @brief ADS1115-backed potentiometer readings and filtering helpers.
+ */
 #pragma once
 #include <stdint.h>
 

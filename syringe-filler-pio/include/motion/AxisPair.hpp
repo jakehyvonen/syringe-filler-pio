@@ -1,3 +1,7 @@
+/**
+ * @file AxisPair.hpp
+ * @brief Coordinated control for axes 2 and 3.
+ */
 #pragma once
 #include <stdint.h>
 
