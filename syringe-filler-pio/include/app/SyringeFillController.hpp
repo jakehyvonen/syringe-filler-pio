@@ -17,7 +17,6 @@ public:
   // NEW
   int8_t currentSlot() const { return m_currentSlot; }
   void   printBaseInfo(uint8_t slot, Stream& s);
-  bool   saveCurrentBaseToNVS();   // create/update entry for the base we’re parked at
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
   bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
     return (m_currentSlot >= 0) ? captureBaseCalibrationPoint((uint8_t)m_currentSlot, ml, message) : false;
@@ -32,7 +31,6 @@ public:
 
   // calibration for toolhead already here...
   bool captureToolheadCalibrationPoint(float ml, String& message);
-  bool saveToolheadCalibration();
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
