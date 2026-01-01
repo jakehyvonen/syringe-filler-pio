@@ -37,6 +37,7 @@ public:
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
   uint32_t toolheadRfid() const { return m_toolhead.rfid; }   // optional but handy
+  bool showVolumes(String& data, String& message);
 
 
 

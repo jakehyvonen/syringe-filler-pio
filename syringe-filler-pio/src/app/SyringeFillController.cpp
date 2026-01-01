@@ -327,6 +327,10 @@ void App::SyringeFillController::printToolheadInfo(Stream& out) {
   m_calibration.printToolheadInfo(out);
 }
 
+bool SyringeFillController::showVolumes(String& data, String& message) {
+  return m_calibration.buildVolumesReport(data, message);
+}
+
 
 bool SyringeFillController::loadToolheadRecipeFromFS() {
   if (m_toolhead.rfid == 0) {

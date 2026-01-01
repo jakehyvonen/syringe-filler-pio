@@ -46,6 +46,7 @@ using App::DeviceActions::sfcScanBases;
 using App::DeviceActions::sfcScanTool;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
+using App::DeviceActions::showVolumes;
 using App::DeviceActions::sfcStatus;
 using App::DeviceActions::selectedBase;
 using App::DeviceActions::selectBase;
@@ -235,6 +236,12 @@ void handleSfcCalTPoint(const String &args) {
 
 void handleSfcToolShow(const String &args) { printStructured("sfc.tool.show", sfcShowTool(g_sfc)); }
 
+void handleShowVolumes(const String &args) {
+  String data;
+  ActionResult res = showVolumes(g_sfc, data);
+  printStructured("showvolumes", res, data);
+}
+
 void handleSfcRecipeSave(const String &args) { printStructured("sfc.recipe.save", sfcRecipeSave(g_sfc)); }
 
 void handleSfcRecipeLoad(const String &args) { printStructured("sfc.recipe.load", sfcRecipeLoad(g_sfc)); }
@@ -342,6 +349,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.cal.t.clear", "clear toolhead calibration points", handleSfcCalToolClear},
     {"sfc.cal.t.force0", "force toolhead calibration to 0 mL", handleSfcCalToolForceZero},
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
+    {"showvolumes", "show volumes for scanned syringes", handleShowVolumes},
     {"sfc.recipe.save", "save toolhead recipe", handleSfcRecipeSave},
     {"sfc.recipe.load", "load toolhead recipe", handleSfcRecipeLoad},
     {"sfc.base.save", "save current base", handleSfcBaseSave},

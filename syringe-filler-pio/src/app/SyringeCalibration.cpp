@@ -558,4 +558,107 @@ float SyringeCalibration::readBaseVolumeMl(uint8_t slot) {
   return 0.0f;
 }
 
+bool SyringeCalibration::buildVolumesReport(String& data, String& message) {
+  String out = "{";
+  bool any = false;
+
+  if (m_toolhead.rfid != 0) {
+    out += "\"toolhead\":{";
+    out += "\"rfid\":\"0x" + String(m_toolhead.rfid, HEX) + "\"";
+    out += ",\"calPoints\":" + String(m_toolhead.cal.pointCount);
+    if (m_toolhead.cal.pointCount >= 2) {
+      float percent = 0.0f;
+      String potMessage;
+      bool potOk = readToolheadPotPercent(percent, potMessage);
+      if (potOk) {
+        float ml = readToolheadVolumeMl();
+        m_toolhead.currentMl = ml;
+        out += ",\"percent\":" + String(percent, 3);
+        out += ",\"volumeMl\":" + String(ml, 3);
+        out += ",\"ok\":true";
+      } else {
+        out += ",\"ok\":false";
+        out += ",\"message\":\"" + potMessage + "\"";
+      }
+    } else {
+      out += ",\"ok\":false";
+      out += ",\"message\":\"insufficient calibration points\"";
+    }
+    out += "}";
+    any = true;
+  }
+
+  bool anyBases = false;
+  String bases = "\"bases\":[";
+  for (uint8_t i = 0; i < m_baseCount; ++i) {
+    Syringe& sy = m_bases[i];
+    if (sy.rfid == 0) {
+      continue;
+    }
+    if (anyBases) {
+      bases += ",";
+    }
+    bases += "{";
+    bases += "\"slot\":" + String(i);
+    bases += ",\"rfid\":\"0x" + String(sy.rfid, HEX) + "\"";
+    bases += ",\"calPoints\":" + String(sy.calPoints.count);
+    if (sy.calPoints.count >= 2) {
+      float percent = 0.0f;
+      String potMessage;
+      bool potOk = readBasePotPercent(i, percent, potMessage);
+      if (potOk) {
+        float ml = readBaseVolumeMl(i);
+        sy.currentMl = ml;
+        bases += ",\"percent\":" + String(percent, 3);
+        bases += ",\"volumeMl\":" + String(ml, 3);
+        bases += ",\"ok\":true";
+      } else {
+        bases += ",\"ok\":false";
+        bases += ",\"message\":\"" + potMessage + "\"";
+      }
+    } else {
+      bases += ",\"ok\":false";
+      bases += ",\"message\":\"insufficient calibration points\"";
+    }
+    bases += "}";
+    anyBases = true;
+  }
+  bases += "]";
+
+  if (anyBases) {
+    if (any) {
+      out += ",";
+    }
+    out += bases;
+    any = true;
+  }
+
+  out += "}";
+
+  if (!any) {
+    message = "no scanned syringes";
+    data = "";
+    return false;
+  }
+
+  data = out;
+  message = "volumes reported";
+  return true;
+}
+
+bool SyringeCalibration::readToolheadPotPercent(float& percent, String& message) {
+  percent = readToolheadRatio();
+  message = "";
+  return true;
+}
+
+bool SyringeCalibration::readBasePotPercent(uint8_t slot, float& percent, String& message) {
+  float ratio = 0.0f;
+  if (!readBasePotRatio(slot, ratio, message)) {
+    return false;
+  }
+  percent = ratio * 100.0f;
+  return true;
+}
+
 } // namespace App
