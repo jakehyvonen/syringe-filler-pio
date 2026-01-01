@@ -115,6 +115,23 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
   }
 
   float ratio = readToolheadRatio();
+  if (CAL_DBG) {
+    uint16_t counts = Pots::readCounts(TOOLHEAD_POT_IDX);
+    float percent = Pots::ratioFromCounts(counts);
+    float normalized = percent / 100.0f;
+    Serial.print("[SFC] cal.tool.point: toolhead RFID=0x");
+    Serial.print(m_toolhead.rfid, HEX);
+    Serial.print(" pot=");
+    Serial.print(TOOLHEAD_POT_IDX);
+    Serial.print(" counts=");
+    Serial.print(counts);
+    Serial.print(" ratioUsed=");
+    Serial.print(ratio, 4);
+    Serial.print(" ratioNormalized=");
+    Serial.print(normalized, 4);
+    Serial.print(" percent=");
+    Serial.println(percent, 2);
+  }
   bool ok = m_toolhead.cal.addPoint(ml, ratio);
   if (!ok) {
     message = (m_toolhead.cal.pointCount >= PotCalibration::kMaxPoints)
@@ -326,6 +343,23 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
   if (!readBasePotRatio(slot, ratio, ratioMessage)) {
     message = ratioMessage;
     return false;
+  }
+  if (CAL_DBG) {
+    int8_t potIdx = getBasePotIndex(slot);
+    uint16_t counts = (potIdx >= 0) ? Pots::readCounts((uint8_t)potIdx) : 0;
+    float percent = Pots::ratioFromCounts(counts);
+    Serial.print("[SFC] cal.base.point: base slot=");
+    Serial.print(slot);
+    Serial.print(" RFID=0x");
+    Serial.print(sy.rfid, HEX);
+    Serial.print(" pot=");
+    Serial.print(potIdx);
+    Serial.print(" counts=");
+    Serial.print(counts);
+    Serial.print(" ratio=");
+    Serial.print(ratio, 4);
+    Serial.print(" percent=");
+    Serial.println(percent, 2);
   }
 
   CalibrationPoints& points = sy.calPoints;

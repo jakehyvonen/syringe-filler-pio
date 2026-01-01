@@ -307,6 +307,26 @@ ActionResult readBasePot(uint8_t base, uint8_t &potIdx, uint16_t &counts, uint16
   return {true, "base pot read"};
 }
 
+ActionResult readAllPots(String &data) {
+  String out = "[";
+  for (uint8_t i = 0; i < Pots::NUM_POTS; ++i) {
+    if (i > 0) {
+      out += ",";
+    }
+    uint16_t counts = Pots::readCounts(i);
+    float percent = Pots::ratioFromCounts(counts);
+    float ratio = percent / 100.0f;
+    out += "{\"index\":" + String(i);
+    out += ",\"counts\":" + String(counts);
+    out += ",\"ratio\":" + String(ratio, 5);
+    out += ",\"percent\":" + String(percent, 3);
+    out += "}";
+  }
+  out += "]";
+  data = "{\"pots\":" + out + "}";
+  return {true, "pot readings reported"};
+}
+
 // Pot-driven motion
 ActionResult potMove(uint16_t target, long sps) {
   bool ok = AxisPair::move2UntilPotSimple(target, sps);
