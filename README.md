@@ -1,7 +1,5 @@
 # Syringe Filler Control (PlatformIO)
 
-Commercial use is permitted worldwide except within the United States, where a separate commercial license is required.
-
 Firmware and helper sketches for a syringe filling system using stepper drivers,
 limit switches, and optional I2C peripherals (PCA9685 + ADS1115).
 
