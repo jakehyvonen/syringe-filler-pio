@@ -59,6 +59,7 @@ ActionResult sfcScanTool(App::SyringeFillController &sfc);
 ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml);
 ActionResult sfcSaveToolCalibration(App::SyringeFillController &sfc);
 ActionResult sfcShowTool(App::SyringeFillController &sfc);
+ActionResult showVolumes(App::SyringeFillController &sfc, String &data);
 ActionResult sfcRecipeSave(App::SyringeFillController &sfc);
 ActionResult sfcRecipeLoad(App::SyringeFillController &sfc);
 ActionResult sfcSaveCurrentBase(App::SyringeFillController &sfc);

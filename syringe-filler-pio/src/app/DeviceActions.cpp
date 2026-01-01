@@ -241,6 +241,12 @@ ActionResult sfcShowTool(App::SyringeFillController &sfc) {
   return {true, "toolhead info printed"};
 }
 
+ActionResult showVolumes(App::SyringeFillController &sfc, String &data) {
+  String message;
+  bool ok = sfc.showVolumes(data, message);
+  return {ok, message};
+}
+
 ActionResult sfcRecipeSave(App::SyringeFillController &sfc) { return sfcSaveRecipe(sfc); }
 
 ActionResult sfcRecipeLoad(App::SyringeFillController &sfc) { return sfcLoadRecipe(sfc); }

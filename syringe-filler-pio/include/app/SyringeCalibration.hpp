@@ -27,6 +27,9 @@ public:
   void printToolheadInfo(Stream& out);
   float readToolheadVolumeMl();
   float readBaseVolumeMl(uint8_t slot);
+  bool buildVolumesReport(String& data, String& message);
+  bool readToolheadPotPercent(float& percent, String& message);
+  bool readBasePotPercent(uint8_t slot, float& percent, String& message);
 
 private:
   int8_t getBasePotIndex(uint8_t baseSlot) const;
