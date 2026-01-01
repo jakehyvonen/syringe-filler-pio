@@ -1,3 +1,7 @@
+/**
+ * @file SyringeCalibration.cpp
+ * @brief Calibration routines for toolhead and base syringes.
+ */
 #include "app/SyringeCalibration.hpp"
 
 #include "hw/Bases.hpp"
@@ -10,8 +14,9 @@ namespace App {
 
 namespace {
   constexpr bool CAL_DBG = true;
-  constexpr uint8_t TOOLHEAD_POT_IDX = 0;  // TODO: set your toolhead pot index
+  constexpr uint8_t TOOLHEAD_POT_IDX = 0;  // TODO: confirm toolhead pot index
 
+  // Sync legacy ADC fields from the current calibration points.
   void syncLegacyFields(PotCalibration& cal) {
     if (cal.pointCount == 0) return;
     cal.adcEmpty = Pots::countsFromRatio(cal.points[0].ratio);
@@ -25,6 +30,7 @@ namespace {
   }
 }
 
+// Build a calibration helper for toolhead and base syringes.
 SyringeCalibration::SyringeCalibration(Syringe& toolhead,
                                        Syringe* bases,
                                        uint8_t baseCount,
@@ -36,6 +42,7 @@ SyringeCalibration::SyringeCalibration(Syringe& toolhead,
     m_baseToPot(baseToPot),
     m_currentSlot(currentSlot) {}
 
+// Load or create calibration data for a base syringe tag.
 void SyringeCalibration::initializeBaseFromTag(uint8_t slot, uint32_t tag) {
   if (slot >= m_baseCount) return;
 
@@ -65,6 +72,7 @@ void SyringeCalibration::initializeBaseFromTag(uint8_t slot, uint32_t tag) {
   }
 }
 
+// Load toolhead calibration data for a tag if available.
 bool SyringeCalibration::initializeToolheadFromTag(uint32_t tag) {
   m_toolhead.rfid = tag;
   m_toolhead.role = SyringeRole::Toolhead;
@@ -86,12 +94,14 @@ bool SyringeCalibration::initializeToolheadFromTag(uint32_t tag) {
   return false;
 }
 
+// Resolve a base slot to its pot index.
 int8_t SyringeCalibration::getBasePotIndex(uint8_t baseSlot) const {
   if (baseSlot >= m_baseCount) return -1;
   uint8_t p = m_baseToPot[baseSlot];
   return (p == 0xFF) ? -1 : (int8_t)p;
 }
 
+// Read the current toolhead pot ratio.
 float SyringeCalibration::readToolheadRatio() {
   Pots::poll();
   float ratio = Pots::percent(TOOLHEAD_POT_IDX);
@@ -104,6 +114,7 @@ float SyringeCalibration::readToolheadRatio() {
   return ratio;
 }
 
+// Capture a toolhead calibration point at the given volume.
 bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& message) {
   if (ml < 0.0f) {
     message = "volume must be >= 0";
@@ -154,6 +165,7 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
   return true;
 }
 
+// Clear calibration points for the current base slot.
 bool SyringeCalibration::clearCurrentBaseCalibrationPoints(String& message) {
   if (m_currentSlot < 0 || m_currentSlot >= (int)m_baseCount) {
     message = "no current base";
@@ -180,6 +192,7 @@ bool SyringeCalibration::clearCurrentBaseCalibrationPoints(String& message) {
   return ok;
 }
 
+// Clear calibration points for the toolhead.
 bool SyringeCalibration::clearToolheadCalibrationPoints(String& message) {
   if (m_toolhead.rfid == 0) {
     message = "no toolhead RFID; scan the toolhead first";
@@ -195,6 +208,7 @@ bool SyringeCalibration::clearToolheadCalibrationPoints(String& message) {
   return ok;
 }
 
+// Force the current base calibration through zero mL.
 bool SyringeCalibration::forceCurrentBaseCalibrationZero(String& message) {
   if (m_currentSlot < 0 || m_currentSlot >= (int)m_baseCount) {
     message = "no current base";
@@ -225,6 +239,7 @@ bool SyringeCalibration::forceCurrentBaseCalibrationZero(String& message) {
   return ok;
 }
 
+// Force the toolhead calibration through zero mL.
 bool SyringeCalibration::forceToolheadCalibrationZero(String& message) {
   if (m_toolhead.rfid == 0) {
     message = "no toolhead RFID; scan the toolhead first";
@@ -242,6 +257,7 @@ bool SyringeCalibration::forceToolheadCalibrationZero(String& message) {
   return ok;
 }
 
+// Read the current base pot ratio for a slot.
 float SyringeCalibration::readBaseRatio(uint8_t slot) {
   if (slot >= m_baseCount) {
     if (CAL_DBG) {
@@ -275,6 +291,7 @@ float SyringeCalibration::readBaseRatio(uint8_t slot) {
   return ratio;
 }
 
+// Read the base pot ratio and return it as 0..1.
 bool SyringeCalibration::readBasePotRatio(uint8_t slot, float& ratio, String& message) const {
   if (slot >= m_baseCount) {
     message = "base slot out of range";
@@ -295,6 +312,7 @@ bool SyringeCalibration::readBasePotRatio(uint8_t slot, float& ratio, String& me
   return true;
 }
 
+// Interpolate volume from calibration points using a ratio.
 float SyringeCalibration::interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok) {
   ok = false;
   if (points.count < 2) return NAN;
@@ -322,6 +340,7 @@ float SyringeCalibration::interpolateVolumeFromPoints(const App::CalibrationPoin
   return NAN;
 }
 
+// Capture a base calibration point for a slot.
 bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
   if (slot >= m_baseCount) {
     message = "base slot out of range";
@@ -419,6 +438,7 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
   return true;
 }
 
+// Print base calibration info for a slot.
 void SyringeCalibration::printBaseInfo(uint8_t slot, Stream& s) {
   if (slot >= m_baseCount) {
     s.println("[SFC] base info: slot OOR");
@@ -453,10 +473,12 @@ void SyringeCalibration::printBaseInfo(uint8_t slot, Stream& s) {
   s.println();
 }
 
+// Convert a ratio into mL using the provided calibration.
 float SyringeCalibration::mlFromRatio_(const App::PotCalibration& cal, float ratio) {
   return cal.ratioToMl(ratio);
 }
 
+// Print toolhead calibration info to the output stream.
 void SyringeCalibration::printToolheadInfo(Stream& out) {
   out.println(F("[SFC] Toolhead calibration:"));
 
@@ -504,6 +526,7 @@ void SyringeCalibration::printToolheadInfo(Stream& out) {
   }
 }
 
+// Compute the current toolhead volume in mL.
 float SyringeCalibration::readToolheadVolumeMl() {
   float ratio = readToolheadRatio();
   float ml = m_toolhead.cal.ratioToMl(ratio);
@@ -514,6 +537,7 @@ float SyringeCalibration::readToolheadVolumeMl() {
   return ml;
 }
 
+// Compute the current base volume in mL for a slot.
 float SyringeCalibration::readBaseVolumeMl(uint8_t slot) {
   if (slot >= m_baseCount) {
     if (CAL_DBG) {
@@ -550,6 +574,7 @@ float SyringeCalibration::readBaseVolumeMl(uint8_t slot) {
   return 0.0f;
 }
 
+// Build a JSON volume report for toolhead and bases.
 bool SyringeCalibration::buildVolumesReport(String& data, String& message) {
   String out = "{";
   bool any = false;
@@ -638,12 +663,14 @@ bool SyringeCalibration::buildVolumesReport(String& data, String& message) {
   return true;
 }
 
+// Read toolhead pot percent (0..100).
 bool SyringeCalibration::readToolheadPotPercent(float& percent, String& message) {
   percent = readToolheadRatio();
   message = "";
   return true;
 }
 
+// Read base pot percent (0..100) for a slot.
 bool SyringeCalibration::readBasePotPercent(uint8_t slot, float& percent, String& message) {
   float ratio = 0.0f;
   if (!readBasePotRatio(slot, ratio, message)) {

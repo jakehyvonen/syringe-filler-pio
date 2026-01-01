@@ -1,5 +1,21 @@
+/*
+  SyringeFillControl (ESP32)
+  --------------------------
+  Multi-axis stepper + servo controller for syringe filling hardware.
 
-// ====== ESP32 PIN REMAP (choose GPIOs that suit your board/wiring) ======
+  Features:
+  - STEP/DIR control for three steppers (main axis + two auxiliaries)
+  - PCA9685 servo control for toolhead/coupling
+  - ADS1115 analog input for potentiometer feedback
+  - Base selector outputs for up to five bases
+  - Serial command interface for manual operation
+
+  Wiring notes:
+  - GPIO34/35 are input-only on ESP32 and require external pull-ups if used.
+  - Adjust pin mappings to match the target board and driver wiring.
+*/
+
+// ====== ESP32 PIN REMAP (choose GPIOs that suit board/wiring) ======
 // Original Mega pins -> ESP32 GPIOs
 #define stepPin     4    // was 22
 #define dirPin      16   // was 23
@@ -14,7 +30,7 @@
 #define EN3_PIN     27   // was 30
 
 // Base stepper ENABLE lines (5 channels)
-// Pick 5 outputs; adjust to your wiring
+// Pick 5 outputs; adjust to wiring
 #define NUM_BASES 5
 const uint8_t BASE_EN_PINS[NUM_BASES] = {23, 26, 32, 33, 13}; // was {43,45,47,49,51}
 
@@ -42,14 +58,14 @@ bool baseSet(uint8_t idx1, long steps);
 bool baseSetHere(uint8_t idx1);
 
 
-// ===== Defaults/calibration/EEPROM (unchanged structs) =====
+// ===== Defaults/calibration/EEPROM =====
 long basePos[NUM_BASES] = { 3330, 5480, 3330, 3330, 3330 };
 const int EEPROM_BASE_ADDR = 0;
 
 // ====== ADS1115 setup (I2C) ======
 Adafruit_ADS1115 ads;     // default address 0x48
 #define NUM_POTS 1
-// Use ADS channel numbers instead of A0..A5. Keep your array API unchanged.
+// Use ADS channel numbers instead of A0..A5. Array API stays consistent.
 const uint8_t POT_PINS[NUM_POTS] = { 0 }; // ADS1115 channel 0 == "A0" logically
 
 // Exponential moving average strength and print hysteresis
@@ -61,7 +77,7 @@ static uint16_t pot_filtered[NUM_POTS];
 static uint16_t pot_last_reported[NUM_POTS];
 static bool pots_inited = false;
 
-// ---- motion & config (unchanged) ----
+// ---- motion & config ----
 #define HOME_DIR LOW
 #define DISABLE_LEVEL HIGH
 #define ENABLE_LEVEL  LOW
@@ -91,6 +107,7 @@ bool stepState = false;
 
 
 // Presence probe
+// Probe an I2C address and return true on ACK.
 bool i2cPresent(uint8_t addr) {
   Wire.beginTransmission(addr);
   return (Wire.endTransmission() == 0);
@@ -102,13 +119,15 @@ bool g_hasPCA = false;
 bool g_hasADS = false;   // true if any ADS1115 we intend to use is present
 
 // Simple wrappers so we can guard calls with readable names
+// Return true when the PCA9685 is detected.
 inline bool PCA_OK() { return g_hasPCA; }
+// Return true when the ADS1115 is detected.
 inline bool ADS_OK() { return g_hasADS; }
 
 
 
 
-// ===== SERVO / PCA9685 (unchanged API) =====
+// ===== SERVO / PCA9685 =====
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 #define SERVO_MIN 150
@@ -123,6 +142,7 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 static int currentAngles[16];
 static bool currentAnglesInit = false;
 
+// Initialize cached servo angles to a safe default.
 static inline void _ensureAnglesInit() {
   if (!currentAnglesInit) {
     for (int i = 0; i < 16; ++i) currentAngles[i] = 90;
@@ -130,16 +150,19 @@ static inline void _ensureAnglesInit() {
   }
 }
 
+// Return true when the toolhead raised switch is active.
 bool isToolheadRaised() {
-  // If you kept GPIO34/35, ensure external pull-up resistor to 3.3V.
+  // GPIO34/35 require external pull-ups if used.
   return (digitalRead(raisedPin) == LOW);
 }
 
+// Write a raw microsecond pulse to a PCA9685 channel.
 void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
   if (!PCA_OK()) return;
   pwm.writeMicroseconds(servoNum, pulseLength);
 }
 
+// Set a servo channel to an absolute angle in degrees.
 void setServoAngle(uint8_t channel, int angle) {
   if (!PCA_OK()) return;
   _ensureAnglesInit();
@@ -155,12 +178,14 @@ void setServoAngle(uint8_t channel, int angle) {
   Serial.println(" deg");
 }
 
+// Move the toolhead to the raised position and decouple.
 void raiseToolhead() {
   setServoAngle(TOOLHEAD_SERVO, raisedPos);
   delay(100);
   setServoAngle(COUPLING_SERVO, decoupledPos);
 }
 
+// Sweep a servo to a target angle with per-step delays.
 void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   if (!PCA_OK()) return;
   _ensureAnglesInit();
@@ -184,6 +209,7 @@ void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   Serial.print(" slowly moved to "); Serial.println(targetAngle);
 }
 
+// Sweep two servos to target angles with independent step timing.
 void setServoAnglesDual(uint8_t chA, int tgtA,
                         uint8_t chB, int tgtB,
                         uint16_t stepDelayA = 20, uint16_t stepDelayB = 20,
@@ -253,6 +279,7 @@ void setServoAnglesDual(uint8_t chA, int tgtA,
   Serial.println(" (dual slow)");
 }
 
+// Run the servo sequence that couples the toolhead to a syringe.
 void coupleSyringes() {
   setServoAngle(TOOLHEAD_SERVO, couplingPos1);
   delay(71);
@@ -263,7 +290,8 @@ void coupleSyringes() {
   setServoAngle(COUPLING_SERVO, 11);
 }
 
-// ===== Bases (unchanged API) =====
+// ===== Bases =====
+// Initialize base enable pins without MCP expander hardware.
 void initBasesNoMCP() {
   for (uint8_t i = 0; i < NUM_BASES; ++i) {
     pinMode(BASE_EN_PINS[i], OUTPUT);
@@ -271,10 +299,12 @@ void initBasesNoMCP() {
   }
 }
 
+// Disable all base enable outputs.
 void disableAllBases() {
   for (uint8_t i = 0; i < NUM_BASES; ++i) digitalWrite(BASE_EN_PINS[i], HIGH);
 }
 
+// Select a base by 1-based index; 0 disables all bases.
 bool selectBaseStepper(uint8_t idx1) {
   if (idx1 == 0) {
     disableAllBases();
@@ -292,7 +322,8 @@ bool selectBaseStepper(uint8_t idx1) {
   return true;
 }
 
-// ===== Step timing (unchanged) =====
+// ===== Step timing =====
+// Toggle the main step pin with timing based on stepInterval.
 static inline void stepOnceTimed() {
   static bool localStepState = false;
   static unsigned long last = micros();
@@ -304,6 +335,7 @@ static inline void stepOnceTimed() {
   digitalWrite(stepPin, localStepState ? HIGH : LOW);
 }
 
+// Toggle a specific step pin with its own timing interval.
 static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
   static unsigned long last2 = 0, last3 = 0;
   static bool state2 = false, state3 = false;
@@ -319,7 +351,8 @@ static inline void stepOnceTimedOnPin(uint8_t pin, unsigned long interval_us) {
   digitalWrite(pin, state ? HIGH : LOW);
 }
 
-// ===== Movement (unchanged logic) =====
+// ===== Movement =====
+// Move the primary axis by a signed step count.
 static void moveSteps(long steps) {
   if (steps == 0) return;
   if (!ensureToolheadRaised()) return;
@@ -335,6 +368,7 @@ static void moveSteps(long steps) {
   }
 }
 
+// Move axis 2 by a signed step count.
 static void moveSteps2(long steps) {
   if (steps == 0) return;
   bool dirHigh = (steps > 0);
@@ -352,6 +386,7 @@ static void moveSteps2(long steps) {
   digitalWrite(EN2_PIN, DISABLE_LEVEL);
 }
 
+// Move axis 3 by a signed step count.
 static void moveSteps3(long steps) {
   if (steps == 0) return;
   bool dirHigh = (steps > 0);
@@ -369,6 +404,7 @@ static void moveSteps3(long steps) {
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 }
 
+// Move the primary axis to an absolute target step position.
 static void moveToSteps(long targetSteps) {
 #ifdef CHECK_SOFT_LIMITS
   if (targetSteps < MIN_POS_STEPS) targetSteps = MIN_POS_STEPS;
@@ -378,6 +414,7 @@ static void moveToSteps(long targetSteps) {
   moveSteps(delta);
 }
 
+// Move axes 2 and 3 synchronously using a simple ratio.
 static void moveStepsSync23(long steps2, long steps3) {
   long a = labs(steps2), b = labs(steps3);
   if (a == 0 && b == 0) return;
@@ -414,6 +451,7 @@ static void moveStepsSync23(long steps2, long steps3) {
   digitalWrite(EN3_PIN, DISABLE_LEVEL);
 }
 
+// Update the shared speed for axes 2 and 3.
 void setSpeed23SPS(long sps) {
   if (sps < 1) sps = 1;
   if (sps > 20000) sps = 20000;
@@ -424,7 +462,8 @@ void setSpeed23SPS(long sps) {
   Serial.println(" us)");
 }
 
-// ===== Homing (unchanged logic) =====
+// ===== Homing =====
+// Ensure the toolhead is raised before allowing motion.
 bool ensureToolheadRaised(uint16_t timeout_ms) {
   if (!PCA_OK()) {
     Serial.println("ERROR: No PCA9685; cannot raise toolhead. Movement blocked.");
@@ -453,6 +492,7 @@ bool ensureToolheadRaised(uint16_t timeout_ms) {
   return true;
 }
 
+// Home the primary axis using the limit switch.
 void HomeAxis() {
   if (!ensureToolheadRaised()) {
     Serial.println("HOMING ABORTED: toolhead not raised.");
@@ -529,24 +569,28 @@ void HomeAxis() {
   motorEnabled = false;
 }
 
-// ===== Bases helpers (unchanged) =====
+// ===== Bases helpers =====
+// Get the stored position for a base index.
 long getBasePos(uint8_t idx1) {
   if (idx1 == 0 || idx1 > NUM_BASES) return -1;
   return basePos[idx1 - 1];
 }
 
+// Store an absolute step position for a base index.
 bool baseSet(uint8_t idx1, long steps) {
   if (idx1 == 0 || idx1 > NUM_BASES) return false;
   basePos[idx1 - 1] = steps;
   return true;
 }
 
+// Store the current position for a base index.
 bool baseSetHere(uint8_t idx1) {
   if (idx1 == 0 || idx1 > NUM_BASES) return false;
   basePos[idx1 - 1] = currentPositionSteps;
   return true;
 }
 
+// Move the primary axis to the stored position for a base index.
 bool goToBase(uint8_t idx1) {
   long tgt = getBasePos(idx1);
   if (tgt < 0) {
@@ -569,6 +613,7 @@ bool goToBase(uint8_t idx1) {
 }
 
 // ======== ADS1115 helper: read single-ended channel -> 0..1023 ========
+// Read a potentiometer channel and scale it to 0..1023.
 static inline uint16_t readPotADC(uint8_t potIndex) {
   if (!ADS_OK()) return 0;             // no hardware -> stable zero
 
@@ -577,13 +622,14 @@ static inline uint16_t readPotADC(uint8_t potIndex) {
   int16_t v = ads.readADC_SingleEnded(ch); // signed
   if (v < 0) v = 0;                        // floor at 0 for single-ended
   // ADS1115 full-scale at GAIN_ONE is +/-4.096V => 0..32767 counts for 0..+FS
-  // Scale to 0..1023 for compatibility with your prints/math
+  // Scale to 0..1023 for compatibility with serial output and math.
   uint32_t scaled = (uint32_t)v * 1023UL / 32767UL;
   if (scaled > 1023UL) scaled = 1023UL;
   return (uint16_t)scaled;
 }
 
 // ===== Pots (same API; ADC source swapped) =====
+// Initialize ADS-backed potentiometer readings and filters.
 void initPots() {
   if (!ADS_OK()) {
     // Seed arrays to zero so prints are stable
@@ -612,6 +658,7 @@ void initPots() {
   pots_inited = true;
 }
 
+// Sample and report pots with filtering and hysteresis.
 void pollPots() {
   if (!pots_inited) initPots();
   if (!ADS_OK()) return;   // nothing to do
@@ -632,20 +679,24 @@ void pollPots() {
   }
 }
 
+// Return the last raw ADC value for a pot index.
 uint16_t getPotRaw(uint8_t idx) {
   if (idx >= NUM_POTS) return 0;
   return pot_raw[idx];
 }
+// Return the filtered ADC value for a pot index.
 uint16_t getPotFiltered(uint8_t idx) {
   if (idx >= NUM_POTS) return 0;
   return pot_filtered[idx];
 }
+// Return the filtered pot value as a percent.
 float getPotPercent(uint8_t idx) {
   if (idx >= NUM_POTS) return 0.0f;
   return (pot_filtered[idx] * 100.0f) / 1023.0f;
 }
 
 // ===== Pot-driven move (ADC source swapped, behavior same) =====
+// Move axis 2 until the pot reaches the target ADC count.
 bool move2UntilPot_simple(uint16_t target_adc, long sps) {
   if (!ADS_OK()) {
     Serial.println("move2UntilPot: ADS not present.");
@@ -715,8 +766,9 @@ bool move2UntilPot_simple(uint16_t target_adc, long sps) {
 }
 
 
-// ===== Setup / Loop / Serial (minor ESP32 notes inline) =====
+// ===== Setup / Loop / Serial =====
 
+// Initialize hardware, peripherals, and safety checks.
 void setup() {
   // --- Basic system setup ---
   esp_log_level_set("*", ESP_LOG_ERROR); // Silence ESP-IDF spam
@@ -805,6 +857,7 @@ void setup() {
   Serial.println("Setup complete. Type commands: on/off, home, move, servo, etc.");
 }
 
+// Run the step generator and process serial commands.
 void loop() {
   handleSerial();
 
@@ -819,9 +872,10 @@ void loop() {
   }
 }
 
-// ================= SERIAL COMMANDS (unchanged) =================
+// ================= SERIAL COMMANDS =================
 
 
+// Parse serial commands and execute motion/servo actions.
 void handleSerial() {
   static String input = "";
   while (Serial.available()) {
@@ -1071,4 +1125,3 @@ void handleSerial() {
     }
   }
 }
-

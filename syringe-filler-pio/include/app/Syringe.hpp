@@ -1,3 +1,7 @@
+/**
+ * @file Syringe.hpp
+ * @brief Syringe roles, calibration data, and runtime state.
+ */
 #pragma once
 #include <Arduino.h>
 #include <math.h>
@@ -34,6 +38,7 @@ struct PotCalibration {
   CalibrationPoint points[kMaxPoints];
   float            steps_mL   = 1.01f; // calibrated steps per mL
 
+  // Add or update a calibration point for the given ratio.
   bool addPoint(float volume_ml, float ratio) {
     if (!isfinite(volume_ml) || !isfinite(ratio)) return false;
     constexpr float kEps = 1e-4f;
@@ -61,6 +66,7 @@ struct PotCalibration {
     return true;
   }
 
+  // Convert a ratio to milliliters via interpolation.
   float ratioToMl(float ratio) const {
     if (pointCount == 0) return 0.0f;
     if (pointCount == 1) return points[0].volume_ml;
@@ -108,15 +114,18 @@ struct Syringe {
   String       colorName;              // e.g. "Cobalt Blue" (optional)
   String       colorHex;               // e.g. "#0047AB" (optional)
 
+  // Clear stored color metadata.
   void clearColor() {
     colorName = "";
     colorHex  = "";
   }
 
+  // Return true when any color metadata is present.
   bool hasColor() const {
     return colorName.length() > 0 || colorHex.length() > 0;
   }
 
+  // Print the syringe state to the provided stream.
   void printTo(Stream& s) const {
     s.printf("[Syringe] role=%s slot=%u RFID=0x%08lX vol=%.2f mL ",
              (role == SyringeRole::Base ? "Base" :

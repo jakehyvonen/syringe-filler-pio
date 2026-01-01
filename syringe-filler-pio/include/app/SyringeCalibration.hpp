@@ -1,3 +1,7 @@
+/**
+ * @file SyringeCalibration.hpp
+ * @brief Calibration helpers for toolhead and base syringes.
+ */
 #pragma once
 #include <Arduino.h>
 #include "app/Syringe.hpp"

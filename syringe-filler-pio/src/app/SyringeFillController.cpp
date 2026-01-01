@@ -1,3 +1,7 @@
+/**
+ * @file SyringeFillController.cpp
+ * @brief Orchestrates base/toolhead scanning and recipe execution.
+ */
 #include "app/SyringeFillController.hpp"
 
 #include "hw/Bases.hpp"
@@ -21,6 +25,7 @@ namespace {
   };
 
   // listener that BaseRFID will call
+  // Pack a base RFID UID into a 32-bit value for capture.
   void baseTagHandler(const uint8_t* uid, uint8_t len, void* user) {
     auto* cap = static_cast<BaseTagCapture*>(user);
     if (!cap) return;
@@ -33,6 +38,7 @@ namespace {
     cap->got    = true;
   }
 
+  // Print a debug message when DEBUG_FLAG is enabled.
   void dbg(const char* msg) {
     if (DEBUG_FLAG) {
       Serial.print("[SFC] ");
@@ -45,6 +51,7 @@ namespace {
 // ------------------------------------------------------------
 // ctor
 // ------------------------------------------------------------
+// Initialize controller state and base slot mappings.
 SyringeFillController::SyringeFillController()
   : m_calibration(m_toolhead, m_bases, Bases::kCount, m_baseToPot, m_currentSlot) {
   if (DEBUG_FLAG) {
@@ -55,7 +62,7 @@ SyringeFillController::SyringeFillController()
     m_bases[i].slot = i;
   }
   m_currentSlot = -1;
-//physical mapping of pots
+  // Physical mapping of pots.
   m_baseToPot[0] = 3;
   m_baseToPot[1] = 4;
   m_baseToPot[2] = 5;
@@ -67,6 +74,7 @@ SyringeFillController::SyringeFillController()
 // ------------------------------------------------------------
 // scan all / scan one base
 // ------------------------------------------------------------
+// Scan all base slots and load any detected syringes.
 void SyringeFillController::scanAllBaseSyringes() {
   dbg("scanAllBaseSyringes() start");
   for (uint8_t i = 0; i < Bases::kCount; ++i) {
@@ -84,6 +92,7 @@ void SyringeFillController::scanAllBaseSyringes() {
 // --------------------------------------------------
 // scan *one* base – now auto-creates in NVS
 // --------------------------------------------------
+// Scan a single base slot and load its syringe data.
 bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
   if (slot >= Bases::kCount) {
     if (DEBUG_FLAG) {
@@ -131,35 +140,43 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
 
   return true;
 }
+// Capture a toolhead calibration point via the calibration helper.
 bool SyringeFillController::captureToolheadCalibrationPoint(float ml, String& message) {
   return m_calibration.captureToolheadCalibrationPoint(ml, message);
 }
 
+// Clear calibration points for the current base.
 bool SyringeFillController::clearCurrentBaseCalibrationPoints(String& message) {
   return m_calibration.clearCurrentBaseCalibrationPoints(message);
 }
 
+// Clear calibration points for the toolhead.
 bool SyringeFillController::clearToolheadCalibrationPoints(String& message) {
   return m_calibration.clearToolheadCalibrationPoints(message);
 }
 
+// Force the current base calibration through zero.
 bool SyringeFillController::forceCurrentBaseCalibrationZero(String& message) {
   return m_calibration.forceCurrentBaseCalibrationZero(message);
 }
 
+// Force the toolhead calibration through zero.
 bool SyringeFillController::forceToolheadCalibrationZero(String& message) {
   return m_calibration.forceToolheadCalibrationZero(message);
 }
+// Capture a base calibration point for a slot.
 bool SyringeFillController::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
   return m_calibration.captureBaseCalibrationPoint(slot, ml, message);
 }
 
+// Print base calibration info for a slot.
 void SyringeFillController::printBaseInfo(uint8_t slot, Stream& s) {
   m_calibration.printBaseInfo(slot, s);
 }
 // ------------------------------------------------------------
 // blocking base-RFID read (with tick)
 // ------------------------------------------------------------
+// Block until a base RFID tag is read or timeout expires.
 uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
   Serial.print("[SFC] readBaseRFIDBlocking(): start, timeout=");
   Serial.print(timeoutMs);
@@ -231,6 +248,7 @@ uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
 // toolhead side
 // ------------------------------------------------------------
 
+// Block until a toolhead RFID tag is read.
 bool SyringeFillController::scanToolheadBlocking() {
   dbg("scanToolheadBlocking() start");
 
@@ -254,6 +272,7 @@ bool SyringeFillController::scanToolheadBlocking() {
 // ------------------------------------------------------------
 // blocking TOOLHEAD RFID read (I2C PN532 #1)
 // ------------------------------------------------------------
+// Block until a toolhead RFID tag is read or timeout expires.
 uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
   Serial.print("[SFC] readToolheadRFIDBlocking(): timeout=");
   Serial.print(timeoutMs);
@@ -316,15 +335,18 @@ uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
   return cap.packed;
 }
 
+// Print toolhead calibration information.
 void App::SyringeFillController::printToolheadInfo(Stream& out) {
   m_calibration.printToolheadInfo(out);
 }
 
+// Build a JSON volume report for toolhead and bases.
 bool SyringeFillController::showVolumes(String& data, String& message) {
   return m_calibration.buildVolumesReport(data, message);
 }
 
 
+// Load a toolhead recipe from LittleFS.
 bool SyringeFillController::loadToolheadRecipeFromFS() {
   if (m_toolhead.rfid == 0) {
     dbg("loadToolheadRecipeFromFS(): no toolhead RFID");
@@ -338,6 +360,7 @@ bool SyringeFillController::loadToolheadRecipeFromFS() {
   return ok;
 }
 
+// Save the current toolhead recipe to LittleFS.
 bool SyringeFillController::saveToolheadRecipeToFS() {
   if (m_toolhead.rfid == 0) {
     dbg("saveToolheadRecipeToFS(): no toolhead RFID");
@@ -354,6 +377,7 @@ bool SyringeFillController::saveToolheadRecipeToFS() {
 // ------------------------------------------------------------
 // run recipe
 // ------------------------------------------------------------
+// Execute the current recipe by transferring from each base.
 void SyringeFillController::runRecipe() {
   dbg("runRecipe() start");
   for (uint8_t i = 0; i < m_recipe.count; ++i) {
@@ -380,6 +404,7 @@ void SyringeFillController::runRecipe() {
 // ------------------------------------------------------------
 // positioning
 // ------------------------------------------------------------
+// Move the gantry to a stored base position and update selection.
 bool SyringeFillController::goToBase(uint8_t slot) {
   if (slot >= Bases::kCount) {
     if (DEBUG_FLAG) {
@@ -416,6 +441,7 @@ bool SyringeFillController::goToBase(uint8_t slot) {
 // ------------------------------------------------------------
 // toolhead reader (I2C PN532 #1)
 // ------------------------------------------------------------
+// Poll the toolhead RFID reader for a single tag.
 uint32_t SyringeFillController::readRFIDNow() {
   const uint32_t timeoutMs = 2000;
   const uint32_t startMs   = millis();
@@ -429,8 +455,7 @@ uint32_t SyringeFillController::readRFIDNow() {
   if (DEBUG_FLAG) Serial.println("[SFC] readRFIDNow(): waiting for tag...");
 
   while (millis() - startMs < timeoutMs) {
-    // note: App::loop() normally calls RFID::tick(), but we’re blocking here
-    // if your other reader needs tick here too, you can call it
+    // App::loop() normally calls RFID::tick(), but this is a blocking loop.
     if (RFID::available()) {
       const uint8_t* uid = RFID::uidBytes();
       uint8_t len        = RFID::uidLen();
@@ -467,6 +492,7 @@ uint32_t SyringeFillController::readRFIDNow() {
 // ------------------------------------------------------------
 // transfer (stub)
 // ------------------------------------------------------------
+// Transfer volume from a base to the toolhead using step calculations.
 bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   if (slot >= Bases::kCount) {
     if (DEBUG_FLAG) {

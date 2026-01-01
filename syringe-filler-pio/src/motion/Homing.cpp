@@ -1,3 +1,7 @@
+/**
+ * @file Homing.cpp
+ * @brief Homing routine for the primary axis and encoder alignment.
+ */
 #include "motion/Homing.hpp"
 #include "motion/Axis.hpp"
 #include "servo/Toolhead.hpp"
@@ -9,6 +13,7 @@ namespace Homing {
 
 // Local helper: time-gated toggle for Axis1, using Axis' current interval
 static unsigned long s_fastIntervalUs = 1000; // default; will be derived from Axis speed
+// Toggle the step pin at the configured fast interval.
 static inline void stepOnceTimed() {
   static bool state = false;
   static unsigned long last = micros();
@@ -21,6 +26,7 @@ static inline void stepOnceTimed() {
   digitalWrite(Pins::STEP1, state ? HIGH : LOW);
 }
 
+// Home the primary axis and zero the encoder.
 void home() {
   if (!Toolhead::ensureRaised()) {
     Serial.println("HOMING ABORTED: toolhead not raised.");
@@ -99,7 +105,7 @@ void home() {
 
   // ---- OPTIONAL index search that returns to 0 ----
   {
-    const int maxIndexSearchSteps = 5000;  // tune for your mechanics
+    const int maxIndexSearchSteps = 5000;  // tune for the mechanics
     bool foundIndex = false;
     long stepsMoved = 0;
 

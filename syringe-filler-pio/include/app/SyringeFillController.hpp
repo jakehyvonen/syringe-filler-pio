@@ -1,3 +1,7 @@
+/**
+ * @file SyringeFillController.hpp
+ * @brief High-level syringe fill orchestration and recipe handling.
+ */
 #pragma once
 #include <Arduino.h>
 #include "app/SyringeCalibration.hpp"
@@ -14,10 +18,12 @@ public:
   void scanAllBaseSyringes();
   bool scanBaseSyringe(uint8_t slot);
 
-  // NEW
+  // Base selection helpers.
+  // Return the currently selected base slot (or -1 if none).
   int8_t currentSlot() const { return m_currentSlot; }
   void   printBaseInfo(uint8_t slot, Stream& s);
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
+  // Capture a calibration point for the current base slot.
   bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
     return (m_currentSlot >= 0) ? captureBaseCalibrationPoint((uint8_t)m_currentSlot, ml, message) : false;
   }
@@ -34,7 +40,8 @@ public:
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
-  uint32_t toolheadRfid() const { return m_toolhead.rfid; }   // optional but handy
+  // Return the current toolhead RFID value.
+  uint32_t toolheadRfid() const { return m_toolhead.rfid; }
   bool showVolumes(String& data, String& message);
 
 
@@ -53,7 +60,7 @@ private:
   uint8_t  m_baseToPot[Bases::kCount];
   int8_t  m_currentSlot = -1;
   SyringeCalibration m_calibration;
-  Util::RecipeDTO m_recipe;  // or Util::Recipe, whatever you called it
+  Util::RecipeDTO m_recipe;
 };
 
 } // namespace App

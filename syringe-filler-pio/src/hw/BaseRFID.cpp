@@ -1,3 +1,7 @@
+/**
+ * @file BaseRFID.cpp
+ * @brief Base RFID reader implementation on the secondary I2C bus.
+ */
 #include "hw/BaseRFID.hpp"
 #include "hw/Pins.hpp"
 
@@ -13,17 +17,19 @@ static bool    s_available = false;
 static uint8_t s_uid[7]    = {0};
 static uint8_t s_uidLen    = 0;
 
-// NEW: listener
+// Listener callback.
 static BaseRFID::TagListener s_listener = nullptr;
 static void*                  s_listenerUser = nullptr;
 
 namespace BaseRFID {
 
+// Register a listener for newly detected tags.
 void setListener(TagListener cb, void* user) {
   s_listener = cb;
   s_listenerUser = user;
 }
 
+// Initialize the PN532 on the secondary I2C bus.
 void init() {
   Wire1.begin(Pins::I2C2_SDA, Pins::I2C2_SCL);
 
@@ -48,13 +54,19 @@ void init() {
   s_uidLen    = 0;
 }
 
+// Enable or disable RFID polling.
 void enable(bool e) { s_enabled = e; }
+// Return true when polling is enabled.
 bool enabled()      { return s_enabled; }
 
+// Return true when a new UID is available.
 bool available()    { return s_available; }
+// Return the length of the last UID.
 uint8_t  uidLen()   { return s_uidLen; }
+// Return a pointer to the last UID bytes.
 const uint8_t* uidBytes() { return s_uid; }
 
+// Print the last UID to a stream.
 void printUID(Stream& s) {
   if (!s_uidLen) { s.println(F("<none>")); return; }
   for (uint8_t i = 0; i < s_uidLen; ++i) {
@@ -64,6 +76,7 @@ void printUID(Stream& s) {
   }
 }
 
+// Poll the PN532 once and update UID state.
 void tick() {
   static uint32_t tickCount = 0;
 
@@ -110,8 +123,9 @@ void tick() {
   delay(5);
 }
 
+// Poll for a tag with retries and return true on success.
 bool detectOnce(uint16_t tries, uint16_t delay_ms) {
-  // leave as-is, you said it didn’t work well, but we keep it
+  // One-shot polling loop with retries.
   for (uint16_t i = 0; i < tries; ++i) {
     uint8_t uid[7]; uint8_t len = 0;
     if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &len)) {

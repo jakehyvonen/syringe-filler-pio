@@ -1,3 +1,7 @@
+/**
+ * @file CommandRouter.cpp
+ * @brief Serial command parsing and JSON-formatted responses.
+ */
 #include <Arduino.h>
 #include <Wire.h>
 
@@ -67,6 +71,7 @@ struct CommandDescriptor {
 static String input;
 static App::SyringeFillController g_sfc;
 
+// Emit a JSON response for a simple action result.
 void printStructured(const char *cmd, const ActionResult &res, const String &data = "") {
   Serial.print("{\"cmd\":\"");
   Serial.print(cmd);
@@ -85,6 +90,7 @@ void printStructured(const char *cmd, const ActionResult &res, const String &dat
   Serial.println("}");
 }
 
+// Emit a JSON response for a position result with steps/mm.
 void printStructured(const char *cmd, const PositionResult &res) {
   String data = "{";
   data += "\"steps\":" + String(res.steps) + ",";
@@ -92,6 +98,7 @@ void printStructured(const char *cmd, const PositionResult &res) {
   printStructured(cmd, static_cast<const ActionResult &>(res), data);
 }
 
+// Handle "speed" command for gantry speed changes.
 void handleSpeed(const String &args) {
   long sps = args.toInt();
   if (sps > 0) {
@@ -101,24 +108,31 @@ void handleSpeed(const String &args) {
   }
 }
 
+// Handle "home" command for gantry homing.
 void handleHome(const String &args) { printStructured("home", homeGantry()); }
 
+// Handle "pos" command for gantry position reporting.
 void handlePos(const String &args) { printStructured("pos", gantryPosition()); }
 
+// Handle "goto" command for absolute step moves.
 void handleGoto(const String &args) { printStructured("goto", moveGantryToSteps(args.toInt())); }
 
+// Handle "gotomm" command for absolute mm moves.
 void handleGotoMm(const String &args) { printStructured("gotomm", moveGantryToMm(args.toFloat())); }
 
+// Handle "base" command to select a base.
 void handleBase(const String &args) {
   int idx = args.toInt();
   printStructured("base", selectBase((uint8_t)idx), "{\"selected\":" + String(selectedBase()) + "}");
 }
 
+// Handle "whichbase" command to report current base.
 void handleWhichBase(const String &args) {
   ActionResult res{true, "base query"};
   printStructured("whichbase", res, "{\"selected\":" + String(selectedBase()) + "}");
 }
 
+// Handle "gobase" command to move to a stored base position.
 void handleGoBase(const String &args) {
   long target = 0;
   ActionResult res = moveToBase((uint8_t)args.toInt(), target);
@@ -127,6 +141,7 @@ void handleGoBase(const String &args) {
   printStructured("gobase", res, data);
 }
 
+// Handle "servopulse" command to set raw servo pulse width.
 void handleServoPulse(const String &args) {
   int sp = args.indexOf(' ');
   if (sp > 0) {
@@ -138,6 +153,7 @@ void handleServoPulse(const String &args) {
   }
 }
 
+// Handle "servo" command to set a servo angle.
 void handleServo(const String &args) {
   int sp = args.indexOf(' ');
   if (sp > 0) {
@@ -149,8 +165,10 @@ void handleServo(const String &args) {
   }
 }
 
+// Handle "raise" command to lift the toolhead.
 void handleRaise(const String &args) { printStructured("raise", raiseToolhead()); }
 
+// Handle "servoslow" command for slow servo sweeps.
 void handleServoSlow(const String &args) {
   int sp = args.indexOf(' ');
   if (sp > 0) {
@@ -171,10 +189,13 @@ void handleServoSlow(const String &args) {
   }
 }
 
+// Handle "couple" command for toolhead coupling sequence.
 void handleCouple(const String &args) { printStructured("couple", coupleSyringes()); }
 
+// Handle "move2" command for axis 2 motion.
 void handleMove2(const String &args) { printStructured("move2", moveAxis2(args.toInt())); }
 
+// Handle "move3" command for axis 3 motion.
 void handleMove3(const String &args) {
   if (selectedBase() == 0) {
     printStructured("move3", {false, "no base selected"});
@@ -183,8 +204,10 @@ void handleMove3(const String &args) {
   printStructured("move3", moveAxis3(args.toInt()));
 }
 
+// Handle "speed23" command for axis 2/3 speed changes.
 void handleSpeed23(const String &args) { printStructured("speed23", setAxis23Speed(args.toInt())); }
 
+// Handle "m23" command for synchronized axis 2/3 moves.
 void handleM23(const String &args) {
   int sp = args.indexOf(' ');
   if (sp > 0) {
@@ -196,28 +219,40 @@ void handleM23(const String &args) {
   }
 }
 
+// Handle "pos2" command for axis 2 position reporting.
 void handlePos2(const String &args) { printStructured("pos2", axis2Position()); }
 
+// Handle "pos3" command for axis 3 position reporting.
 void handlePos3(const String &args) { printStructured("pos3", axis3Position()); }
 
+// Handle "rfid" command for toolhead RFID control.
 void handleRfid(const String &args) { printStructured("rfid", handleRfidCommand(args)); }
 
+// Handle "rfid2" command for base RFID control.
 void handleRfid2(const String &args) { printStructured("rfid2", handleBaseRfidCommand(args)); }
 
+// Handle "sfc.scanBases" command to scan all bases.
 void handleSfcScanBases(const String &args) { printStructured("sfc.scanBases", sfcScanBases(g_sfc)); }
 
+// Handle "sfc.run" command to execute the recipe.
 void handleSfcRun(const String &args) { printStructured("sfc.run", sfcRunRecipe(g_sfc)); }
 
+// Handle "sfc.load" command to load a recipe.
 void handleSfcLoad(const String &args) { printStructured("sfc.load", sfcLoadRecipe(g_sfc)); }
 
+// Handle "sfc.save" command to save the recipe.
 void handleSfcSave(const String &args) { printStructured("sfc.save", sfcSaveRecipe(g_sfc)); }
 
+// Handle "sfc.status" command to report controller status.
 void handleSfcStatus(const String &args) { printStructured("sfc.status", sfcStatus()); }
 
+// Handle "sfc.scanbase" command to scan a single base slot.
 void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfcScanBase(g_sfc, (uint8_t)args.toInt())); }
 
+// Handle "sfc.scanTool" command to scan the toolhead.
 void handleSfcScanTool(const String &args) { printStructured("sfc.scanTool", sfcScanTool(g_sfc)); }
 
+// Handle "cal.tool.point" command to add a toolhead calibration point.
 void handleSfcCalTPoint(const String &args) {
   if (args.length() == 0) {
     printStructured("cal.tool.point", {false, "usage: cal.tool.point <ml>"} );
@@ -231,20 +266,26 @@ void handleSfcCalTPoint(const String &args) {
   printStructured("cal.tool.point", sfcCaptureToolCalPoint(g_sfc, ml));
 }
 
+// Handle "sfc.tool.show" command to print toolhead info.
 void handleSfcToolShow(const String &args) { printStructured("sfc.tool.show", sfcShowTool(g_sfc)); }
 
+// Handle "showvolumes" command to output volume report JSON.
 void handleShowVolumes(const String &args) {
   String data;
   ActionResult res = showVolumes(g_sfc, data);
   printStructured("showvolumes", res, data);
 }
 
+// Handle "sfc.recipe.save" command to save the recipe.
 void handleSfcRecipeSave(const String &args) { printStructured("sfc.recipe.save", sfcRecipeSave(g_sfc)); }
 
+// Handle "sfc.recipe.load" command to load the recipe.
 void handleSfcRecipeLoad(const String &args) { printStructured("sfc.recipe.load", sfcRecipeLoad(g_sfc)); }
 
+// Handle "sfc.base.show" command to print current base info.
 void handleSfcBaseShow(const String &args) { printStructured("sfc.base.show", sfcShowCurrentBase(g_sfc)); }
 
+// Handle "cal.base.point" command to add a base calibration point.
 void handleSfcCalBasePoint(const String &args) {
   int sp = args.indexOf(' ');
   float ml = 0.0f;
@@ -267,22 +308,27 @@ void handleSfcCalBasePoint(const String &args) {
   printStructured("cal.base.point", sfcCaptureBaseCalPoint(g_sfc, ml, slot));
 }
 
+// Handle "cal.base.clear" command to clear base calibration points.
 void handleSfcCalBaseClear(const String &args) {
   printStructured("cal.base.clear", sfcClearBaseCalPoints(g_sfc));
 }
 
+// Handle "cal.tool.clear" command to clear toolhead calibration points.
 void handleSfcCalToolClear(const String &args) {
   printStructured("cal.tool.clear", sfcClearToolCalPoints(g_sfc));
 }
 
+// Handle "cal.base.force0" command to force base calibration through zero.
 void handleSfcCalBaseForceZero(const String &args) {
   printStructured("cal.base.force0", sfcForceBaseCalZero(g_sfc));
 }
 
+// Handle "cal.tool.force0" command to force toolhead calibration through zero.
 void handleSfcCalToolForceZero(const String &args) {
   printStructured("cal.tool.force0", sfcForceToolCalZero(g_sfc));
 }
 
+// Handle "potraw" command to read a pot value.
 void handlePotRaw(const String &args) {
   uint16_t counts = 0, scaled = 0;
   ActionResult res = readPot((uint8_t)args.toInt(), counts, scaled);
@@ -290,6 +336,7 @@ void handlePotRaw(const String &args) {
   printStructured("potraw", res, data);
 }
 
+// Handle "basepot" command to read a base pot value.
 void handleBasePot(const String &args) {
   uint8_t potIdx = 0;
   uint16_t counts = 0, scaled = 0;
@@ -301,6 +348,7 @@ void handleBasePot(const String &args) {
   printStructured("basepot", res, data);
 }
 
+// Handle "pots" command to report all pot values.
 void handlePotReport(const String &args) {
   (void)args;
   String data;
@@ -308,6 +356,7 @@ void handlePotReport(const String &args) {
   printStructured("pots", res, data);
 }
 
+// Handle "potmove" command to run pot-driven motion.
 void handlePotMove(const String &args) {
   int sp = args.indexOf(' ');
   if (sp < 0) {
@@ -367,6 +416,7 @@ const CommandDescriptor COMMANDS[] = {
 
 const size_t COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
 
+// Look up a command descriptor by verb.
 const CommandDescriptor *lookupCommand(const String &verb) {
   for (size_t i = 0; i < COMMAND_COUNT; ++i) {
     if (verb == COMMANDS[i].name) return &COMMANDS[i];
@@ -376,6 +426,7 @@ const CommandDescriptor *lookupCommand(const String &verb) {
 
 }  // namespace
 
+// Read serial input and dispatch the matching command handler.
 void handleSerial() {
   while (Serial.available()) {
     char c = Serial.read();

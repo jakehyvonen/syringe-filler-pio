@@ -1,3 +1,7 @@
+/**
+ * @file RFID.cpp
+ * @brief Toolhead RFID reader implementation on the primary I2C bus.
+ */
 #include "hw/RFID.hpp"
 #include "hw/Pins.hpp"
 
@@ -22,11 +26,13 @@ static void*             s_listenerUser  = nullptr;
 
 namespace RFID {
 
+// Register a listener for newly detected tags.
 void setListener(TagListener cb, void* user) {
   s_listener     = cb;
   s_listenerUser = user;
 }
 
+// Initialize the PN532 on the primary I2C bus.
 void init() {
   // Primary I2C bus
   Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
@@ -52,13 +58,19 @@ void init() {
   s_uidLen    = 0;
 }
 
+// Enable or disable RFID polling.
 void enable(bool e) { s_enabled = e; }
+// Return true when polling is enabled.
 bool enabled()      { return s_enabled; }
 
+// Return true when a new UID is available.
 bool available()    { return s_available; }
+// Return the length of the last UID.
 uint8_t  uidLen()   { return s_uidLen; }
+// Return a pointer to the last UID bytes.
 const uint8_t* uidBytes() { return s_uid; }
 
+// Print the last UID to a stream.
 void printUID(Stream& s) {
   if (!s_uidLen) { s.println(F("<none>")); return; }
   for (uint8_t i = 0; i < s_uidLen; ++i) {
@@ -68,6 +80,7 @@ void printUID(Stream& s) {
   }
 }
 
+// Poll the PN532 once and update UID state.
 void tick() {
   static uint32_t tickCount = 0;
 
@@ -114,6 +127,7 @@ void tick() {
   delay(5);
 }
 
+// Poll for a tag with retries and return true on success.
 bool detectOnce(uint16_t tries, uint16_t delay_ms) {
   // same pattern as BaseRFID
   for (uint16_t i = 0; i < tries; ++i) {

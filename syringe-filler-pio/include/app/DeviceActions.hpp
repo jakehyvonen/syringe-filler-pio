@@ -1,3 +1,7 @@
+/**
+ * @file DeviceActions.hpp
+ * @brief High-level hardware actions used by the command router.
+ */
 #pragma once
 #include <Arduino.h>
 

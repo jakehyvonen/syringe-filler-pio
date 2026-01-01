@@ -1,3 +1,7 @@
+/**
+ * @file Storage.cpp
+ * @brief NVS and LittleFS persistence for calibration and recipes.
+ */
 #include "util/Storage.hpp"
 #include "util/Recipe.hpp"
 #include "hw/Pots.hpp"
@@ -9,6 +13,7 @@
 
 namespace {
 
+// Compute a CRC32 checksum for a byte buffer.
 uint32_t crc32_acc(const uint8_t* p, size_t n) {
   uint32_t c = 0xFFFFFFFFu;
   for (size_t i = 0; i < n; ++i) {
@@ -19,6 +24,7 @@ uint32_t crc32_acc(const uint8_t* p, size_t n) {
   return ~c;
 }
 
+// Build an NVS key from an RFID value and suffix.
 String rfidKey(uint32_t rfid, const char* suffix) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", rfid);
@@ -27,6 +33,7 @@ String rfidKey(uint32_t rfid, const char* suffix) {
   return s;
 }
 
+// Save a blob to NVS under the given namespace/key.
 bool nvsSaveBlob(const char* ns, const char* key, const void* data, size_t len) {
   nvs_handle_t h;
   if (nvs_open(ns, NVS_READWRITE, &h) != ESP_OK) return false;
@@ -36,6 +43,7 @@ bool nvsSaveBlob(const char* ns, const char* key, const void* data, size_t len) 
   return err == ESP_OK;
 }
 
+// Load a blob from NVS into a fixed-size buffer.
 bool nvsLoadBlob(const char* ns, const char* key, void* data, size_t len) {
   nvs_handle_t h;
   if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
@@ -47,6 +55,7 @@ bool nvsLoadBlob(const char* ns, const char* key, void* data, size_t len) {
   return err == ESP_OK;
 }
 
+// Read the size of a blob stored in NVS.
 bool nvsGetBlobSize(const char* ns, const char* key, size_t& outSize) {
   nvs_handle_t h;
   if (nvs_open(ns, NVS_READONLY, &h) != ESP_OK) return false;
@@ -92,6 +101,7 @@ static uint32_t crcForBlob(void* blob, size_t len, uint32_t* crcField) {
   return calc;
 }
 
+// Initialize NVS and LittleFS storage.
 bool initStorage() {
   if (nvs_flash_init() != ESP_OK) return false;
 
@@ -101,6 +111,7 @@ bool initStorage() {
 }
 
 // ---------------------- calibration ----------------------
+// Load toolhead calibration data for an RFID.
 bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
   String key = rfidKey(rfid, ":cal");
 
@@ -140,6 +151,7 @@ bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {
   return true;
 }
 
+// Save toolhead calibration data for an RFID.
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
   CalBlob blob{};
   blob.pointCount = cal.pointCount;
@@ -162,6 +174,7 @@ bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal) {
 
 // ---------------------- base meta ------------------------
 // Primary API (with points)
+// Load base metadata and calibration for an RFID.
 bool loadBase(uint32_t rfid,
               BaseMeta& meta,
               App::PotCalibration& cal,
@@ -185,6 +198,7 @@ bool loadBase(uint32_t rfid,
   return true;
 }
 
+// Save base metadata and calibration for an RFID.
 bool saveBase(uint32_t rfid,
               const BaseMeta& meta,
               const App::PotCalibration& cal,
@@ -202,12 +216,12 @@ bool saveBase(uint32_t rfid,
 }
 
 // Convenience overloads (keep existing call sites working)
+// Load base metadata and calibration (legacy overload).
 bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
   App::CalibrationPoints dummy{};
   bool ok = loadBase(rfid, meta, cal, dummy);
 
-  // If callers don’t use points, we still try to fold them into cal if present.
-  // Only do this if your PotCalibration has compatible fields (as in your Syringe.hpp).
+  // If callers don’t use points, fold them into cal when fields are compatible.
   if (ok && dummy.count > 0) {
     cal.pointCount = 0;
     for (uint8_t i = 0; i < dummy.count && i < App::PotCalibration::kMaxPoints; ++i) {
@@ -218,9 +232,10 @@ bool loadBase(uint32_t rfid, BaseMeta& meta, App::PotCalibration& cal) {
   return ok;
 }
 
+// Save base metadata and calibration (legacy overload).
 bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& cal) {
   // If no explicit points provided, serialize an empty set.
-  // (Safer than guessing how you want to pack cal.points into CalibrationPoints.)
+  // This avoids guessing how to pack cal.points into CalibrationPoints.
   App::CalibrationPoints empty{};
   empty.count = 0;
   return saveBase(rfid, meta, cal, empty);
@@ -228,6 +243,7 @@ bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& ca
 
 // ---------------------- recipes --------------------------
 // stored as /recipes/<RFID-HEX>.json
+// Build the path to the recipe file for a toolhead RFID.
 static String recipePath(uint32_t toolheadRfid) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", toolheadRfid);
@@ -238,6 +254,7 @@ static String recipePath(uint32_t toolheadRfid) {
 }
 
 // RecipeDTO version
+// Save a RecipeDTO to LittleFS as JSON.
 bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
   DynamicJsonDocument doc(2048);
   char buf[16];
@@ -258,6 +275,7 @@ bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
   return true;
 }
 
+// Load a RecipeDTO from LittleFS JSON.
 bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
   File f = LittleFS.open(recipePath(toolheadRfid), "r");
   if (!f) return false;
@@ -279,6 +297,7 @@ bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
 }
 
 // Util::Recipe version
+// Save a Util::Recipe to LittleFS JSON.
 bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
   if (toolheadRfid == 0) return false;
   File f = LittleFS.open(recipePath(toolheadRfid), "w");
@@ -293,6 +312,7 @@ bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
   return ok;
 }
 
+// Load a Util::Recipe from LittleFS JSON.
 bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe) {
   if (toolheadRfid == 0) return false;
   File f = LittleFS.open(recipePath(toolheadRfid), "r");
@@ -314,6 +334,7 @@ bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe) {
 // key: "p<idx0>"
 // value: int32 (long)
 // ------------------------------------------------------
+// Load a base position in steps from NVS.
 bool loadBasePos(uint8_t idx0, long& steps) {
   char key[8];
   snprintf(key, sizeof(key), "p%u", idx0);
@@ -323,6 +344,7 @@ bool loadBasePos(uint8_t idx0, long& steps) {
   return true;
 }
 
+// Save a base position in steps to NVS.
 bool saveBasePos(uint8_t idx0, long steps) {
   char key[8];
   snprintf(key, sizeof(key), "p%u", idx0);

@@ -1,3 +1,12 @@
+/*
+  SyringeFillControl Test Sketch
+  ------------------------------
+  Bench-test firmware for STEP/DIR motion, homing, and basic PCA9685 servo control.
+
+  Use this sketch to validate wiring, limit switch behavior, and stepper movement
+  before running the full ESP32 firmware.
+*/
+
 #define dirPin 2
 #define stepPin 3
 #define enablePin 8
@@ -16,8 +25,8 @@
 #define DISABLE_LEVEL HIGH    // A4988/DRV8825: ENABLE pin is active-LOW. Use HIGH to disable.
 #define ENABLE_LEVEL  LOW     // Use LOW to enable the driver.
 
-// Steps/mm helps print pretty units and enforce soft limits (tune this!)
-const float STEPS_PER_MM = 80.0f; // <- EXAMPLE for 1/16 microstep + GT2(20T) belt, change to your machine
+// Steps/mm helps print units and enforce soft limits (tune for the mechanics).
+const float STEPS_PER_MM = 80.0f; // Example for 1/16 microstep + GT2(20T) belt
 
 // Soft limits (in steps). Comment out CHECK_SOFT_LIMITS to disable.
 #define CHECK_SOFT_LIMITS
@@ -45,14 +54,15 @@ bool stepState = false;
 // --- PCA9685 servo driver ---
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
-// Servo calibration (these are typical; adjust to your servos)
+// Servo calibration (typical values; adjust to match the servos)
 #define SERVO_MIN  150  // pulse length out of 4096 for ~0°
 #define SERVO_MAX  600  // pulse length out of 4096 for ~180°
 
 
 
 // Block until a step pulse at the current stepInterval elapses, then toggle STEP.
-// Uses an internal static edge state so you can call repeatedly in a loop.
+// Uses an internal static edge state so it can be called repeatedly in a loop.
+// Toggle the main step pin at the configured interval.
 static inline void stepOnceTimed() {
   static bool localStepState = false;
   static unsigned long last = micros();
@@ -70,6 +80,7 @@ static inline void stepOnceTimed() {
 // Move a signed number of steps at the current stepInterval (blocking).
 // Positive 'steps' moves with DIR=HIGH, negative with DIR=LOW.
 // Updates the global currentPositionSteps on EACH full step edge-pair.
+// Move the primary axis by a signed step count.
 static void moveSteps(long steps) {
   if (steps == 0) return;
 
@@ -86,7 +97,7 @@ static void moveSteps(long steps) {
     stepOnceTimed();
     // ---- Position sign convention ----
     // By default, DIR=HIGH increments ( +1 ), DIR=LOW decrements ( -1 ).
-    // If this is opposite to your mechanical sense, flip the +/- here.
+    // If this is opposite to the mechanical sense, flip the +/- here.
     currentPositionSteps += dirHigh ? +1 : -1;
 
     // Falling edge (complete the pulse)
@@ -95,6 +106,7 @@ static void moveSteps(long steps) {
 }
 
 // One timed toggle on a given step pin (uses its own timer)
+// Toggle a given step pin at the provided interval.
 static inline void stepOnceTimedOnPin(uint8_t stepPin, unsigned long interval_us) {
   static unsigned long last2 = 0, last3 = 0;
   static bool state2 = false, state3 = false;
@@ -111,6 +123,7 @@ static inline void stepOnceTimedOnPin(uint8_t stepPin, unsigned long interval_us
 }
 
 // Blocking move of N steps on motor #2
+// Move axis 2 by a signed step count.
 static void moveSteps2(long steps) {
   if (steps == 0) return;
   bool dirHigh = (steps > 0);
@@ -129,6 +142,7 @@ static void moveSteps2(long steps) {
 }
 
 // Blocking move of N steps on motor #3
+// Move axis 3 by a signed step count.
 static void moveSteps3(long steps) {
   if (steps == 0) return;
   bool dirHigh = (steps > 0);
@@ -148,6 +162,7 @@ static void moveSteps3(long steps) {
 
 
 // Convenience: absolute move to target position in steps (blocking)
+// Move the primary axis to an absolute step position.
 static void moveToSteps(long targetSteps) {
 #ifdef CHECK_SOFT_LIMITS
   if (targetSteps < MIN_POS_STEPS) targetSteps = MIN_POS_STEPS;
@@ -157,6 +172,7 @@ static void moveToSteps(long targetSteps) {
   moveSteps(delta);
 }
 
+// Home the primary axis using the limit switch.
 void HomeAxis() {
   digitalWrite(enablePin, ENABLE_LEVEL);
   motorEnabled = true;
@@ -232,18 +248,20 @@ void HomeAxis() {
   stepInterval = savedInterval;
   Serial.println("HOMING COMPLETE. pos=0");
 
-  // Disable if you like:
+  // Optionally disable the driver after homing:
   digitalWrite(enablePin, DISABLE_LEVEL);
   motorEnabled = false;
 }
 
 
 // Function to set servo pulse directly in microseconds
+// Write a raw microsecond pulse to a servo channel.
 void setServoPulseRaw(uint8_t servoNum, int pulseLength) {
   // pulseLength is in microseconds, e.g. 1500 = neutral
   pwm.writeMicroseconds(servoNum, pulseLength);
 }
 
+// Set a servo channel to an absolute angle in degrees.
 void setServoAngle(uint8_t channel, int angle) {
   if (angle < 0) angle = 0;
   if (angle > 180) angle = 180;
@@ -261,6 +279,7 @@ void setServoAngle(uint8_t channel, int angle) {
 }
 
 // Slowly sweep servo from its current position to target
+// Sweep a servo to a target angle with step delays.
 void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
   static int currentAngles[16] = {90}; // store last commanded angle per channel (default 90°)
   
@@ -291,6 +310,7 @@ void setServoAngleSlow(uint8_t channel, int targetAngle, int stepDelay = 23) {
 
 
 
+// Initialize GPIO, serial, and PCA9685.
 void setup() {
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
@@ -321,6 +341,7 @@ void setup() {
 }
 
 
+// Process serial commands and emit steps when enabled.
 void loop() {
   
 
@@ -337,6 +358,7 @@ void loop() {
   }
 }
 
+// Parse serial commands for motion and servo control.
 void handleSerial() {
   static String input = "";
   while (Serial.available()) {

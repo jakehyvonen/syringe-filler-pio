@@ -1,3 +1,7 @@
+/**
+ * @file Toolhead.cpp
+ * @brief PCA9685 servo control for toolhead lift and coupling.
+ */
 #include "servo/Toolhead.hpp"
 #include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
@@ -17,7 +21,7 @@ static constexpr int COUPLING_SERVO_COUPLED_POS     = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS   = 147;
 
 static constexpr int RAMP_MS_FAST = 11;   // per-degree delay for quick but smooth moves
-static constexpr int RAMP_MS_SLOW = 17;  // use larger if you still see brownouts
+static constexpr int RAMP_MS_SLOW = 17;  // increase if brownouts occur
 
 
 static int  s_angles[16];
@@ -31,20 +35,24 @@ static inline void ensureAnglesInit() {
   }
 }
 
+// Initialize toolhead state (PCA already configured elsewhere).
 void init() {
   // nothing special; PCA is initialized in Drivers
 }
 
+// Return true when the toolhead raised switch is active.
 bool isRaised() {
   // GPIO34/35 require external pull-ups to 3.3V
   return (digitalRead(Pins::RAISED) == LOW);
 }
 
+// Set a raw microsecond pulse on a PCA9685 channel.
 void setPulseRaw(uint8_t ch, int pulse) {
   if (!Drivers::hasPCA()) return;
   Drivers::PCA.writeMicroseconds(ch, pulse);
 }
 
+// Set a servo channel to an absolute angle.
 void setAngle(uint8_t ch, int angle) {
   if (!Drivers::hasPCA()) return;
   ensureAnglesInit();
@@ -63,6 +71,7 @@ void setAngle(uint8_t ch, int angle) {
   Serial.println(" deg");
 }
 
+// Sweep a servo channel to a target angle with delay.
 void setAngleSlow(uint8_t ch, int target, int stepDelay) {
   if (!Drivers::hasPCA()) return;
   ensureAnglesInit();
@@ -87,12 +96,14 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
   Serial.print(" slowly moved to "); Serial.println(target);
 }
 
+// Raise the toolhead and decouple the coupler.
 void raise() {
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
   delay(50); // small settle time
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
 }
 
+// Run the coupling motion sequence.
 void couple() {
   // Approach coupling position slowly, then close the coupler smoothly
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
@@ -102,7 +113,7 @@ void couple() {
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
   delay(100);
 
-  // (Retain your brief "stop pulses" if it's helpful for your mechanism)
+  // Optional brief stop pulse can help some mechanisms settle.
   setPulseRaw(TOOLHEAD_SERVO, 0);
   delay(100);
 
@@ -114,6 +125,7 @@ void couple() {
 }
 
 
+// Raise the toolhead if needed and enforce a timeout.
 bool ensureRaised(uint16_t timeout_ms) {
   if (!Drivers::hasPCA()) {
     Serial.println("ERROR: No PCA9685; cannot raise toolhead.");
