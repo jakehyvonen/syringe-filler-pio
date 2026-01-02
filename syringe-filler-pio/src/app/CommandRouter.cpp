@@ -46,6 +46,7 @@ using App::DeviceActions::sfcSaveRecipe;
 using App::DeviceActions::sfcScanBase;
 using App::DeviceActions::sfcScanBases;
 using App::DeviceActions::sfcScanTool;
+using App::DeviceActions::sfcTransferFromBase;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
 using App::DeviceActions::showVolumes;
@@ -397,6 +398,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.status", "sfc status", handleSfcStatus},
     {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
     {"sfc.scanTool", "scan toolhead syringe", handleSfcScanTool},
+    {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
     {"cal.tool.force0", "force toolhead syringe calibration to 0 mL", handleSfcCalToolForceZero},
