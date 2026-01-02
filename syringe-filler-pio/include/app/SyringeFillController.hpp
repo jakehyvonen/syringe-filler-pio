@@ -43,6 +43,7 @@ public:
   // Return the current toolhead RFID value.
   uint32_t toolheadRfid() const { return m_toolhead.rfid; }
   bool showVolumes(String& data, String& message);
+  bool transferFromBase(uint8_t slot, float ml);
 
 
 
@@ -51,7 +52,6 @@ private:
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);
-  bool     transferFromBase(uint8_t slot, float ml);
   uint16_t readToolheadRawADC();
   uint16_t readBaseRawADC(uint8_t slot);
 

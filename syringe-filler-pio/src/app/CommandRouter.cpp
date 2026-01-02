@@ -253,6 +253,26 @@ void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfc
 // Handle "sfc.scanTool" command to scan the toolhead.
 void handleSfcScanTool(const String &args) { printStructured("sfc.scanTool", sfcScanTool(g_sfc)); }
 
+// Handle "transfer" command to move volume from a base syringe to the toolhead.
+void handleTransfer(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp < 0) {
+    printStructured("transfer", {false, "usage: transfer <slot> <ml>"});
+    return;
+  }
+  int slot = args.substring(0, sp).toInt();
+  float ml = args.substring(sp + 1).toFloat();
+  if (slot < 0) {
+    printStructured("transfer", {false, "slot must be >= 0"});
+    return;
+  }
+  if (ml < 0.0f) {
+    printStructured("transfer", {false, "volume must be >= 0"});
+    return;
+  }
+  printStructured("transfer", sfcTransferFromBase(g_sfc, (uint8_t)slot, ml));
+}
+
 // Handle "cal.tool.point" command to add a toolhead calibration point.
 void handleSfcCalTPoint(const String &args) {
   if (args.length() == 0) {
