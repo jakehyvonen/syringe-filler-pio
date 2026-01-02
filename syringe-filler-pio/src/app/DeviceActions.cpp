@@ -385,5 +385,11 @@ ActionResult potMove(uint16_t target, long sps) {
   return {ok, ok ? "potmove ok" : "potmove failed"};
 }
 
+// Diagnostics
+ActionResult i2cScanBoth() {
+  Drivers::i2cScanBoth();
+  return {true, "i2c scan complete"};
+}
+
 }  // namespace DeviceActions
 }  // namespace App
