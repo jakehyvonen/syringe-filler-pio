@@ -1,3 +1,20 @@
+/*
+  HandheldStepperControl
+  ----------------------
+  Simple handheld controller for a STEP/DIR stepper driver using a hold-to-run button.
+
+  Hardware assumptions:
+  - STEP/DIR driver (A4988/DRV8825 or similar)
+  - Momentary button wired to GND with INPUT_PULLUP enabled
+
+  Serial commands (newline terminated):
+    speed <sps>  Set step rate in steps per second
+    dir <0|1>    Set direction pin LOW/HIGH
+    on           Force-enable driver (still requires button press to step)
+    off          Disable driver
+    state        Print current settings
+*/
+
 // ===== Pins (adjust if needed) =====
 const uint8_t stepPin    = 3;
 const uint8_t dirPin     = 4;
@@ -23,6 +40,8 @@ uint32_t       btnLastChangeMs = 0;
 uint32_t lastStepUs = 0;
 
 // ===== Helpers =====
+// Apply speed limits and compute the step interval in microseconds.
+// Clamp the requested speed and update the computed step interval.
 void applySpeed(long sps) {
   if (sps < 1)     sps = 1;
   if (sps > 20000) sps = 20000;     // keep ISR-less timing sane
@@ -30,10 +49,14 @@ void applySpeed(long sps) {
   stepInterval = 1000000UL / (uint32_t)sps; // full-step interval
 }
 
+// Enable/disable the stepper driver using the configured logic level.
+// Drive the enable pin to turn the stepper driver on or off.
 void motorEnable(bool en) {
   digitalWrite(enablePin, en ? ENABLE_LEVEL : DISABLE_LEVEL);
 }
 
+// Debounced button state helper (pressed = LOW).
+// Read the button with debounce and return true when pressed.
 bool buttonPressed() {
   // simple debounce
   bool raw = digitalRead(buttonPin);
@@ -48,6 +71,8 @@ bool buttonPressed() {
   return (btnStableState == LOW); // pressed when pulled low
 }
 
+// Emit one step pulse when the interval has elapsed.
+// Emit a step pulse when the interval has elapsed.
 void stepTickIfDue() {
   uint32_t now = micros();
   if ((uint32_t)(now - lastStepUs) >= stepInterval) {
@@ -66,6 +91,7 @@ void stepTickIfDue() {
 //   on            (forces enable; still requires button press to run pulses)
 //   off           (forces disable)
 //   state         (prints settings)
+// Parse and handle serial commands for speed, direction, and enable.
 void handleSerial() {
   static String line;
   while (Serial.available()) {
@@ -102,6 +128,7 @@ void handleSerial() {
 }
 
 // ===== Arduino setup/loop =====
+// Initialize GPIO, serial, and default driver state.
 void setup() {
   pinMode(stepPin,   OUTPUT);
   pinMode(dirPin,    OUTPUT);
@@ -118,6 +145,7 @@ void setup() {
   Serial.println("Hold the button to run.");
 }
 
+// Process serial input and run the motor while the button is held.
 void loop() {
   handleSerial();
 

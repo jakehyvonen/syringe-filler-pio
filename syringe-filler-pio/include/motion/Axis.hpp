@@ -1,3 +1,7 @@
+/**
+ * @file Axis.hpp
+ * @brief Primary gantry axis control (timer-based stepping).
+ */
 #pragma once
 #include <stdint.h>
 

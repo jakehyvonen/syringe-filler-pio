@@ -1,2 +1,6 @@
+/**
+ * @file Pins.cpp
+ * @brief Translation unit for pin constants.
+ */
 #include "hw/Pins.hpp"
-// (empty for now; keeps compile units consistent)
+// Translation unit reserved for future pin-related helpers.

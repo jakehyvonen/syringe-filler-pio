@@ -1,9 +1,13 @@
+/**
+ * @file BaseRFID.hpp
+ * @brief RFID interface for base tags (secondary I2C bus).
+ */
 #pragma once
 #include <Arduino.h>
 
 namespace BaseRFID {
 
-// existing API
+// Base RFID polling and UID access.
 void init();
 void enable(bool e);
 bool enabled();
@@ -14,8 +18,7 @@ void tick();
 bool detectOnce(uint16_t tries, uint16_t delay_ms);
 void printUID(Stream& s);
 
-// NEW: event listener API
-// callback gets raw uid bytes and length, plus the user pointer you registered
+// Event listener API (callback receives raw UID bytes, length, and user pointer).
 typedef void (*TagListener)(const uint8_t* uid, uint8_t len, void* user);
 
 void setListener(TagListener cb, void* user);

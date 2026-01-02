@@ -1,3 +1,7 @@
+/**
+ * @file Storage.hpp
+ * @brief NVS/LittleFS persistence for calibration, bases, and recipes.
+ */
 #pragma once
 #include <Arduino.h>
 #include <ArduinoJson.h>

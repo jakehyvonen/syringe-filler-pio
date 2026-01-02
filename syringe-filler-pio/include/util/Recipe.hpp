@@ -1,3 +1,7 @@
+/**
+ * @file Recipe.hpp
+ * @brief Recipe structures for paint transfer steps and JSON I/O.
+ */
 #pragma once
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -13,6 +17,7 @@ struct RecipeEntry {
     uint32_t   paintId = 0;          // optional numeric ID
 
     // --- Validation ---
+    // Return true when the entry has a valid volume and identifier.
     bool isValid() const {
         return (volumeMl > 0.0f) && (
             baseSlot > 0 ||
@@ -23,6 +28,7 @@ struct RecipeEntry {
     }
 
     // --- JSON (de)serialization ---
+    // Serialize the entry to a JSON object.
     void toJson(JsonObject obj) const {
         obj["volume_ml"] = volumeMl;
         if (baseSlot > 0) obj["base_slot"] = baseSlot;
@@ -31,6 +37,7 @@ struct RecipeEntry {
         if (paintId != 0) obj["paint_id"] = paintId;
     }
 
+    // Populate the entry from a JSON object.
     void fromJson(const JsonObjectConst& obj) {
         volumeMl = obj["volume_ml"] | 0.0f;
         baseSlot = obj["base_slot"] | -1;
@@ -46,17 +53,21 @@ struct Recipe {
     RecipeEntry steps[MAX_STEPS];
     uint8_t count = 0;
 
+    // Clear all recipe entries.
     void clear() { count = 0; }
 
+    // Append an entry to the recipe if valid.
     bool add(const RecipeEntry& e) {
         if (!e.isValid() || count >= MAX_STEPS) return false;
         steps[count++] = e;
         return true;
     }
 
+    // Return true when the recipe has no entries.
     bool isEmpty() const { return count == 0; }
 
     // --- JSON I/O ---
+    // Serialize the recipe to a JSON array.
     void toJson(JsonArray arr) const {
         for (uint8_t i = 0; i < count; ++i) {
             JsonObject o = arr.createNestedObject();
@@ -64,6 +75,7 @@ struct Recipe {
         }
     }
 
+    // Populate the recipe from a JSON array.
     void fromJson(const JsonArrayConst& arr) {
         clear();
         for (JsonObjectConst o : arr) {
@@ -74,6 +86,7 @@ struct Recipe {
     }
 
     // --- Debug printing ---
+    // Print the recipe contents to a stream.
     void printTo(Stream& s) const {
         s.printf("[Recipe] %u steps:\n", count);
         for (uint8_t i = 0; i < count; ++i) {

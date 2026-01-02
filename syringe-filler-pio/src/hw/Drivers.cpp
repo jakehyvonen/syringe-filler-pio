@@ -1,3 +1,7 @@
+/**
+ * @file Drivers.cpp
+ * @brief I2C initialization and peripheral detection.
+ */
 #include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
 #include "hw/RFID.hpp"
@@ -62,11 +66,13 @@ namespace {
 // ----------------------------------------------------------
 
 // Default overload
+// Initialize the primary I2C bus with default pins.
 bool Drivers::initI2C() {
   return Drivers::initI2C(Pins::I2C_SDA, Pins::I2C_SCL, Pins::I2C_FREQ);
 }
 
 // Primary bus init
+// Initialize the primary I2C bus with explicit pins/frequency.
 bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
   if (!g_i2cInit) {
     Wire.begin(sda, scl);
@@ -119,12 +125,14 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
   return true;
 }
 
+// Return true if a device acknowledges on the primary I2C bus.
 bool Drivers::i2cPresent(uint8_t addr) {
   Wire.beginTransmission(addr);
   return (Wire.endTransmission(true) == 0);
 }
 
 // Secondary I2C (Wire1)
+// Initialize the secondary I2C bus with default pins.
 bool Drivers::initI2C2() {
   if (!g_i2c2Init) {
     Wire1.begin(Pins::I2C2_SDA, Pins::I2C2_SCL);
@@ -151,12 +159,14 @@ bool Drivers::initI2C2() {
   return true;
 }
 
+// Return true if a device acknowledges on the secondary I2C bus.
 bool Drivers::i2c2Present(uint8_t addr) {
   Wire1.beginTransmission(addr);
   return (Wire1.endTransmission(true) == 0);
 }
 
 // ---- I2C scanning (both buses) ----
+// Scan both I2C buses and print detected addresses.
 void Drivers::i2cScanBoth() {
   if (!g_i2cInit) {
     Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
@@ -175,5 +185,7 @@ void Drivers::i2cScanBoth() {
 }
 
 // ---- Status getters ----
+// Return true if the PCA9685 was detected.
 bool Drivers::hasPCA() { return g_hasPCA; }
+// Return true if the ADS1115 was detected.
 bool Drivers::hasADS() { return g_hasADS; }

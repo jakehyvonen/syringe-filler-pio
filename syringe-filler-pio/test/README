@@ -1,3 +1,5 @@
+This directory houses standalone test sketches and PlatformIO test runner
+assets for hardware bring-up and verification.
 
 This directory is intended for PlatformIO Test Runner and project tests.
 

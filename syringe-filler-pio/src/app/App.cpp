@@ -1,5 +1,9 @@
+/**
+ * @file App.cpp
+ * @brief Application startup wiring and main loop dispatch.
+ */
 #include <Arduino.h>
-#include "app/App.hpp"          // declares namespace App { void setup(); void loop(); }
+#include "app/App.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Drivers.hpp"
 #include "hw/Bases.hpp"
@@ -11,10 +15,11 @@
 #include "app/CommandRouter.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
-#include "hw/Encoder.hpp"       // <-- NEW
+#include "hw/Encoder.hpp"
 
 namespace App {
 
+// Initialize hardware subsystems and print startup status.
 void setup() {
   Serial.begin(115200);
   delay(200);
@@ -42,7 +47,7 @@ void setup() {
   Axis::init();
   AxisPair::init();
 
-  // --- NEW: encoder init
+  // Encoder init
   EncoderHW::begin();
   Serial.println("Encoder ready. Commands: ENC, ENC ON, ENC OFF, ENC ZERO");
 
@@ -64,12 +69,13 @@ void setup() {
   Serial.println("Setup complete. Type commands: on/off, home, move, servo, enc ...");
 }
 
+// Dispatch serial commands and periodic device services.
 void loop() {
   CommandRouter::handleSerial();
   RFID::tick(); // active only if enabled
   BaseRFID::tick();
 
-  // --- NEW: let encoder do periodic printing when polling is on
+  // Let encoder print periodic status when polling is enabled.
   EncoderHW::service();
 }
 
