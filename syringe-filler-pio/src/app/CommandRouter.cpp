@@ -417,7 +417,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.save", "save recipe", handleSfcSave},
     {"sfc.status", "sfc status", handleSfcStatus},
     {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
-    {"sfc.scanTool", "scan toolhead syringe", handleSfcScanTool},
+    {"scantool", "scan toolhead syringe", handleSfcScanTool},
     {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
