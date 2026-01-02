@@ -36,7 +36,11 @@ void setListener(TagListener cb, void* user) {
 void init() {
   // Primary I2C bus
   Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
-
+  Wire.setClock(Pins::I2C_FREQ);
+  Wire.setTimeOut(3000);
+  Serial.print(F("[RFID] I2C0 configured @"));
+  Serial.print(Pins::I2C_FREQ);
+  Serial.println(F(" Hz, timeout 3000 ms"));
   nfc.begin();
 
   uint32_t verdata = nfc.getFirmwareVersion();
