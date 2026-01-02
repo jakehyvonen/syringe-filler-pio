@@ -24,10 +24,30 @@ namespace {
     uint32_t packed = 0;
   };
 
+  // used by Toolhead RFID listener
+  struct ToolheadTagCapture {
+    bool     got    = false;
+    uint32_t packed = 0;
+  };
+
   // listener that BaseRFID will call
   // Pack a base RFID UID into a 32-bit value for capture.
   void baseTagHandler(const uint8_t* uid, uint8_t len, void* user) {
     auto* cap = static_cast<BaseTagCapture*>(user);
+    if (!cap) return;
+
+    uint32_t v = 0;
+    for (uint8_t i = 0; i < len && i < 4; ++i) {
+      v = (v << 8) | uid[i];
+    }
+    cap->packed = v;
+    cap->got    = true;
+  }
+
+  // listener that Toolhead RFID will call
+  // Pack a toolhead RFID UID into a 32-bit value for capture.
+  void toolheadTagHandler(const uint8_t* uid, uint8_t len, void* user) {
+    auto* cap = static_cast<ToolheadTagCapture*>(user);
     if (!cap) return;
 
     uint32_t v = 0;
@@ -274,63 +294,67 @@ bool SyringeFillController::scanToolheadBlocking() {
 // ------------------------------------------------------------
 // Block until a toolhead RFID tag is read or timeout expires.
 uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
-  Serial.print("[SFC] readToolheadRFIDBlocking(): timeout=");
+  Serial.print("[SFC] readToolheadRFIDBlocking(): start, timeout=");
   Serial.print(timeoutMs);
   Serial.println(" ms");
 
-  struct Cap {
-    bool got = false;
-    uint32_t packed = 0;
-  } cap;
-
-  // listener that packs first up-to-4 bytes
-  auto handler = [](const uint8_t* uid, uint8_t len, void* user) {
-    Cap* c = static_cast<Cap*>(user);
-    uint32_t v = 0;
-    for (uint8_t i = 0; i < len && i < 4; ++i) {
-      v = (v << 8) | uid[i];
-    }
-    c->packed = v;
-    c->got = true;
-  };
+  ToolheadTagCapture cap;
+  cap.got    = false;
+  cap.packed = 0;
 
   const bool wasEnabled = RFID::enabled();
+  Serial.print("[SFC] readToolheadRFIDBlocking(): RFID was ");
+  Serial.println(wasEnabled ? "ENABLED" : "DISABLED");
+
+  RFID::setListener(toolheadTagHandler, &cap);
+  Serial.println("[SFC] readToolheadRFIDBlocking(): listener registered");
+
   if (!wasEnabled) {
     RFID::enable(true);
-    Serial.println("[SFC] TH:block: enabled RFID temporarily");
+    Serial.println("[SFC] readToolheadRFIDBlocking(): RFID enabled temporarily");
   }
 
-  RFID::setListener(handler, &cap);
-
-  const uint32_t start = millis();
-  uint32_t iter = 0;
+  const uint32_t start   = millis();
+  uint32_t       lastLog = start;
+  uint32_t       iter    = 0;
 
   while (millis() - start < timeoutMs) {
-    Serial.print("[SFC] TH:block iter=");
-    Serial.println(iter++);
+    Serial.print("[SFC] RTHRFID iter=");
+    Serial.print(iter++);
+    Serial.println(" -> calling RFID::tick()");
     RFID::tick();   // force tick for toolhead PN532
+    Serial.println("[SFC] ...returned from RFID::tick()");
 
     if (cap.got) {
-      Serial.print("[SFC] TH:block got tag 0x");
+      Serial.print("[SFC] readToolheadRFIDBlocking(): tag captured, packed=0x");
       Serial.println(cap.packed, HEX);
       break;
+    }
+
+    uint32_t now = millis();
+    if (now - lastLog > 200) {
+      Serial.print("[SFC] readToolheadRFIDBlocking(): waiting... ");
+      Serial.print(now - start);
+      Serial.println(" ms");
+      lastLog = now;
     }
     delay(5);
   }
 
   RFID::setListener(nullptr, nullptr);
+  Serial.println("[SFC] readToolheadRFIDBlocking(): listener cleared");
 
   if (!wasEnabled) {
     RFID::enable(false);
-    Serial.println("[SFC] TH:block: restored to DISABLED");
+    Serial.println("[SFC] readToolheadRFIDBlocking(): RFID returned to DISABLED");
   }
 
   if (!cap.got) {
-    Serial.println("[SFC] TH:block TIMEOUT");
+    Serial.println("[SFC] readToolheadRFIDBlocking(): TIMEOUT, no tag");
     return 0;
   }
 
-  Serial.print("[SFC] TH:block success: 0x");
+  Serial.print("[SFC] readToolheadRFIDBlocking(): success, returning 0x");
   Serial.println(cap.packed, HEX);
   return cap.packed;
 }
