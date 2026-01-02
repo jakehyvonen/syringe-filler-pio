@@ -9,6 +9,8 @@ namespace RFID {
 
 // Call once from setup()
 void init();
+// Reinitialize the PN532 after a failure.
+void reinit();
 
 // Call every loop(); does nothing unless enabled()
 void tick();

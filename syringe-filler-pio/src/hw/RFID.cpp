@@ -3,6 +3,7 @@
  * @brief Toolhead RFID reader implementation on the primary I2C bus.
  */
 #include "hw/RFID.hpp"
+#include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
 
 #include <Arduino.h>
@@ -12,19 +13,50 @@
 
 // Toolhead PN532 on primary I2C bus (Wire).
 // IRQ = 27, RST = 14, same style as BaseRFID but with &Wire instead of &Wire1.
-static Adafruit_PN532 nfc(27, 14, &Wire);
+namespace {
+constexpr int kPn532IrqPin = 27;
+constexpr int kPn532RstPin = 14;
+constexpr uint8_t kPn532I2cAddr = 0x24;
+constexpr uint8_t kFailureThreshold = 3;
+}
+
+static Adafruit_PN532 nfc(kPn532IrqPin, kPn532RstPin, &Wire);
 
 // ---- State ----
 static bool    s_enabled   = false;
 static bool    s_available = false;
 static uint8_t s_uid[7]    = {0};
 static uint8_t s_uidLen    = 0;
+static uint8_t s_failures  = 0;
 
 // Listener (mirrors BaseRFID)
 static RFID::TagListener s_listener      = nullptr;
 static void*             s_listenerUser  = nullptr;
 
 namespace RFID {
+namespace {
+void pulseResetIfAvailable() {
+  if (kPn532RstPin < 0) return;
+  pinMode(kPn532RstPin, OUTPUT);
+  digitalWrite(kPn532RstPin, LOW);
+  delay(10);
+  digitalWrite(kPn532RstPin, HIGH);
+  delay(50);
+}
+
+void handleFailure(const char* reason) {
+  Serial.print(F("[RFID] read failed: "));
+  Serial.println(reason);
+  if (++s_failures < kFailureThreshold) return;
+  s_failures = 0;
+
+  if (!Drivers::i2cPresent(kPn532I2cAddr)) {
+    Serial.println(F("[RFID] PN532 missing on I2C0"));
+    pulseResetIfAvailable();
+    RFID::reinit();
+  }
+}
+} // namespace
 
 // Register a listener for newly detected tags.
 void setListener(TagListener cb, void* user) {
@@ -60,6 +92,13 @@ void init() {
   s_enabled   = false;
   s_available = false;
   s_uidLen    = 0;
+  s_failures  = 0;
+}
+
+void reinit() {
+  Serial.println(F("[RFID] reinitializing PN532"));
+  nfc.begin();
+  nfc.SAMConfig();
 }
 
 // Enable or disable RFID polling.
@@ -103,6 +142,7 @@ void tick() {
   Serial.println(success ? "YES" : "NO");
 
   if (success) {
+    s_failures = 0;
     bool changed = (uidLength != s_uidLen) || memcmp(uid, s_uid, uidLength) != 0;
     Serial.print("[RFID] success; changed=");
     Serial.println(changed ? "YES" : "NO");
@@ -126,6 +166,8 @@ void tick() {
     }
     // debounce
     delay(300);
+  } else {
+    handleFailure("tick");
   }
 
   delay(5);
@@ -138,6 +180,7 @@ bool detectOnce(uint16_t tries, uint16_t delay_ms) {
     uint8_t uid[7]; 
     uint8_t len = 0;
     if (nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &len)) {
+      s_failures = 0;
       memcpy(s_uid, uid, len);
       s_uidLen    = len;
       s_available = true;
@@ -154,6 +197,7 @@ bool detectOnce(uint16_t tries, uint16_t delay_ms) {
 
       return true;
     }
+    handleFailure("detectOnce");
     delay(delay_ms);
   }
   Serial.println(F("[RFID] No tag detected."));

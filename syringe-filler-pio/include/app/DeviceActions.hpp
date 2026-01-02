@@ -81,5 +81,8 @@ ActionResult readAllPots(String &data);
 // Pot-driven motion
 ActionResult potMove(uint16_t target, long sps);
 
+// Diagnostics
+ActionResult i2cScanBoth();
+
 }  // namespace DeviceActions
 }  // namespace App

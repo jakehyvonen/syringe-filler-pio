@@ -61,6 +61,7 @@ using App::DeviceActions::setServoPulseRaw;
 using App::DeviceActions::readBasePot;
 using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
+using App::DeviceActions::i2cScanBoth;
 
 namespace {
 struct CommandDescriptor {
@@ -389,6 +390,12 @@ void handlePotMove(const String &args) {
   printStructured("potmove", potMove(target, sps));
 }
 
+// Handle "i2cscan" command to scan both I2C buses.
+void handleI2cScan(const String &args) {
+  (void)args;
+  printStructured("i2cscan", i2cScanBoth());
+}
+
 const CommandDescriptor COMMANDS[] = {
     {"speed", "set gantry speed (steps/sec)", handleSpeed},
     {"home", "home gantry", handleHome},
@@ -434,6 +441,7 @@ const CommandDescriptor COMMANDS[] = {
     {"basepot", "read base pot", handleBasePot},
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
+    {"i2cscan", "scan both I2C buses", handleI2cScan},
 };
 
 const size_t COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
