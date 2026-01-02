@@ -9,6 +9,8 @@
 #include <Wire.h>
 #include <Adafruit_PN532.h>
 #include <string.h>   // for memcpy, memcmp
+#include <type_traits>
+#include <utility>
 
 // Toolhead PN532 on primary I2C bus (Wire).
 // IRQ = 27, RST = 14, same style as BaseRFID but with &Wire instead of &Wire1.
@@ -25,6 +27,23 @@ static RFID::TagListener s_listener      = nullptr;
 static void*             s_listenerUser  = nullptr;
 
 namespace RFID {
+
+namespace {
+template <typename T>
+class HasReadPassiveTargetIDTimeout {
+ private:
+  template <typename U>
+  static auto test(int) -> decltype(
+      std::declval<U>().readPassiveTargetID(uint8_t{}, static_cast<uint8_t*>(nullptr),
+                                            static_cast<uint8_t*>(nullptr), uint16_t{}),
+      std::true_type{});
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<T>(0))::value;
+};
+} // namespace
 
 // Register a listener for newly detected tags.
 void setListener(TagListener cb, void* user) {
@@ -83,6 +102,7 @@ void printUID(Stream& s) {
 // Poll the PN532 once and update UID state.
 void tick() {
   static uint32_t tickCount = 0;
+  constexpr uint16_t kReadTimeoutMs = 150;
 
   if (!s_enabled) return;
 
@@ -94,9 +114,24 @@ void tick() {
   uint8_t uidLength = 0;
 
   Serial.println("[RFID] calling nfc.readPassiveTargetID(...)");
-  bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+  uint32_t startMs = millis();
+  bool success = false;
+  bool timedOut = false;
+  if constexpr (HasReadPassiveTargetIDTimeout<Adafruit_PN532>::value) {
+    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, kReadTimeoutMs);
+    timedOut = (!success && (millis() - startMs) >= kReadTimeoutMs);
+  } else {
+    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+    timedOut = (millis() - startMs) >= kReadTimeoutMs;
+  }
   Serial.print("[RFID] readPassiveTargetID done, success=");
   Serial.println(success ? "YES" : "NO");
+  if (timedOut) {
+    Serial.println("[RFID] readPassiveTargetID TIMEOUT, resetting PN532");
+    nfc.begin();
+    nfc.SAMConfig();
+    return;
+  }
 
   if (success) {
     bool changed = (uidLength != s_uidLen) || memcmp(uid, s_uid, uidLength) != 0;
