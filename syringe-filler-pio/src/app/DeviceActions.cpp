@@ -293,6 +293,11 @@ ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc) {
   return {ok, message.length() ? message : (ok ? "toolhead calibration forced to 0 mL" : "update failed")};
 }
 
+ActionResult sfcTransferFromBase(App::SyringeFillController &sfc, uint8_t slot, float ml) {
+  bool ok = sfc.transferFromBase(slot, ml);
+  return {ok, ok ? "transfer completed" : "transfer failed"};
+}
+
 // Pots
 ActionResult readPot(uint8_t idx, uint16_t &counts, uint16_t &scaled) {
   counts = Pots::readCounts(idx);

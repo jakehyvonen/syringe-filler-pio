@@ -42,6 +42,7 @@ using App::DeviceActions::sfcSaveRecipe;
 using App::DeviceActions::sfcScanBase;
 using App::DeviceActions::sfcScanBases;
 using App::DeviceActions::sfcScanTool;
+using App::DeviceActions::sfcTransferFromBase;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
 using App::DeviceActions::showVolumes;
@@ -218,6 +219,17 @@ void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfc
 
 void handleSfcScanTool(const String &args) { printStructured("sfc.scanTool", sfcScanTool(g_sfc)); }
 
+void handleTransfer(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp > 0) {
+    uint8_t slot = (uint8_t)args.substring(0, sp).toInt();
+    float ml = args.substring(sp + 1).toFloat();
+    printStructured("transfer", sfcTransferFromBase(g_sfc, slot, ml));
+  } else {
+    printStructured("transfer", {false, "usage: transfer <slot> <ml>"} );
+  }
+}
+
 void handleSfcCalTPoint(const String &args) {
   if (args.length() == 0) {
     printStructured("cal.tool.point", {false, "usage: cal.tool.point <ml>"} );
@@ -348,6 +360,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.status", "sfc status", handleSfcStatus},
     {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
     {"sfc.scanTool", "scan toolhead syringe", handleSfcScanTool},
+    {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
     {"cal.tool.force0", "force toolhead syringe calibration to 0 mL", handleSfcCalToolForceZero},

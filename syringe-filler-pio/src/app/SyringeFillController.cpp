@@ -2,6 +2,7 @@
 
 #include "hw/Bases.hpp"
 #include "motion/Axis.hpp"
+#include "motion/AxisPair.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
 #include "util/Storage.hpp"   // Util::loadBase, Util::saveBase, Util::loadRecipe, ...
@@ -475,15 +476,79 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     return false;
   }
 
+  if (!isfinite(ml) || ml <= 0.0f) {
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] transferFromBase(): invalid mL: ");
+      Serial.println(ml, 3);
+    }
+    return false;
+  }
+
+  if (m_toolhead.rfid == 0) {
+    if (DEBUG_FLAG) Serial.println("[SFC] transferFromBase(): no toolhead syringe loaded");
+    return false;
+  }
+
+  if (m_bases[slot].rfid == 0) {
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] transferFromBase(): no base syringe loaded at slot ");
+      Serial.println(slot);
+    }
+    return false;
+  }
+
+  if (m_currentSlot != static_cast<int8_t>(slot)) {
+    if (!goToBase(slot)) {
+      if (DEBUG_FLAG) {
+        Serial.print("[SFC] transferFromBase(): failed to goToBase(");
+        Serial.print(slot);
+        Serial.println(")");
+      }
+      return false;
+    }
+  }
+
+  if (Bases::selected() != static_cast<uint8_t>(slot + 1)) {
+    if (!Bases::select(static_cast<uint8_t>(slot + 1))) {
+      if (DEBUG_FLAG) {
+        Serial.print("[SFC] transferFromBase(): failed to select base ");
+        Serial.println(slot);
+      }
+      return false;
+    }
+  }
+
+  // Steps per mL derivation:
+  // Base syringe (M12, 1.75 mm pitch):
+  //   steps/mm = 200 * microsteps / 1.75
+  //   mm/mL = 15 mm / 10 mL = 1.5 mm/mL
+  //   steps/mL = steps/mm * mm/mL
+  // Toolhead syringe (M8, 1.25 mm pitch):
+  //   steps/mm = 200 * microsteps / 1.25
+  //   mm/mL = 69 mm / 20 mL = 3.45 mm/mL
+  //   steps/mL = steps/mm * mm/mL
+  constexpr float kMicrosteps = 2.0f; // half-step microstepping
+  constexpr float kBaseStepsPerMm = (200.0f * kMicrosteps) / 1.75f;
+  constexpr float kBaseMmPerMl = 1.5f;
+  constexpr float kBaseStepsPerMl = kBaseStepsPerMm * kBaseMmPerMl; // ~343 steps/mL @ half-step
+  constexpr float kToolStepsPerMm = (200.0f * kMicrosteps) / 1.25f;
+  constexpr float kToolMmPerMl = 3.45f;
+  constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
+  const long toolSteps = -lroundf(ml * kToolStepsPerMl);
+  const long baseSteps = -lroundf(ml * kBaseStepsPerMl);
+
   if (DEBUG_FLAG) {
     Serial.print("[SFC] transferFromBase(slot=");
     Serial.print(slot);
     Serial.print(", ml=");
     Serial.print(ml, 3);
-    Serial.println(") STUB");
+    Serial.print(") steps tool=");
+    Serial.print(toolSteps);
+    Serial.print(" base=");
+    Serial.println(baseSteps);
   }
 
-  // TODO: real synchronized transfer
+  AxisPair::moveSync(toolSteps, baseSteps);
   return true;
 }
 
