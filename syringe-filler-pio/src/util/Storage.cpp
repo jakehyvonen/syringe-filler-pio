@@ -256,14 +256,14 @@ static String recipePath(uint32_t toolheadRfid) {
 // RecipeDTO version
 // Save a RecipeDTO to LittleFS as JSON.
 bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc(2048);
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", toolheadRfid);
   doc["toolhead_rfid"] = buf;
 
-  JsonArray arr = doc.createNestedArray("steps");
+  JsonArray arr = doc["steps"].to<JsonArray>();
   for (uint8_t i = 0; i < in.count; ++i) {
-    JsonObject o = arr.createNestedObject();
+    JsonObject o = arr.add<JsonObject>();
     o["base_slot"] = in.steps[i].baseSlot;
     o["ml"]        = in.steps[i].ml;
   }
@@ -280,7 +280,7 @@ bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
   File f = LittleFS.open(recipePath(toolheadRfid), "r");
   if (!f) return false;
 
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc(2048);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
@@ -303,8 +303,8 @@ bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
   File f = LittleFS.open(recipePath(toolheadRfid), "w");
   if (!f) return false;
 
-  DynamicJsonDocument doc(2048);
-  JsonArray arr = doc.createNestedArray("steps");
+  JsonDocument doc(2048);
+  JsonArray arr = doc["steps"].to<JsonArray>();
   recipe.toJson(arr);
 
   bool ok = (serializeJson(doc, f) != 0);
@@ -318,7 +318,7 @@ bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe) {
   File f = LittleFS.open(recipePath(toolheadRfid), "r");
   if (!f) return false;
 
-  DynamicJsonDocument doc(2048);
+  JsonDocument doc(2048);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
