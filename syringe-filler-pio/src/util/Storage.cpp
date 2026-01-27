@@ -256,7 +256,7 @@ static String recipePath(uint32_t toolheadRfid) {
 // RecipeDTO version
 // Save a RecipeDTO to LittleFS as JSON.
 bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc(2048);
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", toolheadRfid);
   doc["toolhead_rfid"] = buf;
@@ -280,7 +280,7 @@ bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
   File f = LittleFS.open(recipePath(toolheadRfid), "r");
   if (!f) return false;
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc(2048);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
@@ -303,7 +303,7 @@ bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
   File f = LittleFS.open(recipePath(toolheadRfid), "w");
   if (!f) return false;
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc(2048);
   JsonArray arr = doc["steps"].to<JsonArray>();
   recipe.toJson(arr);
 
@@ -318,7 +318,7 @@ bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe) {
   File f = LittleFS.open(recipePath(toolheadRfid), "r");
   if (!f) return false;
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc(2048);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
