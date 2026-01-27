@@ -8,6 +8,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_PN532.h>
+#include <type_traits>
+#include <utility>
 
 static Adafruit_PN532 nfc(27, 14, &Wire1);
 
@@ -16,12 +18,29 @@ static bool    s_enabled   = false;
 static bool    s_available = false;
 static uint8_t s_uid[7]    = {0};
 static uint8_t s_uidLen    = 0;
+static uint32_t s_lastSuccessMs = 0;
 
 // Listener callback.
 static BaseRFID::TagListener s_listener = nullptr;
 static void*                  s_listenerUser = nullptr;
 
 namespace BaseRFID {
+namespace {
+template <typename T>
+class HasReadPassiveTargetIDTimeout {
+ private:
+  template <typename U>
+  static auto test(int) -> decltype(
+      std::declval<U>().readPassiveTargetID(uint8_t{}, static_cast<uint8_t*>(nullptr),
+                                            static_cast<uint8_t*>(nullptr), uint16_t{}),
+      std::true_type{});
+  template <typename>
+  static std::false_type test(...);
+
+ public:
+  static constexpr bool value = decltype(test<T>(0))::value;
+};
+} // namespace
 
 // Register a listener for newly detected tags.
 void setListener(TagListener cb, void* user) {
@@ -52,6 +71,7 @@ void init() {
   s_enabled   = false;
   s_available = false;
   s_uidLen    = 0;
+  s_lastSuccessMs = 0;
 }
 
 // Enable or disable RFID polling.
@@ -79,8 +99,13 @@ void printUID(Stream& s) {
 // Poll the PN532 once and update UID state.
 void tick() {
   static uint32_t tickCount = 0;
+  constexpr uint16_t kReadTimeoutMs = 50;
+  constexpr uint32_t kDebounceMs = 300;
 
   if (!s_enabled) return;
+  if (s_lastSuccessMs && (millis() - s_lastSuccessMs) < kDebounceMs) {
+    return;
+  }
 
   Serial.print("[BaseRFID] tick #");
   Serial.print(tickCount++);
@@ -90,11 +115,17 @@ void tick() {
   uint8_t uidLength = 0;
 
   Serial.println("[BaseRFID] calling nfc.readPassiveTargetID(...)");
-  bool success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+  bool success = false;
+  if constexpr (HasReadPassiveTargetIDTimeout<Adafruit_PN532>::value) {
+    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength, kReadTimeoutMs);
+  } else {
+    success = nfc.readPassiveTargetID(PN532_MIFARE_ISO14443A, uid, &uidLength);
+  }
   Serial.print("[BaseRFID] readPassiveTargetID done, success=");
   Serial.println(success ? "YES" : "NO");
 
   if (success) {
+    s_lastSuccessMs = millis();
     bool changed = (uidLength != s_uidLen) || memcmp(uid, s_uid, uidLength) != 0;
     Serial.print("[BaseRFID] success; changed=");
     Serial.println(changed ? "YES" : "NO");
@@ -116,11 +147,7 @@ void tick() {
         s_listener(s_uid, s_uidLen, s_listenerUser);
       }
     }
-    // keep the debounce for now
-    delay(300);
   }
-
-  delay(5);
 }
 
 // Poll for a tag with retries and return true on success.
