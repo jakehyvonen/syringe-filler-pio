@@ -70,7 +70,7 @@ struct Recipe {
     // Serialize the recipe to a JSON array.
     void toJson(JsonArray arr) const {
         for (uint8_t i = 0; i < count; ++i) {
-            JsonObject o = arr.createNestedObject();
+            JsonObject o = arr.add<JsonObject>();
             steps[i].toJson(o);
         }
     }
