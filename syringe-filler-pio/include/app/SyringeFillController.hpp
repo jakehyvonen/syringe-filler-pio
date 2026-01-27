@@ -7,6 +7,7 @@
 #include "app/SyringeCalibration.hpp"
 #include "app/Syringe.hpp"
 #include "hw/Bases.hpp"
+#include "motion/Axis.hpp"
 #include "util/Storage.hpp"   // for loadBase/saveBase etc.
 
 namespace App {
@@ -48,7 +49,7 @@ public:
 
 
 private:
-  bool     goToBase(uint8_t slot);
+  bool     goToBase(uint8_t slot, Axis::MoveHook hook = nullptr, void* context = nullptr);
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);

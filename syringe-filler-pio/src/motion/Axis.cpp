@@ -33,6 +33,8 @@ static hw_timer_t *s_timer = nullptr;
 enum class Mode : uint8_t { IDLE=0, MOVE };
 static volatile Mode s_mode = Mode::IDLE;
 
+static long encPosSteps();
+
 // Axis 1 state
 static volatile long s_rem     = 0;
 static volatile bool s_dirHigh = true;
@@ -71,8 +73,12 @@ static void IRAM_ATTR onStepTimer() {
 }
 
 // Block until motion completes and disable the timer alarm.
-static void waitForIdle() {
+static void waitForIdle(MoveHook hook, void* context, long targetSteps) {
   while (s_mode != Mode::IDLE) {
+    if (hook) {
+      long err = targetSteps - encPosSteps();
+      hook(err, context);
+    }
     delay(1);
   }
   if (s_timer) timerAlarmDisable(s_timer);
@@ -169,7 +175,7 @@ void moveSteps(long steps) {
   timerAlarmEnable(s_timer);
   interrupts();
 
-  waitForIdle();
+  waitForIdle(nullptr, nullptr, 0);
 }
 
 // -----------------------------
@@ -188,6 +194,10 @@ static long encPosSteps() {
 // -----------------------------
 // Move to a target position using encoder feedback.
 void moveTo(long targetSteps) {
+  moveToWithHook(targetSteps, nullptr, nullptr);
+}
+
+void moveToWithHook(long targetSteps, MoveHook hook, void* context) {
   // Clamp to soft limits
   long tgt = targetSteps;
   if (tgt < Pins::MIN_POS_STEPS) tgt = Pins::MIN_POS_STEPS;
@@ -211,6 +221,10 @@ void moveTo(long targetSteps) {
                     i, tgt, curEnc, curAxis, err);
     }
 
+    if (hook) {
+      hook(err, context);
+    }
+
     if (labs(err) <= tolSteps) {
       Serial.printf("[Axis.moveTo] done: |err|=%ld <= tol=%ld (enc=%ld, axis=%ld)\n",
                     labs(err), tolSteps, curEnc, curAxis);
@@ -225,7 +239,28 @@ void moveTo(long targetSteps) {
 
     Serial.printf("[Axis.moveTo] -> moveSteps(%ld)\n", stepCmd);
 
-    moveSteps(stepCmd);
+    if (!Toolhead::ensureRaised()) {
+      Serial.println("[Axis] movement blocked (toolhead not raised).");
+      return;
+    }
+
+    const bool dirHigh = (stepCmd > 0);
+    const long todo    = labs(stepCmd);
+
+    enable(true);
+    delayMicroseconds(500);
+    digitalWrite(Pins::DIR1, dirHigh ? HIGH : LOW);
+    delayMicroseconds(10);
+
+    noInterrupts();
+    s_dirHigh = dirHigh;
+    s_rem     = todo;
+    s_mode    = Mode::MOVE;
+    timerAlarmWrite(s_timer, s_period_us, true);
+    timerAlarmEnable(s_timer);
+    interrupts();
+
+    waitForIdle(hook, context, tgt);
 
     // Give serial some breathing room
     delay(5);

@@ -12,11 +12,14 @@
 #include "util/Storage.hpp"   // Util::loadBase, Util::saveBase, Util::loadRecipe, ...
 #include <Arduino.h>
 #include <math.h>
+#include <stdlib.h>
 
 namespace App {
 
 namespace {
   constexpr bool DEBUG_FLAG = true;
+  constexpr long kBaseRfidScanErrorThreshold = 1000;
+  constexpr uint32_t kBaseRfidScanIntervalMs = 75;
 
   // used by BaseRFID listener
   struct BaseTagCapture {
@@ -28,6 +31,11 @@ namespace {
   struct ToolheadTagCapture {
     bool     got    = false;
     uint32_t packed = 0;
+  };
+
+  struct BaseRfidMoveScanContext {
+    BaseTagCapture* capture = nullptr;
+    uint32_t lastPollMs = 0;
   };
 
   // listener that BaseRFID will call
@@ -56,6 +64,22 @@ namespace {
     }
     cap->packed = v;
     cap->got    = true;
+  }
+
+  void baseRfidMoveHook(long errSteps, void* user) {
+    auto* ctx = static_cast<BaseRfidMoveScanContext*>(user);
+    if (!ctx || !ctx->capture || ctx->capture->got) {
+      return;
+    }
+    if (labs(errSteps) > kBaseRfidScanErrorThreshold) {
+      return;
+    }
+    uint32_t now = millis();
+    if (now - ctx->lastPollMs < kBaseRfidScanIntervalMs) {
+      return;
+    }
+    ctx->lastPollMs = now;
+    BaseRFID::tick();
   }
 
   // Print a debug message when DEBUG_FLAG is enabled.
@@ -122,7 +146,25 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
     return false;
   }
 
-  if (!goToBase(slot)) {
+  BaseTagCapture cap;
+  cap.got    = false;
+  cap.packed = 0;
+
+  const bool wasEnabled = BaseRFID::enabled();
+  BaseRFID::setListener(baseTagHandler, &cap);
+  if (!wasEnabled) {
+    BaseRFID::enable(true);
+  }
+
+  BaseRfidMoveScanContext ctx;
+  ctx.capture = &cap;
+  ctx.lastPollMs = millis();
+
+  if (!goToBase(slot, baseRfidMoveHook, &ctx)) {
+    BaseRFID::setListener(nullptr, nullptr);
+    if (!wasEnabled) {
+      BaseRFID::enable(false);
+    }
     if (DEBUG_FLAG) {
       Serial.print("[SFC] scanBaseSyringe(): goToBase(");
       Serial.print(slot);
@@ -131,8 +173,16 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
     return false;
   }
 
-  if (DEBUG_FLAG) Serial.println("[SFC] scanBaseSyringe(): calling readBaseRFIDBlocking()");
-  uint32_t tag = readBaseRFIDBlocking(2000); // 2s timeout
+  BaseRFID::setListener(nullptr, nullptr);
+  if (!wasEnabled) {
+    BaseRFID::enable(false);
+  }
+
+  uint32_t tag = cap.got ? cap.packed : 0;
+  if (tag == 0) {
+    if (DEBUG_FLAG) Serial.println("[SFC] scanBaseSyringe(): calling readBaseRFIDBlocking()");
+    tag = readBaseRFIDBlocking(2000); // 2s timeout
+  }
   if (tag == 0) {
     if (DEBUG_FLAG) {
       Serial.print("[SFC] scanBaseSyringe(): no tag at slot ");
@@ -429,7 +479,7 @@ void SyringeFillController::runRecipe() {
 // positioning
 // ------------------------------------------------------------
 // Move the gantry to a stored base position and update selection.
-bool SyringeFillController::goToBase(uint8_t slot) {
+bool SyringeFillController::goToBase(uint8_t slot, Axis::MoveHook hook, void* context) {
   if (slot >= Bases::kCount) {
     if (DEBUG_FLAG) {
       Serial.print("[SFC] goToBase(): slot out of range: ");
@@ -453,7 +503,7 @@ bool SyringeFillController::goToBase(uint8_t slot) {
     Serial.println(target);
   }
 
-  Axis::moveTo(target);
+  Axis::moveToWithHook(target, hook, context);
   m_currentSlot = slot;
   if (DEBUG_FLAG) {
     Serial.println("[SFC] goToBase: finished successfully");
