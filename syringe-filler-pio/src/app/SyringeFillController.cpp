@@ -18,7 +18,7 @@ namespace App {
 
 namespace {
   constexpr bool DEBUG_FLAG = true;
-  constexpr long kBaseRfidScanErrorThreshold = 1000;
+  constexpr long kBaseRfidScanErrorThreshold = 2300;
   constexpr uint32_t kBaseRfidScanIntervalMs = 75;
 
   // used by BaseRFID listener
