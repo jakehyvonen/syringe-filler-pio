@@ -243,36 +243,29 @@ bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& ca
 }
 
 // ---------------------- recipes --------------------------
-// stored as /recipes/<RFID-HEX>.json
-// Build the path to the recipe file for a toolhead RFID.
-static String recipePath(uint32_t toolheadRfid) {
+// stored as /recipes/<RECIPEID-HEX>.json
+// Build the path to the recipe file for a recipe ID.
+static String recipePath(uint32_t recipeId) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "%08X", toolheadRfid);
+  snprintf(buf, sizeof(buf), "%08X", recipeId);
   String p = "/recipes/";
   p += buf;
   p += ".json";
   return p;
 }
 
-// Delete a recipe file for the specified RFID.
-bool deleteRecipe(uint32_t toolheadRfid) {
-  if (toolheadRfid == 0) return false;
-  return LittleFS.remove(recipePath(toolheadRfid));
+// Delete a recipe file for the specified recipe ID.
+bool deleteRecipe(uint32_t recipeId) {
+  if (recipeId == 0) return false;
+  return LittleFS.remove(recipePath(recipeId));
 }
 
-// List recipe RFIDs from the /recipes directory.
+// List recipe IDs from the /recipes directory.
 bool listRecipeRfids(uint32_t* out, size_t max, size_t& count) {
   count = 0;
   File root = LittleFS.open("/recipes");
-  if (!root) return false;
-
-// List recipe files under /recipes and return JSON array string.
-bool listRecipes(String& outJson) {
-  File root = LittleFS.open("/recipes");
   if (!root || !root.isDirectory()) return false;
 
-  outJson = "[";
-  bool first = true;
   File file = root.openNextFile();
   while (file) {
     if (!file.isDirectory()) {
@@ -295,18 +288,36 @@ bool listRecipes(String& outJson) {
   return true;
 }
 
-      if (name.startsWith("/recipes/")) {
-        name = name.substring(strlen("/recipes/"));
+// List recipe files under /recipes and return JSON array string.
+bool listRecipes(String& outJson) {
+  File root = LittleFS.open("/recipes");
+  if (!root || !root.isDirectory()) return false;
+
+  outJson = "[";
+  bool first = true;
+  File file = root.openNextFile();
+  while (file) {
+    if (!file.isDirectory()) {
+      String name = file.name();
+      int slash = name.lastIndexOf('/');
+      if (slash >= 0) {
+        name = name.substring(slash + 1);
       }
       if (name.endsWith(".json")) {
-        name = name.substring(0, name.length() - strlen(".json"));
+        String hex = name.substring(0, name.length() - 5);
+        uint32_t val = strtoul(hex.c_str(), nullptr, 16);
+        if (val != 0) {
+          char buf[16];
+          snprintf(buf, sizeof(buf), "%08X", val);
+          if (!first) outJson += ",";
+          outJson += "\"";
+          outJson += buf;
+          outJson += "\"";
+          first = false;
+        }
       }
-      if (!first) outJson += ",";
-      outJson += "\"";
-      outJson += name;
-      outJson += "\"";
-      first = false;
     }
+    file.close();
     file = root.openNextFile();
   }
   outJson += "]";
@@ -314,9 +325,9 @@ bool listRecipes(String& outJson) {
 }
 
 // Read a recipe JSON file as raw text.
-bool readRecipeJson(uint32_t toolheadRfid, String& outJson) {
-  if (toolheadRfid == 0) return false;
-  File f = LittleFS.open(recipePath(toolheadRfid), "r");
+bool readRecipeJson(uint32_t recipeId, String& outJson) {
+  if (recipeId == 0) return false;
+  File f = LittleFS.open(recipePath(recipeId), "r");
   if (!f) return false;
 
   outJson = f.readString();
@@ -325,19 +336,13 @@ bool readRecipeJson(uint32_t toolheadRfid, String& outJson) {
   return outJson.length() > 0;
 }
 
-// Delete a recipe file for a toolhead RFID.
-bool deleteRecipe(uint32_t toolheadRfid) {
-  if (toolheadRfid == 0) return false;
-  return LittleFS.remove(recipePath(toolheadRfid));
-}
-
 // RecipeDTO version
 // Save a RecipeDTO to LittleFS as JSON.
-bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
+bool saveRecipe(uint32_t recipeId, const RecipeDTO& in) {
   StaticJsonDocument<2048> doc;
   char buf[16];
-  snprintf(buf, sizeof(buf), "%08X", toolheadRfid);
-  doc["toolhead_rfid"] = buf;
+  snprintf(buf, sizeof(buf), "%08X", recipeId);
+  doc["recipe_id"] = buf;
 
   JsonArray arr = doc["steps"].to<JsonArray>();
   for (uint8_t i = 0; i < in.count; ++i) {
@@ -346,7 +351,7 @@ bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
     o["ml"]        = in.steps[i].ml;
   }
 
-  File f = LittleFS.open(recipePath(toolheadRfid), "w");
+  File f = LittleFS.open(recipePath(recipeId), "w");
   if (!f) return false;
   if (serializeJson(doc, f) == 0) { f.close(); return false; }
   f.close();
@@ -354,8 +359,8 @@ bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
 }
 
 // Load a RecipeDTO from LittleFS JSON.
-bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
-  File f = LittleFS.open(recipePath(toolheadRfid), "r");
+bool loadRecipe(uint32_t recipeId, RecipeDTO& out) {
+  File f = LittleFS.open(recipePath(recipeId), "r");
   if (!f) return false;
 
   StaticJsonDocument<2048> doc;
@@ -376,12 +381,15 @@ bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out) {
 
 // Util::Recipe version
 // Save a Util::Recipe to LittleFS JSON.
-bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
-  if (toolheadRfid == 0) return false;
-  File f = LittleFS.open(recipePath(toolheadRfid), "w");
+bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe) {
+  if (recipeId == 0) return false;
+  File f = LittleFS.open(recipePath(recipeId), "w");
   if (!f) return false;
 
   StaticJsonDocument<2048> doc;
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%08X", recipeId);
+  doc["recipe_id"] = buf;
   JsonArray arr = doc["steps"].to<JsonArray>();
   recipe.toJson(arr);
 
@@ -391,9 +399,9 @@ bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe) {
 }
 
 // Load a Util::Recipe from LittleFS JSON.
-bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe) {
-  if (toolheadRfid == 0) return false;
-  File f = LittleFS.open(recipePath(toolheadRfid), "r");
+bool loadRecipe(uint32_t recipeId, Util::Recipe& recipe) {
+  if (recipeId == 0) return false;
+  File f = LittleFS.open(recipePath(recipeId), "r");
   if (!f) return false;
 
   StaticJsonDocument<2048> doc;

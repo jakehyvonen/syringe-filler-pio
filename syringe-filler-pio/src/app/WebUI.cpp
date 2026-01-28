@@ -58,8 +58,8 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     </div>
     <div class="col panel">
       <h3>Editor</h3>
-      <label>Toolhead RFID (hex)</label>
-      <input id="rfid" type="text" placeholder="e.g. 1A2B3C4D" />
+      <label>Recipe ID (hex)</label>
+      <input id="recipeId" type="text" placeholder="e.g. 1A2B3C4D" />
       <div class="muted">Volume uses mL. Base slot is 1-based.</div>
       <table>
         <thead>
@@ -76,7 +76,7 @@ const char kIndexHtml[] PROGMEM = R"HTML(
   <script>
     const listEl = document.getElementById('recipeList');
     const stepsEl = document.getElementById('steps');
-    const rfidEl = document.getElementById('rfid');
+    const recipeIdEl = document.getElementById('recipeId');
     const statusEl = document.getElementById('status');
 
     function setStatus(msg, ok = true) {
@@ -99,18 +99,18 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       const resp = await fetch('/api/recipes');
       const data = await resp.json();
       listEl.innerHTML = '';
-      (data.recipes || []).forEach(rfid => {
+      (data.recipes || []).forEach(recipeId => {
         const li = document.createElement('li');
-        li.textContent = rfid;
-        li.onclick = () => loadRecipe(rfid);
+        li.textContent = recipeId;
+        li.onclick = () => loadRecipe(recipeId);
         listEl.appendChild(li);
       });
       setStatus('Loaded recipes.');
     }
 
-    async function loadRecipe(rfid) {
-      rfidEl.value = rfid;
-      const resp = await fetch(`/api/recipes/${rfid}`);
+    async function loadRecipe(recipeId) {
+      recipeIdEl.value = recipeId;
+      const resp = await fetch(`/api/recipes/${recipeId}`);
       if (!resp.ok) {
         setStatus('Recipe not found.', false);
         stepsEl.innerHTML = '';
@@ -124,8 +124,8 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     }
 
     async function saveRecipe() {
-      const rfid = rfidEl.value.trim();
-      if (!rfid) return setStatus('RFID is required.', false);
+      const recipeId = recipeIdEl.value.trim();
+      if (!recipeId) return setStatus('Recipe ID is required.', false);
       const steps = Array.from(stepsEl.querySelectorAll('tr')).map(row => {
         const inputs = row.querySelectorAll('input');
         return {
@@ -133,7 +133,7 @@ const char kIndexHtml[] PROGMEM = R"HTML(
           base_slot: parseInt(inputs[1].value || '0', 10)
         };
       });
-      const resp = await fetch(`/api/recipes/${rfid}`, {
+      const resp = await fetch(`/api/recipes/${recipeId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ steps })
@@ -148,10 +148,10 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     }
 
     async function deleteRecipe() {
-      const rfid = rfidEl.value.trim();
-      if (!rfid) return setStatus('RFID is required.', false);
+      const recipeId = recipeIdEl.value.trim();
+      if (!recipeId) return setStatus('Recipe ID is required.', false);
       if (!confirm('Delete this recipe?')) return;
-      const resp = await fetch(`/api/recipes/${rfid}`, { method: 'DELETE' });
+      const resp = await fetch(`/api/recipes/${recipeId}`, { method: 'DELETE' });
       if (resp.ok) {
         setStatus('Recipe deleted.');
         stepsEl.innerHTML = '';
@@ -173,13 +173,13 @@ const char kIndexHtml[] PROGMEM = R"HTML(
 </html>
 )HTML";
 
-String rfidToHex(uint32_t rfid) {
+String recipeIdToHex(uint32_t recipeId) {
   char buf[16];
-  snprintf(buf, sizeof(buf), "%08X", rfid);
+  snprintf(buf, sizeof(buf), "%08X", recipeId);
   return String(buf);
 }
 
-bool parseRfid(const String& hexStr, uint32_t& out) {
+bool parseRecipeId(const String& hexStr, uint32_t& out) {
   if (hexStr.length() == 0) return false;
   out = strtoul(hexStr.c_str(), nullptr, 16);
   return out != 0;
@@ -202,26 +202,26 @@ void handleListRecipes() {
   StaticJsonDocument<1024> doc;
   JsonArray arr = doc["recipes"].to<JsonArray>();
   for (size_t i = 0; i < count; ++i) {
-    arr.add(rfidToHex(ids[i]));
+    arr.add(recipeIdToHex(ids[i]));
   }
   sendJson(doc);
 }
 
-void handleGetRecipe(uint32_t rfid) {
+void handleGetRecipe(uint32_t recipeId) {
   Util::Recipe recipe;
-  if (!Util::loadRecipe(rfid, recipe)) {
+  if (!Util::loadRecipe(recipeId, recipe)) {
     server.send(404, "text/plain", "Recipe not found");
     return;
   }
 
   StaticJsonDocument<2048> doc;
-  doc["toolhead_rfid"] = rfidToHex(rfid);
+  doc["recipe_id"] = recipeIdToHex(recipeId);
   JsonArray arr = doc["steps"].to<JsonArray>();
   recipe.toJson(arr);
   sendJson(doc);
 }
 
-void handlePutRecipe(uint32_t rfid) {
+void handlePutRecipe(uint32_t recipeId) {
   if (!server.hasArg("plain")) {
     server.send(400, "text/plain", "Missing body");
     return;
@@ -253,7 +253,7 @@ void handlePutRecipe(uint32_t rfid) {
     return;
   }
 
-  if (!Util::saveRecipe(rfid, recipe)) {
+  if (!Util::saveRecipe(recipeId, recipe)) {
     server.send(500, "text/plain", "Save failed");
     return;
   }
@@ -261,8 +261,8 @@ void handlePutRecipe(uint32_t rfid) {
   server.send(200, "text/plain", "OK");
 }
 
-void handleDeleteRecipe(uint32_t rfid) {
-  if (!Util::deleteRecipe(rfid)) {
+void handleDeleteRecipe(uint32_t recipeId) {
+  if (!Util::deleteRecipe(recipeId)) {
     server.send(404, "text/plain", "Delete failed");
     return;
   }
@@ -286,18 +286,18 @@ void handleApiRecipeItem() {
   }
 
   String hexStr = uri.substring(prefix.length());
-  uint32_t rfid = 0;
-  if (!parseRfid(hexStr, rfid)) {
-    server.send(400, "text/plain", "Invalid RFID");
+  uint32_t recipeId = 0;
+  if (!parseRecipeId(hexStr, recipeId)) {
+    server.send(400, "text/plain", "Invalid recipe ID");
     return;
   }
 
   if (server.method() == HTTP_GET) {
-    handleGetRecipe(rfid);
+    handleGetRecipe(recipeId);
   } else if (server.method() == HTTP_PUT) {
-    handlePutRecipe(rfid);
+    handlePutRecipe(recipeId);
   } else if (server.method() == HTTP_DELETE) {
-    handleDeleteRecipe(rfid);
+    handleDeleteRecipe(recipeId);
   } else {
     server.send(405, "text/plain", "Method not allowed");
   }

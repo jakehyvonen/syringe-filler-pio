@@ -45,15 +45,14 @@ bool saveBase(uint32_t rfid, const BaseMeta& meta, const App::PotCalibration& ca
 bool loadBasePos(uint8_t idx0, long& steps);
 bool saveBasePos(uint8_t idx0, long steps);
 
-// recipes
-bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out);
-bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in);
-bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe);
-bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe);
-bool deleteRecipe(uint32_t toolheadRfid);
+// recipes (by recipe ID, not toolhead RFID)
+bool loadRecipe(uint32_t recipeId, RecipeDTO& out);
+bool saveRecipe(uint32_t recipeId, const RecipeDTO& in);
+bool loadRecipe(uint32_t recipeId, Util::Recipe& recipe);
+bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe);
+bool deleteRecipe(uint32_t recipeId);
 bool listRecipeRfids(uint32_t* out, size_t max, size_t& count);
 bool listRecipes(String& outJson);
-bool readRecipeJson(uint32_t toolheadRfid, String& outJson);
-bool deleteRecipe(uint32_t toolheadRfid);
+bool readRecipeJson(uint32_t recipeId, String& outJson);
 
 } // namespace Util

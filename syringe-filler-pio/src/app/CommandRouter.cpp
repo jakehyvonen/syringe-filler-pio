@@ -241,10 +241,24 @@ void handleSfcScanBases(const String &args) { printStructured("sfc.scanBases", s
 void handleSfcRun(const String &args) { printStructured("sfc.run", sfcRunRecipe(g_sfc)); }
 
 // Handle "sfc.load" command to load a recipe.
-void handleSfcLoad(const String &args) { printStructured("sfc.load", sfcLoadRecipe(g_sfc)); }
+void handleSfcLoad(const String &args) {
+  uint32_t recipeId = 0;
+  if (!parseRfidArg(args, recipeId)) {
+    printStructured("sfc.load", {false, "usage: sfc.load <recipe_id>"});
+    return;
+  }
+  printStructured("sfc.load", sfcLoadRecipe(g_sfc, recipeId));
+}
 
 // Handle "sfc.save" command to save the recipe.
-void handleSfcSave(const String &args) { printStructured("sfc.save", sfcSaveRecipe(g_sfc)); }
+void handleSfcSave(const String &args) {
+  uint32_t recipeId = 0;
+  if (!parseRfidArg(args, recipeId)) {
+    printStructured("sfc.save", {false, "usage: sfc.save <recipe_id>"});
+    return;
+  }
+  printStructured("sfc.save", sfcSaveRecipe(g_sfc, recipeId));
+}
 
 // Handle "sfc.status" command to report controller status.
 void handleSfcStatus(const String &args) { printStructured("sfc.status", sfcStatus()); }
@@ -300,10 +314,24 @@ void handleShowVolumes(const String &args) {
 }
 
 // Handle "sfc.recipe.save" command to save the recipe.
-void handleSfcRecipeSave(const String &args) { printStructured("sfc.recipe.save", sfcRecipeSave(g_sfc)); }
+void handleSfcRecipeSave(const String &args) {
+  uint32_t recipeId = 0;
+  if (!parseRfidArg(args, recipeId)) {
+    printStructured("sfc.recipe.save", {false, "usage: sfc.recipe.save <recipe_id>"});
+    return;
+  }
+  printStructured("sfc.recipe.save", sfcRecipeSave(g_sfc, recipeId));
+}
 
 // Handle "sfc.recipe.load" command to load the recipe.
-void handleSfcRecipeLoad(const String &args) { printStructured("sfc.recipe.load", sfcRecipeLoad(g_sfc)); }
+void handleSfcRecipeLoad(const String &args) {
+  uint32_t recipeId = 0;
+  if (!parseRfidArg(args, recipeId)) {
+    printStructured("sfc.recipe.load", {false, "usage: sfc.recipe.load <recipe_id>"});
+    return;
+  }
+  printStructured("sfc.recipe.load", sfcRecipeLoad(g_sfc, recipeId));
+}
 
 // Handle "sfc.base.show" command to print current base info.
 void handleSfcBaseShow(const String &args) { printStructured("sfc.base.show", sfcShowCurrentBase(g_sfc)); }
@@ -415,34 +443,34 @@ void handleSfcRecipeList(const String &args) {
 }
 
 void handleSfcRecipeShow(const String &args) {
-  uint32_t rfid = 0;
-  if (!parseRfidArg(args, rfid)) {
-    printStructured("sfc.recipe.show", {false, "usage: sfc.recipe.show <rfid>"});
+  uint32_t recipeId = 0;
+  if (!parseRfidArg(args, recipeId)) {
+    printStructured("sfc.recipe.show", {false, "usage: sfc.recipe.show <recipe_id>"});
     return;
   }
   String data;
   ActionResult res{true, ""};
-  if (!Util::readRecipeJson(rfid, data)) {
+  if (!Util::readRecipeJson(recipeId, data)) {
     res = {false, "recipe not found"};
   }
   printStructured("sfc.recipe.show", res, data);
 }
 
 void handleSfcRecipeDelete(const String &args) {
-  uint32_t rfid = 0;
-  if (!parseRfidArg(args, rfid)) {
-    printStructured("sfc.recipe.delete", {false, "usage: sfc.recipe.delete <rfid>"});
+  uint32_t recipeId = 0;
+  if (!parseRfidArg(args, recipeId)) {
+    printStructured("sfc.recipe.delete", {false, "usage: sfc.recipe.delete <recipe_id>"});
     return;
   }
   ActionResult res{true, ""};
-  if (!Util::deleteRecipe(rfid)) {
+  if (!Util::deleteRecipe(recipeId)) {
     res = {false, "delete failed"};
   }
   String data;
   if (res.ok) {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%08X", rfid);
-    data = "{\"rfid\":\"";
+    snprintf(buf, sizeof(buf), "%08X", recipeId);
+    data = "{\"recipe_id\":\"";
     data += buf;
     data += "\"}";
   }
@@ -473,8 +501,8 @@ const CommandDescriptor COMMANDS[] = {
     {"rfid2", "base rfid controls", handleRfid2},
     {"sfc.scanBases", "scan all base syringes", handleSfcScanBases},
     {"sfc.run", "run current recipe", handleSfcRun},
-    {"sfc.load", "load recipe", handleSfcLoad},
-    {"sfc.save", "save recipe", handleSfcSave},
+    {"sfc.load", "load recipe by recipe ID", handleSfcLoad},
+    {"sfc.save", "save recipe by recipe ID", handleSfcSave},
     {"sfc.status", "sfc status", handleSfcStatus},
     {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
     {"scantool", "scan toolhead syringe", handleSfcScanTool},
@@ -484,8 +512,8 @@ const CommandDescriptor COMMANDS[] = {
     {"cal.tool.force0", "force toolhead syringe calibration to 0 mL", handleSfcCalToolForceZero},
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
     {"showvolumes", "show volumes for scanned syringes", handleShowVolumes},
-    {"sfc.recipe.save", "save toolhead recipe", handleSfcRecipeSave},
-    {"sfc.recipe.load", "load toolhead recipe", handleSfcRecipeLoad},
+    {"sfc.recipe.save", "save recipe by recipe ID", handleSfcRecipeSave},
+    {"sfc.recipe.load", "load recipe by recipe ID", handleSfcRecipeLoad},
     {"sfc.base.show", "show current base", handleSfcBaseShow},
     {"cal.base.point", "add base calibration point <ml> [slot]", handleSfcCalBasePoint},
     {"cal.base.clear", "clear current base calibration points", handleSfcCalBaseClear},
@@ -495,9 +523,9 @@ const CommandDescriptor COMMANDS[] = {
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
-    {"sfc.recipe.list", "list recipe RFIDs in storage", handleSfcRecipeList},
-    {"sfc.recipe.show", "show recipe JSON for a toolhead RFID", handleSfcRecipeShow},
-    {"sfc.recipe.delete", "delete recipe for a toolhead RFID", handleSfcRecipeDelete},
+    {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
+    {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},
+    {"sfc.recipe.delete", "delete recipe for a recipe ID", handleSfcRecipeDelete},
 };
 
 const size_t COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);

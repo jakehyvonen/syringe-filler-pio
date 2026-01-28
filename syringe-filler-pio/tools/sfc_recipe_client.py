@@ -94,11 +94,13 @@ def parse_recipe_payload(payload: Any) -> List[Dict[str, Any]]:
     raise ValueError("recipe JSON must be an array or an object with a 'steps' array")
 
 
-def parse_rfid(value: str) -> int:
+def parse_recipe_id(value: str) -> int:
     try:
         return int(value, 0)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError("RFID must be an integer (decimal or 0xHEX)") from exc
+        raise argparse.ArgumentTypeError(
+            "Recipe ID must be an integer (decimal or 0xHEX)"
+        ) from exc
 
 
 def ensure_serial_available() -> None:
@@ -145,11 +147,11 @@ def handle_list(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def handle_show(args: argparse.Namespace) -> Dict[str, Any]:
-    return {"cmd": "sfc.recipe.show", "data": {"toolhead_rfid": args.toolhead_rfid}}
+    return {"cmd": "sfc.recipe.show", "data": {"recipe_id": args.recipe_id}}
 
 
 def handle_delete(args: argparse.Namespace) -> Dict[str, Any]:
-    return {"cmd": "sfc.recipe.delete", "data": {"toolhead_rfid": args.toolhead_rfid}}
+    return {"cmd": "sfc.recipe.delete", "data": {"recipe_id": args.recipe_id}}
 
 
 def handle_save(args: argparse.Namespace) -> Dict[str, Any]:
@@ -165,7 +167,7 @@ def handle_save(args: argparse.Namespace) -> Dict[str, Any]:
     return {
         "cmd": "sfc.recipe.save",
         "data": {
-            "toolhead_rfid": args.toolhead_rfid,
+            "recipe_id": args.recipe_id,
             "recipe": steps,
         },
     }
@@ -183,14 +185,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("list", help="List stored recipes")
 
     show_parser = subparsers.add_parser("show", help="Show a specific recipe")
-    show_parser.add_argument("toolhead_rfid", type=parse_rfid, help="Toolhead RFID")
+    show_parser.add_argument("recipe_id", type=parse_recipe_id, help="Recipe ID")
 
     save_parser = subparsers.add_parser("save", help="Save a recipe")
-    save_parser.add_argument("toolhead_rfid", type=parse_rfid, help="Toolhead RFID")
+    save_parser.add_argument("recipe_id", type=parse_recipe_id, help="Recipe ID")
     save_parser.add_argument("recipe", help="Path to recipe JSON file")
 
     delete_parser = subparsers.add_parser("delete", help="Delete a stored recipe")
-    delete_parser.add_argument("toolhead_rfid", type=parse_rfid, help="Toolhead RFID")
+    delete_parser.add_argument("recipe_id", type=parse_recipe_id, help="Recipe ID")
 
     return parser
 
