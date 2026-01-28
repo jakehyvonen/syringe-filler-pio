@@ -65,27 +65,27 @@ List the stored recipes.
 ```json
 {
   "recipes": [
-    {"toolhead_rfid": 3735928559},
-    {"toolhead_rfid": 305419896}
+    {"recipe_id": 3735928559},
+    {"recipe_id": 305419896}
   ]
 }
 ```
 
 ### `sfc.recipe.show`
 
-Show a stored recipe by toolhead RFID.
+Show a stored recipe by recipe ID.
 
 **Request**
 
 ```json
-{"cmd":"sfc.recipe.show","data":{"toolhead_rfid":305419896}}
+{"cmd":"sfc.recipe.show","data":{"recipe_id":305419896}}
 ```
 
 **Response data** (example):
 
 ```json
 {
-  "toolhead_rfid": 305419896,
+  "recipe_id": 305419896,
   "recipe": [
     {"volume_ml": 1.5, "base_slot": 1}
   ]
@@ -94,7 +94,7 @@ Show a stored recipe by toolhead RFID.
 
 ### `sfc.recipe.save`
 
-Save a recipe for a toolhead RFID.
+Save a recipe for a recipe ID.
 
 **Request**
 
@@ -102,7 +102,7 @@ Save a recipe for a toolhead RFID.
 {
   "cmd": "sfc.recipe.save",
   "data": {
-    "toolhead_rfid": 305419896,
+    "recipe_id": 305419896,
     "recipe": [
       {"volume_ml": 1.5, "base_slot": 1}
     ]
@@ -118,12 +118,12 @@ Save a recipe for a toolhead RFID.
 
 ### `sfc.recipe.delete`
 
-Delete a stored recipe by toolhead RFID.
+Delete a stored recipe by recipe ID.
 
 **Request**
 
 ```json
-{"cmd":"sfc.recipe.delete","data":{"toolhead_rfid":305419896}}
+{"cmd":"sfc.recipe.delete","data":{"recipe_id":305419896}}
 ```
 
 **Response data** (example):

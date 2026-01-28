@@ -421,30 +421,30 @@ bool SyringeFillController::showVolumes(String& data, String& message) {
 }
 
 
-// Load a toolhead recipe from LittleFS.
-bool SyringeFillController::loadToolheadRecipeFromFS() {
-  if (m_toolhead.rfid == 0) {
-    dbg("loadToolheadRecipeFromFS(): no toolhead RFID");
+// Load a recipe from LittleFS by recipe ID.
+bool SyringeFillController::loadRecipeFromFS(uint32_t recipeId) {
+  if (recipeId == 0) {
+    dbg("loadRecipeFromFS(): no recipe ID");
     return false;
   }
-  bool ok = Util::loadRecipe(m_toolhead.rfid, m_recipe);
+  bool ok = Util::loadRecipe(recipeId, m_recipe);
   if (!ok && DEBUG_FLAG) {
-    Serial.print("[SFC] loadToolheadRecipeFromFS(): failed for tag 0x");
-    Serial.println(m_toolhead.rfid, HEX);
+    Serial.print("[SFC] loadRecipeFromFS(): failed for recipe 0x");
+    Serial.println(recipeId, HEX);
   }
   return ok;
 }
 
-// Save the current toolhead recipe to LittleFS.
-bool SyringeFillController::saveToolheadRecipeToFS() {
-  if (m_toolhead.rfid == 0) {
-    dbg("saveToolheadRecipeToFS(): no toolhead RFID");
+// Save the current recipe to LittleFS by recipe ID.
+bool SyringeFillController::saveRecipeToFS(uint32_t recipeId) {
+  if (recipeId == 0) {
+    dbg("saveRecipeToFS(): no recipe ID");
     return false;
   }
-  bool ok = Util::saveRecipe(m_toolhead.rfid, m_recipe);
+  bool ok = Util::saveRecipe(recipeId, m_recipe);
   if (!ok && DEBUG_FLAG) {
-    Serial.print("[SFC] saveToolheadRecipeToFS(): failed for tag 0x");
-    Serial.println(m_toolhead.rfid, HEX);
+    Serial.print("[SFC] saveRecipeToFS(): failed for recipe 0x");
+    Serial.println(recipeId, HEX);
   }
   return ok;
 }

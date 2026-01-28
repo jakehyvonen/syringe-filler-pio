@@ -238,14 +238,14 @@ ActionResult sfcRunRecipe(App::SyringeFillController &sfc) {
   return {true, "recipe completed"};
 }
 
-// Load the toolhead recipe from storage.
-ActionResult sfcLoadRecipe(App::SyringeFillController &sfc) {
-  return {sfc.loadToolheadRecipeFromFS(), "recipe loaded"};
+// Load a recipe from storage.
+ActionResult sfcLoadRecipe(App::SyringeFillController &sfc, uint32_t recipeId) {
+  return {sfc.loadRecipeFromFS(recipeId), "recipe loaded"};
 }
 
-// Save the toolhead recipe to storage.
-ActionResult sfcSaveRecipe(App::SyringeFillController &sfc) {
-  return {sfc.saveToolheadRecipeToFS(), "recipe saved"};
+// Save the current recipe to storage.
+ActionResult sfcSaveRecipe(App::SyringeFillController &sfc, uint32_t recipeId) {
+  return {sfc.saveRecipeToFS(recipeId), "recipe saved"};
 }
 
 // Report a placeholder status until a richer status API exists.
@@ -287,10 +287,14 @@ ActionResult showVolumes(App::SyringeFillController &sfc, String &data) {
 }
 
 // Convenience wrapper for recipe save.
-ActionResult sfcRecipeSave(App::SyringeFillController &sfc) { return sfcSaveRecipe(sfc); }
+ActionResult sfcRecipeSave(App::SyringeFillController &sfc, uint32_t recipeId) {
+  return sfcSaveRecipe(sfc, recipeId);
+}
 
 // Convenience wrapper for recipe load.
-ActionResult sfcRecipeLoad(App::SyringeFillController &sfc) { return sfcLoadRecipe(sfc); }
+ActionResult sfcRecipeLoad(App::SyringeFillController &sfc, uint32_t recipeId) {
+  return sfcLoadRecipe(sfc, recipeId);
+}
 
 // Print the current base info if one is selected.
 ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc) {

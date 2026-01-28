@@ -32,8 +32,8 @@ public:
   bool clearToolheadCalibrationPoints(String& message);
   bool forceCurrentBaseCalibrationZero(String& message);
   bool forceToolheadCalibrationZero(String& message);
-  bool loadToolheadRecipeFromFS();
-  bool saveToolheadRecipeToFS();
+  bool loadRecipeFromFS(uint32_t recipeId);
+  bool saveRecipeToFS(uint32_t recipeId);
   void runRecipe();
 
   // calibration for toolhead already here...
