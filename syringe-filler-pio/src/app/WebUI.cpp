@@ -196,9 +196,11 @@ void sendJson(const JsonDocument& doc) {
 }
 
 void handleListRecipes() {
+  Serial.printf("[WebUI] GET /api/recipes\n");
   uint32_t ids[kMaxRecipeList];
   size_t count = 0;
   if (!Util::listRecipeIds(ids, kMaxRecipeList, count)) {
+    Serial.println("[WebUI] listRecipeIds() failed");
     server.send(500, "text/plain", "Failed to list recipes");
     return;
   }
@@ -212,8 +214,10 @@ void handleListRecipes() {
 }
 
 void handleGetRecipe(uint32_t recipeId) {
+  Serial.printf("[WebUI] GET /api/recipes/%08X\n", recipeId);
   Util::Recipe recipe;
   if (!Util::loadRecipe(recipeId, recipe)) {
+    Serial.printf("[WebUI] loadRecipe() failed for %08X\n", recipeId);
     server.send(404, "text/plain", "Recipe not found");
     return;
   }
@@ -226,14 +230,18 @@ void handleGetRecipe(uint32_t recipeId) {
 }
 
 void handlePutRecipe(uint32_t recipeId) {
+  Serial.printf("[WebUI] PUT /api/recipes/%08X\n", recipeId);
   if (!server.hasArg("plain")) {
+    Serial.println("[WebUI] PUT missing body");
     server.send(400, "text/plain", "Missing body");
     return;
   }
 
+  Serial.printf("[WebUI] PUT payload: %s\n", server.arg("plain").c_str());
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, server.arg("plain"));
   if (err) {
+    Serial.printf("[WebUI] PUT JSON parse error: %s\n", err.c_str());
     server.send(400, "text/plain", "Invalid JSON");
     return;
   }
@@ -246,6 +254,7 @@ void handlePutRecipe(uint32_t recipeId) {
   }
 
   if (arr.isNull()) {
+    Serial.println("[WebUI] PUT missing steps array");
     server.send(400, "text/plain", "Missing steps array");
     return;
   }
@@ -253,11 +262,18 @@ void handlePutRecipe(uint32_t recipeId) {
   Util::Recipe recipe;
   recipe.fromJson(arr);
   if (recipe.isEmpty()) {
+    Serial.println("[WebUI] PUT recipe invalid or empty after parsing");
     server.send(400, "text/plain", "Recipe invalid or empty");
     return;
   }
 
+  Serial.printf("[WebUI] PUT parsed %u step(s)\n", recipe.count);
+  for (uint8_t i = 0; i < recipe.count; ++i) {
+    Serial.printf("[WebUI] step %u: volume_ml=%.3f base_slot=%d\n",
+                  i, recipe.steps[i].volumeMl, recipe.steps[i].baseSlot);
+  }
   if (!Util::saveRecipe(recipeId, recipe)) {
+    Serial.printf("[WebUI] saveRecipe() failed for %08X\n", recipeId);
     server.send(500, "text/plain", "Save failed");
     return;
   }
@@ -266,7 +282,9 @@ void handlePutRecipe(uint32_t recipeId) {
 }
 
 void handleDeleteRecipe(uint32_t recipeId) {
+  Serial.printf("[WebUI] DELETE /api/recipes/%08X\n", recipeId);
   if (!Util::deleteRecipe(recipeId)) {
+    Serial.printf("[WebUI] deleteRecipe() failed for %08X\n", recipeId);
     server.send(404, "text/plain", "Delete failed");
     return;
   }
@@ -274,6 +292,7 @@ void handleDeleteRecipe(uint32_t recipeId) {
 }
 
 void handleApiRecipes() {
+  Serial.printf("[WebUI] %s /api/recipes\n", server.method() == HTTP_GET ? "GET" : "OTHER");
   if (server.method() == HTTP_GET) {
     handleListRecipes();
     return;
@@ -285,6 +304,7 @@ void handleApiRecipeItem() {
   String uri = server.uri();
   const String prefix = "/api/recipes/";
   if (!uri.startsWith(prefix)) {
+    Serial.printf("[WebUI] Not found: %s\n", uri.c_str());
     server.send(404, "text/plain", "Not found");
     return;
   }
@@ -292,6 +312,7 @@ void handleApiRecipeItem() {
   String hexStr = uri.substring(prefix.length());
   uint32_t recipeId = 0;
   if (!parseRecipeId(hexStr, recipeId)) {
+    Serial.printf("[WebUI] Invalid recipe ID from URI: %s\n", uri.c_str());
     server.send(400, "text/plain", "Invalid recipe ID");
     return;
   }
@@ -303,6 +324,7 @@ void handleApiRecipeItem() {
   } else if (server.method() == HTTP_DELETE) {
     handleDeleteRecipe(recipeId);
   } else {
+    Serial.printf("[WebUI] Method not allowed for %s\n", uri.c_str());
     server.send(405, "text/plain", "Method not allowed");
   }
 }

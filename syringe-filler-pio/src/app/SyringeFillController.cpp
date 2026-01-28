@@ -519,6 +519,19 @@ bool SyringeFillController::saveRecipeToFS(uint32_t recipeId) {
     dbg("saveRecipeToFS(): no recipe ID");
     return false;
   }
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] saveRecipeToFS(): saving recipe with ");
+    Serial.print(m_recipe.count);
+    Serial.println(" step(s)");
+    for (uint8_t i = 0; i < m_recipe.count; ++i) {
+      Serial.print("[SFC] recipe step ");
+      Serial.print(i);
+      Serial.print(": base=");
+      Serial.print(m_recipe.steps[i].baseSlot);
+      Serial.print(" ml=");
+      Serial.println(m_recipe.steps[i].ml, 3);
+    }
+  }
   bool ok = Util::saveRecipe(recipeId, m_recipe);
   if (!ok && DEBUG_FLAG) {
     Serial.print("[SFC] saveRecipeToFS(): failed for recipe 0x");
