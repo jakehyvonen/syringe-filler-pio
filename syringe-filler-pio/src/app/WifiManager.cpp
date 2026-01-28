@@ -166,7 +166,7 @@ String WifiManager::buildScanJson() {
       entry["rssi"] = WiFi.RSSI(i);
       entry["channel"] = WiFi.channel(i);
       entry["auth"] = authModeToString(WiFi.encryptionType(i));
-      entry["hidden"] = WiFi.isHidden(i);
+      //entry["hidden"] = WiFi.isHidden(i);
     }
   }
   String data;
