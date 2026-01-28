@@ -47,5 +47,8 @@ bool saveBasePos(uint8_t idx0, long steps);
 // recipes
 bool loadRecipe(uint32_t toolheadRfid, RecipeDTO& out);
 bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in);
+bool listRecipes(String& outJson);
+bool readRecipeJson(uint32_t toolheadRfid, String& outJson);
+bool deleteRecipe(uint32_t toolheadRfid);
 
 } // namespace Util
