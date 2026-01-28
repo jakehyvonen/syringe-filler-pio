@@ -194,12 +194,12 @@ void sendJson(const JsonDocument& doc) {
 void handleListRecipes() {
   uint32_t ids[kMaxRecipeList];
   size_t count = 0;
-  if (!Util::listRecipeRfids(ids, kMaxRecipeList, count)) {
+  if (!Util::listRecipeIds(ids, kMaxRecipeList, count)) {
     server.send(500, "text/plain", "Failed to list recipes");
     return;
   }
 
-  StaticJsonDocument<1024> doc;
+  JsonDocument doc;
   JsonArray arr = doc["recipes"].to<JsonArray>();
   for (size_t i = 0; i < count; ++i) {
     arr.add(recipeIdToHex(ids[i]));
@@ -214,7 +214,7 @@ void handleGetRecipe(uint32_t recipeId) {
     return;
   }
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   doc["recipe_id"] = recipeIdToHex(recipeId);
   JsonArray arr = doc["steps"].to<JsonArray>();
   recipe.toJson(arr);
@@ -227,7 +227,7 @@ void handlePutRecipe(uint32_t recipeId) {
     return;
   }
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, server.arg("plain"));
   if (err) {
     server.send(400, "text/plain", "Invalid JSON");

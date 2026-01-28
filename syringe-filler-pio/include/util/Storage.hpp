@@ -51,7 +51,7 @@ bool saveRecipe(uint32_t recipeId, const RecipeDTO& in);
 bool loadRecipe(uint32_t recipeId, Util::Recipe& recipe);
 bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe);
 bool deleteRecipe(uint32_t recipeId);
-bool listRecipeRfids(uint32_t* out, size_t max, size_t& count);
+bool listRecipeIds(uint32_t* out, size_t max, size_t& count);
 bool listRecipes(String& outJson);
 bool readRecipeJson(uint32_t recipeId, String& outJson);
 
