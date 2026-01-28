@@ -21,6 +21,14 @@ namespace {
   constexpr bool DEBUG_FLAG = true;
   constexpr long kBaseRfidScanErrorThreshold = 1700;
   constexpr uint32_t kBaseRfidScanIntervalMs = 75;
+  constexpr float kMicrosteps = 2.0f; // half-step microstepping
+  constexpr float kBaseStepsPerMm = (200.0f * kMicrosteps) / 1.75f;
+  constexpr float kBaseMmPerMl = 1.5f;
+  constexpr float kBaseStepsPerMl = kBaseStepsPerMm * kBaseMmPerMl; // ~343 steps/mL @ half-step
+  constexpr float kToolStepsPerMm = (200.0f * kMicrosteps) / 1.25f;
+  constexpr float kToolMmPerMl = 3.45f;
+  constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
+  constexpr float kRetractionMl = 0.17f;
 
   // used by BaseRFID listener
   struct BaseTagCapture {
@@ -90,6 +98,9 @@ namespace {
       Serial.println(msg);
     }
   }
+
+  long toolStepsForMl(float ml) { return lroundf(ml * kToolStepsPerMl); }
+  long baseStepsForMl(float ml) { return lroundf(ml * kBaseStepsPerMl); }
 
 }
 
@@ -465,6 +476,7 @@ bool SyringeFillController::saveRecipeToFS(uint32_t recipeId) {
 // Execute the current recipe by transferring from each base.
 void SyringeFillController::runRecipe() {
   dbg("runRecipe() start");
+  bool anyTransfer = false;
   for (uint8_t i = 0; i < m_recipe.count; ++i) {
     auto& step = m_recipe.steps[i];
     if (DEBUG_FLAG) {
@@ -480,6 +492,18 @@ void SyringeFillController::runRecipe() {
         Serial.print("[SFC] ERROR: transferFromBase failed at step ");
         Serial.println(i);
       }
+      continue;
+    }
+    anyTransfer = true;
+    if (i + 1 < m_recipe.count) {
+      if (!retractToolhead(kRetractionMl) && DEBUG_FLAG) {
+        Serial.println("[SFC] WARN: retraction failed between steps");
+      }
+    }
+  }
+  if (anyTransfer) {
+    if (!retractToolhead(kRetractionMl) && DEBUG_FLAG) {
+      Serial.println("[SFC] WARN: retraction failed after recipe");
     }
   }
   m_toolhead.currentMl = m_calibration.readToolheadVolumeMl();
@@ -578,7 +602,7 @@ uint32_t SyringeFillController::readRFIDNow() {
 }
 
 // ------------------------------------------------------------
-// transfer (stub)
+// transfer
 // ------------------------------------------------------------
 // Transfer volume from a base to the toolhead using step calculations.
 bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
@@ -636,24 +660,8 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     Toolhead::couple();
   }
 
-  // Steps per mL derivation:
-  // Base syringe (M12, 1.75 mm pitch):
-  //   steps/mm = 200 * microsteps / 1.75
-  //   mm/mL = 15 mm / 10 mL = 1.5 mm/mL
-  //   steps/mL = steps/mm * mm/mL
-  // Toolhead syringe (M8, 1.25 mm pitch):
-  //   steps/mm = 200 * microsteps / 1.25
-  //   mm/mL = 69 mm / 20 mL = 3.45 mm/mL
-  //   steps/mL = steps/mm * mm/mL
-  constexpr float kMicrosteps = 2.0f; // half-step microstepping
-  constexpr float kBaseStepsPerMm = (200.0f * kMicrosteps) / 1.75f;
-  constexpr float kBaseMmPerMl = 1.5f;
-  constexpr float kBaseStepsPerMl = kBaseStepsPerMm * kBaseMmPerMl; // ~343 steps/mL @ half-step
-  constexpr float kToolStepsPerMm = (200.0f * kMicrosteps) / 1.25f;
-  constexpr float kToolMmPerMl = 3.45f;
-  constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
-  const long toolSteps = -lroundf(ml * kToolStepsPerMl);
-  const long baseSteps = lroundf(ml * kBaseStepsPerMl);
+  const long toolSteps = -toolStepsForMl(ml);
+  const long baseSteps = baseStepsForMl(ml);
 
   if (DEBUG_FLAG) {
     Serial.print("[SFC] transferFromBase(slot=");
@@ -667,6 +675,75 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   }
 
   AxisPair::moveSync(toolSteps, baseSteps);
+  return true;
+}
+
+bool SyringeFillController::retractToolhead(float ml) {
+  if (!isfinite(ml) || ml <= 0.0f) {
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] retractToolhead(): invalid mL: ");
+      Serial.println(ml, 3);
+    }
+    return false;
+  }
+
+  if (m_toolhead.rfid == 0) {
+    if (DEBUG_FLAG) Serial.println("[SFC] retractToolhead(): no toolhead syringe loaded");
+    return false;
+  }
+
+  if (!Toolhead::isCoupled()) {
+    Toolhead::couple();
+  }
+
+  const long retractSteps = -toolStepsForMl(ml);
+  if (retractSteps == 0) {
+    return true;
+  }
+
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] retractToolhead(ml=");
+    Serial.print(ml, 3);
+    Serial.print(") steps=");
+    Serial.println(retractSteps);
+  }
+
+  AxisPair::move2(retractSteps);
+  return true;
+}
+
+bool SyringeFillController::buildStatusJson(String& data) const {
+  String out = "{";
+
+  out += "\"toolhead\":{";
+  out += "\"rfid\":\"0x" + String(m_toolhead.rfid, HEX) + "\"";
+  out += ",\"calPoints\":" + String(m_toolhead.cal.pointCount);
+  out += "}";
+
+  out += ",\"currentBase\":{";
+  out += "\"slot\":" + String(m_currentSlot);
+  if (m_currentSlot >= 0 && m_currentSlot < Bases::kCount) {
+    out += ",\"rfid\":\"0x" + String(m_bases[m_currentSlot].rfid, HEX) + "\"";
+  }
+  out += "}";
+
+  uint8_t scanned = 0;
+  for (uint8_t i = 0; i < Bases::kCount; ++i) {
+    if (m_bases[i].rfid != 0) {
+      scanned++;
+    }
+  }
+  out += ",\"bases\":{";
+  out += "\"scanned\":" + String(scanned);
+  out += ",\"total\":" + String(Bases::kCount);
+  out += "}";
+
+  out += ",\"recipe\":{";
+  out += "\"steps\":" + String(m_recipe.count);
+  out += "}";
+
+  out += "}";
+  data = out;
   return true;
 }
 

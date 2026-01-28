@@ -304,6 +304,11 @@ void handleRfid2(const String &args) { printStructured("rfid2", handleBaseRfidCo
 // Handle "sfc.scanBases" command to scan all bases.
 void handleSfcScanBases(const String &args) { printStructured("sfc.scanBases", sfcScanBases(g_sfc)); }
 
+// Handle "sfc.scanAllBaseSyringes" command to scan all bases.
+void handleSfcScanAllBaseSyringes(const String &args) {
+  printStructured("sfc.scanAllBaseSyringes", sfcScanBases(g_sfc));
+}
+
 // Handle "sfc.run" command to execute the recipe.
 void handleSfcRun(const String &args) { printStructured("sfc.run", sfcRunRecipe(g_sfc)); }
 
@@ -328,7 +333,12 @@ void handleSfcSave(const String &args) {
 }
 
 // Handle "sfc.status" command to report controller status.
-void handleSfcStatus(const String &args) { printStructured("sfc.status", sfcStatus()); }
+void handleSfcStatus(const String &args) {
+  (void)args;
+  String data;
+  ActionResult res = sfcStatus(g_sfc, data);
+  printStructured("sfc.status", res, data);
+}
 
 // Handle "sfc.scanbase" command to scan a single base slot.
 void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfcScanBase(g_sfc, (uint8_t)args.toInt())); }
@@ -566,6 +576,7 @@ const CommandDescriptor COMMANDS[] = {
     {"rfid", "rfid controls", handleRfid},
     {"rfid2", "base rfid controls", handleRfid2},
     {"sfc.scanBases", "scan all base syringes", handleSfcScanBases},
+    {"sfc.scanAllBaseSyringes", "scan all base syringes", handleSfcScanAllBaseSyringes},
     {"sfc.run", "run current recipe", handleSfcRun},
     {"sfc.load", "load recipe by recipe ID", handleSfcLoad},
     {"sfc.save", "save recipe by recipe ID", handleSfcSave},
