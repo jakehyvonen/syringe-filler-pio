@@ -3,6 +3,8 @@
  * @brief Serial command parsing and JSON-formatted responses.
  */
 #include <Arduino.h>
+#include <ESPmDNS.h>
+#include <WiFi.h>
 #include <Wire.h>
 
 #include "app/CommandRouter.hpp"
@@ -73,6 +75,16 @@ struct CommandDescriptor {
 
 static String input;
 static App::SyringeFillController g_sfc;
+constexpr uint32_t kWifiConnectTimeoutMs = 20000;
+constexpr uint32_t kWifiPollIntervalMs = 500;
+constexpr char kMdnsHostname[] = "syringe-filler";
+
+#ifndef SYRINGE_FILLER_WIFI_SSID
+#define SYRINGE_FILLER_WIFI_SSID "SyringeFiller"
+#endif
+#ifndef SYRINGE_FILLER_WIFI_PASS
+#define SYRINGE_FILLER_WIFI_PASS "syringe1234"
+#endif
 
 // Emit a JSON response for a simple action result.
 void printStructured(const char *cmd, const ActionResult &res, const String &data = "") {
@@ -107,6 +119,148 @@ bool parseRecipeIdArg(const String &args, uint32_t &recipeIdOut) {
   recipeIdOut = strtoul(args.c_str(), &end, 16);
   if (end == args.c_str()) return false;
   return recipeIdOut != 0;
+}
+
+const char *wifiStatusToString(wl_status_t status) {
+  switch (status) {
+    case WL_NO_SSID_AVAIL: return "NO_SSID_AVAIL";
+    case WL_SCAN_COMPLETED: return "SCAN_COMPLETED";
+    case WL_CONNECTED: return "CONNECTED";
+    case WL_CONNECT_FAILED: return "CONNECT_FAILED";
+    case WL_CONNECTION_LOST: return "CONNECTION_LOST";
+    case WL_DISCONNECTED: return "DISCONNECTED";
+    case WL_IDLE_STATUS: return "IDLE";
+    default: return "UNKNOWN";
+  }
+}
+
+bool startMdns() {
+  if (!MDNS.begin(kMdnsHostname)) {
+    Serial.println("[WiFi] mDNS failed to start.");
+    return false;
+  }
+  MDNS.addService("http", "tcp", 80);
+  Serial.printf("[WiFi] mDNS started: http://%s.local/\n", kMdnsHostname);
+  return true;
+}
+
+bool connectToWiFi(const String &ssid, const String &password) {
+  if (ssid.length() == 0) {
+    Serial.println("[WiFi] Missing SSID.");
+    return false;
+  }
+  Serial.printf("[WiFi] Connecting to SSID '%s'...\n", ssid.c_str());
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  unsigned long start = millis();
+  wl_status_t lastStatus = WL_IDLE_STATUS;
+  while (millis() - start < kWifiConnectTimeoutMs) {
+    wl_status_t status = WiFi.status();
+    if (status != lastStatus) {
+      Serial.printf("[WiFi] Status: %s\n", wifiStatusToString(status));
+      lastStatus = status;
+    }
+    if (status == WL_CONNECTED) {
+      IPAddress ip = WiFi.localIP();
+      Serial.printf("[WiFi] Connected. IP: %s RSSI: %ld dBm\n",
+                    ip.toString().c_str(), WiFi.RSSI());
+      startMdns();
+      return true;
+    }
+    delay(kWifiPollIntervalMs);
+  }
+
+  Serial.println("[WiFi] Connection timed out.");
+  return false;
+}
+
+void startAccessPoint() {
+  Serial.println("[WiFi] Starting access point...");
+  WiFi.mode(WIFI_AP);
+  bool ok = WiFi.softAP(SYRINGE_FILLER_WIFI_SSID, SYRINGE_FILLER_WIFI_PASS);
+  if (!ok) {
+    Serial.println("[WiFi] Failed to start AP.");
+    return;
+  }
+  IPAddress ip = WiFi.softAPIP();
+  Serial.printf("[WiFi] AP '%s' started. IP: %s\n", SYRINGE_FILLER_WIFI_SSID, ip.toString().c_str());
+}
+
+void handleWifiStatus(const String &args) {
+  (void)args;
+  JsonDocument doc;
+  doc["connected"] = WiFi.isConnected();
+  doc["status"] = wifiStatusToString(WiFi.status());
+  doc["ssid"] = WiFi.SSID();
+  doc["ip"] = WiFi.localIP().toString();
+  doc["hostname"] = kMdnsHostname;
+  doc["ap_ssid"] = SYRINGE_FILLER_WIFI_SSID;
+  doc["ap_ip"] = WiFi.softAPIP().toString();
+  String data;
+  serializeJson(doc, data);
+  printStructured("wifi.status", {true, ""}, data);
+}
+
+void handleWifiSet(const String &args) {
+  int sp = args.indexOf(' ');
+  String ssid = (sp < 0) ? args : args.substring(0, sp);
+  String password = (sp < 0) ? "" : args.substring(sp + 1);
+  ssid.trim();
+  password.trim();
+  if (ssid.length() == 0) {
+    printStructured("wifi.set", {false, "usage: wifi.set <ssid> [password]"});
+    return;
+  }
+
+  if (!Util::saveWiFiCredentials(ssid, password)) {
+    printStructured("wifi.set", {false, "failed to save credentials"});
+    return;
+  }
+
+  bool connected = connectToWiFi(ssid, password);
+  JsonDocument doc;
+  doc["connected"] = connected;
+  doc["ip"] = WiFi.localIP().toString();
+  doc["hostname"] = kMdnsHostname;
+  String data;
+  serializeJson(doc, data);
+  printStructured("wifi.set", {connected, connected ? "connected" : "connect failed"}, data);
+}
+
+void handleWifiConnect(const String &args) {
+  (void)args;
+  String ssid;
+  String password;
+  if (!Util::loadWiFiCredentials(ssid, password)) {
+    printStructured("wifi.connect", {false, "no saved credentials"});
+    return;
+  }
+  bool connected = connectToWiFi(ssid, password);
+  JsonDocument doc;
+  doc["connected"] = connected;
+  doc["ip"] = WiFi.localIP().toString();
+  doc["hostname"] = kMdnsHostname;
+  String data;
+  serializeJson(doc, data);
+  printStructured("wifi.connect", {connected, connected ? "connected" : "connect failed"}, data);
+}
+
+void handleWifiClear(const String &args) {
+  (void)args;
+  if (!Util::clearWiFiCredentials()) {
+    printStructured("wifi.clear", {false, "failed to clear credentials"});
+    return;
+  }
+  printStructured("wifi.clear", {true, "credentials cleared"});
+}
+
+void handleWifiAp(const String &args) {
+  (void)args;
+  startAccessPoint();
+  printStructured("wifi.ap", {true, "ap started"});
 }
 
 // Handle "speed" command for gantry speed changes.
@@ -479,6 +633,11 @@ void handleSfcRecipeDelete(const String &args) {
 }
 
 const CommandDescriptor COMMANDS[] = {
+    {"wifi.status", "show WiFi status, IP, and mDNS hostname", handleWifiStatus},
+    {"wifi.set", "save WiFi credentials and connect", handleWifiSet},
+    {"wifi.connect", "connect using saved WiFi credentials", handleWifiConnect},
+    {"wifi.clear", "clear saved WiFi credentials", handleWifiClear},
+    {"wifi.ap", "start access point for setup", handleWifiAp},
     {"speed", "set gantry speed (steps/sec)", handleSpeed},
     {"home", "home gantry", handleHome},
     {"pos", "report gantry position", handlePos},

@@ -35,6 +35,11 @@ constexpr uint8_t kCalPointCount = App::PotCalibration::kMaxPoints;
 
 bool initStorage();
 
+// WiFi credentials
+bool loadWiFiCredentials(String& ssid, String& password);
+bool saveWiFiCredentials(const String& ssid, const String& password);
+bool clearWiFiCredentials();
+
 // calibration + base metadata
 bool loadCalibration(uint32_t rfid, App::PotCalibration& out);
 bool saveCalibration(uint32_t rfid, const App::PotCalibration& cal);
