@@ -13,6 +13,7 @@
 #include "servo/Toolhead.hpp"
 #include "util/Storage.hpp"
 #include "app/CommandRouter.hpp"
+#include "app/WebUI.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
 #include "hw/Encoder.hpp"
@@ -42,6 +43,7 @@ void setup() {
   Drivers::initI2C2();
   //Drivers::i2cScanBoth();
   Util::initStorage();
+  WebUI::begin();
 
   Bases::init();
   Axis::init();
@@ -74,6 +76,7 @@ void loop() {
   CommandRouter::handleSerial();
   RFID::tick(); // active only if enabled
   BaseRFID::tick();
+  WebUI::handle();
 
   // Let encoder print periodic status when polling is enabled.
   EncoderHW::service();

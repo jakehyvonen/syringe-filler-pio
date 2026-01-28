@@ -253,6 +253,40 @@ static String recipePath(uint32_t toolheadRfid) {
   return p;
 }
 
+// Delete a recipe file for the specified RFID.
+bool deleteRecipe(uint32_t toolheadRfid) {
+  if (toolheadRfid == 0) return false;
+  return LittleFS.remove(recipePath(toolheadRfid));
+}
+
+// List recipe RFIDs from the /recipes directory.
+bool listRecipeRfids(uint32_t* out, size_t max, size_t& count) {
+  count = 0;
+  File root = LittleFS.open("/recipes");
+  if (!root) return false;
+
+  File file = root.openNextFile();
+  while (file) {
+    if (!file.isDirectory()) {
+      String name = file.name();
+      int slash = name.lastIndexOf('/');
+      if (slash >= 0) {
+        name = name.substring(slash + 1);
+      }
+      if (name.endsWith(".json")) {
+        String hex = name.substring(0, name.length() - 5);
+        uint32_t val = strtoul(hex.c_str(), nullptr, 16);
+        if (val != 0 && count < max) {
+          out[count++] = val;
+        }
+      }
+    }
+    file.close();
+    file = root.openNextFile();
+  }
+  return true;
+}
+
 // RecipeDTO version
 // Save a RecipeDTO to LittleFS as JSON.
 bool saveRecipe(uint32_t toolheadRfid, const RecipeDTO& in) {
