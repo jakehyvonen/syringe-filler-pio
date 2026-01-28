@@ -512,6 +512,39 @@ void handleSfcRecipeList(const String &args) {
   printStructured("sfc.recipe.list", res, data);
 }
 
+void handleSfcRecipeListDesc(const String &args) {
+  (void)args;
+  uint32_t ids[32];
+  const size_t maxIds = sizeof(ids) / sizeof(ids[0]);
+  size_t count = 0;
+  ActionResult res{true, ""};
+  if (!Util::listRecipeIds(ids, maxIds, count)) {
+    res = {false, "unable to list recipes"};
+    printStructured("sfc.recipe.list.desc", res);
+    return;
+  }
+  for (size_t i = 0; i + 1 < count; ++i) {
+    for (size_t j = i + 1; j < count; ++j) {
+      if (ids[j] > ids[i]) {
+        uint32_t tmp = ids[i];
+        ids[i] = ids[j];
+        ids[j] = tmp;
+      }
+    }
+  }
+  String data = "[";
+  for (size_t i = 0; i < count; ++i) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%08X", ids[i]);
+    if (i > 0) data += ",";
+    data += "\"";
+    data += buf;
+    data += "\"";
+  }
+  data += "]";
+  printStructured("sfc.recipe.list.desc", res, data);
+}
+
 void handleSfcRecipeShow(const String &args) {
   uint32_t recipeId = 0;
   if (!parseRecipeIdArg(args, recipeId)) {
@@ -600,6 +633,7 @@ const CommandDescriptor COMMANDS[] = {
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
     {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
+    {"sfc.recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
     {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},
     {"sfc.recipe.delete", "delete recipe for a recipe ID", handleSfcRecipeDelete},
 };
