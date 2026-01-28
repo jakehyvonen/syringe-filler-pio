@@ -13,5 +13,6 @@ namespace Toolhead {
   void setPulseRaw(uint8_t ch, int pulse);
   void raise();
   void couple();
+  bool isCoupled();
   bool ensureRaised(uint16_t timeout_ms = 1200);
 }

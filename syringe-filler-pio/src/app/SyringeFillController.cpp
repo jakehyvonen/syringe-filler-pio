@@ -10,6 +10,7 @@
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
 #include "util/Storage.hpp"   // Util::loadBase, Util::saveBase, Util::loadRecipe, ...
+#include "servo/Toolhead.hpp"
 #include <Arduino.h>
 #include <math.h>
 #include <stdlib.h>
@@ -503,6 +504,9 @@ bool SyringeFillController::goToBase(uint8_t slot, Axis::MoveHook hook, void* co
     Serial.println(target);
   }
 
+  if (!Toolhead::isRaised()) {
+    Toolhead::raise();
+  }
   Axis::moveToWithHook(target, hook, context);
   m_currentSlot = slot;
   if (DEBUG_FLAG) {
@@ -616,6 +620,10 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
       }
       return false;
     }
+  }
+
+  if (!Toolhead::isCoupled()) {
+    Toolhead::couple();
   }
 
   // Steps per mL derivation:

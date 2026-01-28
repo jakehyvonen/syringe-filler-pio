@@ -20,6 +20,12 @@
 namespace App {
 namespace {
 inline long mmToSteps(float mm) { return (long)lround(mm * Pins::STEPS_PER_MM); }
+
+void ensureToolheadRaised() {
+  if (!Toolhead::isRaised()) {
+    Toolhead::raise();
+  }
+}
 }
 
 namespace DeviceActions {
@@ -43,6 +49,7 @@ ActionResult setGantrySpeed(long sps) {
 
 // Home the gantry and reset its logical position.
 ActionResult homeGantry() {
+  ensureToolheadRaised();
   Homing::home();
   return {true, "gantry homed"};
 }
@@ -51,6 +58,7 @@ ActionResult homeGantry() {
 ActionResult moveGantryToSteps(long targetSteps) {
   if (targetSteps < Pins::MIN_POS_STEPS) targetSteps = Pins::MIN_POS_STEPS;
   if (targetSteps > Pins::MAX_POS_STEPS) targetSteps = Pins::MAX_POS_STEPS;
+  ensureToolheadRaised();
   Axis::enable(true);
   Axis::moveTo(targetSteps);
   Axis::enable(false);
@@ -84,6 +92,7 @@ ActionResult moveToBase(uint8_t idx, long &targetSteps) {
   if (targetSteps < Pins::MIN_POS_STEPS || targetSteps > Pins::MAX_POS_STEPS) {
     return {false, "base target outside limits"};
   }
+  ensureToolheadRaised();
   Axis::enable(true);
   Axis::moveTo(targetSteps);
   Axis::enable(false);

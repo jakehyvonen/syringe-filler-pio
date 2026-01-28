@@ -26,6 +26,7 @@ static constexpr int RAMP_MS_SLOW = 17;  // increase if brownouts occur
 
 static int  s_angles[16];
 static bool s_anglesInit = false;
+static bool s_isCoupled = false;
 
 
 static inline void ensureAnglesInit() {
@@ -101,10 +102,12 @@ void raise() {
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
   delay(50); // small settle time
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
+  s_isCoupled = false;
 }
 
 // Run the coupling motion sequence.
 void couple() {
+  s_isCoupled = false;
   // Approach coupling position slowly, then close the coupler smoothly
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
   delay(100);
@@ -120,8 +123,12 @@ void couple() {
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, RAMP_MS_SLOW);
   delay(100);
   setPulseRaw(COUPLING_SERVO, 0);
+  s_isCoupled = isRaised();
 
+}
 
+bool isCoupled() {
+  return s_isCoupled;
 }
 
 
