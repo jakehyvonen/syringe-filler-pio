@@ -14,7 +14,7 @@ namespace App {
 
 namespace {
   constexpr bool CAL_DBG = true;
-  constexpr uint8_t TOOLHEAD_POT_IDX = 0;  // TODO: confirm toolhead pot index
+  constexpr uint8_t TOOLHEAD_POT_IDX = 0;  // toolhead pot index
 
   // Sync legacy ADC fields from the current calibration points.
   void syncLegacyFields(PotCalibration& cal) {
@@ -531,7 +531,7 @@ float SyringeCalibration::readToolheadVolumeMl() {
   float ratio = readToolheadRatio();
   float ml = m_toolhead.cal.ratioToMl(ratio);
   if (CAL_DBG) {
-    Serial.print("[SFC] readToolheadVolumeMl(): stub -> ");
+    Serial.print("[SFC] readToolheadVolumeMl(): ");
     Serial.println(ml, 3);
   }
   return ml;

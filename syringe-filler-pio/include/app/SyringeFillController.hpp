@@ -44,12 +44,14 @@ public:
   // Return the current toolhead RFID value.
   uint32_t toolheadRfid() const { return m_toolhead.rfid; }
   bool showVolumes(String& data, String& message);
+  bool buildStatusJson(String& data) const;
   bool transferFromBase(uint8_t slot, float ml);
 
 
 
 private:
   bool     goToBase(uint8_t slot, Axis::MoveHook hook = nullptr, void* context = nullptr);
+  bool     retractToolhead(float ml);
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);

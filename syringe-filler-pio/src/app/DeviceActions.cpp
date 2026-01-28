@@ -248,10 +248,10 @@ ActionResult sfcSaveRecipe(App::SyringeFillController &sfc, uint32_t recipeId) {
   return {sfc.saveRecipeToFS(recipeId), "recipe saved"};
 }
 
-// Report a placeholder status until a richer status API exists.
-ActionResult sfcStatus() {
-  // Not exposed via controller; stub for structured output.
-  return {true, "status not exposed"};
+// Report a status summary for the controller.
+ActionResult sfcStatus(App::SyringeFillController &sfc, String &data) {
+  bool ok = sfc.buildStatusJson(data);
+  return {ok, ok ? "status reported" : "status unavailable"};
 }
 
 // Scan a single base syringe slot.
