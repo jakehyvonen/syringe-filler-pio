@@ -31,6 +31,12 @@ Optional serial monitor:
 pio device monitor
 ```
 
+## Recipe JSON Client
+
+A lightweight serial JSON client is available in `syringe-filler-pio/tools/` and
+is documented in `syringe-filler-pio/docs/recipes.md`. It validates recipe JSON
+using the firmware's `Util::Recipe` schema before sending `sfc.recipe.save`.
+
 ## Serial Command Summary
 
 The main firmware prints a command list at startup. Common commands include:
