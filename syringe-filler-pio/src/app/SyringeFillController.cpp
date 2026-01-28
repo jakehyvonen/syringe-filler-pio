@@ -99,6 +99,37 @@ namespace {
     }
   }
 
+  void printRecipeIdList(const char* context) {
+    if (!DEBUG_FLAG) return;
+    uint32_t ids[32];
+    const size_t maxIds = sizeof(ids) / sizeof(ids[0]);
+    size_t count = 0;
+    if (!Util::listRecipeIds(ids, maxIds, count)) {
+      Serial.print("[SFC] ");
+      Serial.print(context);
+      Serial.println(": unable to list /recipes");
+      return;
+    }
+    if (count == 0) {
+      Serial.print("[SFC] ");
+      Serial.print(context);
+      Serial.println(": no recipes found in /recipes");
+      return;
+    }
+    Serial.print("[SFC] ");
+    Serial.print(context);
+    Serial.print(": available recipe IDs (");
+    Serial.print(count);
+    Serial.println("):");
+    for (size_t i = 0; i < count; ++i) {
+      Serial.print("  - 0x");
+      Serial.print(ids[i], HEX);
+      Serial.print(" (");
+      Serial.print(ids[i]);
+      Serial.println(")");
+    }
+  }
+
   long toolStepsForMl(float ml) { return lroundf(ml * kToolStepsPerMl); }
   long baseStepsForMl(float ml) { return lroundf(ml * kBaseStepsPerMl); }
 
@@ -446,12 +477,38 @@ bool SyringeFillController::showVolumes(String& data, String& message) {
 bool SyringeFillController::loadRecipeFromFS(uint32_t recipeId) {
   if (recipeId == 0) {
     dbg("loadRecipeFromFS(): no recipe ID");
+    printRecipeIdList("loadRecipeFromFS()");
     return false;
+  }
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] loadRecipeFromFS(): requested 0x");
+    Serial.print(recipeId, HEX);
+    Serial.print(" (");
+    Serial.print(recipeId);
+    Serial.println(")");
   }
   bool ok = Util::loadRecipe(recipeId, m_recipe);
   if (!ok && DEBUG_FLAG) {
     Serial.print("[SFC] loadRecipeFromFS(): failed for recipe 0x");
     Serial.println(recipeId, HEX);
+    printRecipeIdList("loadRecipeFromFS()");
+    return false;
+  }
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] loadRecipeFromFS(): loaded recipe with ");
+    Serial.print(m_recipe.count);
+    Serial.println(" step(s)");
+    for (uint8_t i = 0; i < m_recipe.count; ++i) {
+      Serial.print("[SFC] recipe step ");
+      Serial.print(i);
+      Serial.print(": base=");
+      Serial.print(m_recipe.steps[i].baseSlot);
+      Serial.print(" ml=");
+      Serial.println(m_recipe.steps[i].ml, 3);
+    }
+    if (m_recipe.count == 0) {
+      Serial.println("[SFC] loadRecipeFromFS(): recipe has zero steps");
+    }
   }
   return ok;
 }
@@ -476,6 +533,21 @@ bool SyringeFillController::saveRecipeToFS(uint32_t recipeId) {
 // Execute the current recipe by transferring from each base.
 void SyringeFillController::runRecipe() {
   dbg("runRecipe() start");
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] runRecipe(): step count=");
+    Serial.print(m_recipe.count);
+    Serial.print(" toolheadRFID=0x");
+    Serial.print(m_toolhead.rfid, HEX);
+    Serial.print(" currentSlot=");
+    Serial.println(m_currentSlot);
+  }
+  if (m_recipe.count == 0) {
+    if (DEBUG_FLAG) {
+      Serial.println("[SFC] runRecipe(): no steps to run, aborting");
+      printRecipeIdList("runRecipe()");
+    }
+    return;
+  }
   bool anyTransfer = false;
   for (uint8_t i = 0; i < m_recipe.count; ++i) {
     auto& step = m_recipe.steps[i];
@@ -496,17 +568,27 @@ void SyringeFillController::runRecipe() {
     }
     anyTransfer = true;
     if (i + 1 < m_recipe.count) {
+      if (DEBUG_FLAG) {
+        Serial.println("[SFC] runRecipe(): retracting between steps");
+      }
       if (!retractToolhead(kRetractionMl) && DEBUG_FLAG) {
         Serial.println("[SFC] WARN: retraction failed between steps");
       }
     }
   }
   if (anyTransfer) {
+    if (DEBUG_FLAG) {
+      Serial.println("[SFC] runRecipe(): retracting after recipe");
+    }
     if (!retractToolhead(kRetractionMl) && DEBUG_FLAG) {
       Serial.println("[SFC] WARN: retraction failed after recipe");
     }
   }
   m_toolhead.currentMl = m_calibration.readToolheadVolumeMl();
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] runRecipe(): toolhead current mL=");
+    Serial.println(m_toolhead.currentMl, 3);
+  }
   dbg("runRecipe() done");
 }
 
