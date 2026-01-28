@@ -575,7 +575,7 @@ const CommandDescriptor COMMANDS[] = {
     {"pos3", "report axis3 position", handlePos3},
     {"rfid", "rfid controls", handleRfid},
     {"rfid2", "base rfid controls", handleRfid2},
-    {"sfc.scanAll", "scan all base syringes", handleSfcScanAllBaseSyringes},
+    {"sfc.scanall", "scan all base syringes", handleSfcScanAllBaseSyringes},
     {"sfc.run", "run current recipe", handleSfcRun},
     {"sfc.load", "load recipe by recipe ID", handleSfcLoad},
     {"sfc.save", "save recipe by recipe ID", handleSfcSave},
