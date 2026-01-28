@@ -10,6 +10,7 @@
 #include <nvs.h>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <cstring>
 
 namespace {
 
@@ -265,6 +266,13 @@ bool listRecipeRfids(uint32_t* out, size_t max, size_t& count) {
   File root = LittleFS.open("/recipes");
   if (!root) return false;
 
+// List recipe files under /recipes and return JSON array string.
+bool listRecipes(String& outJson) {
+  File root = LittleFS.open("/recipes");
+  if (!root || !root.isDirectory()) return false;
+
+  outJson = "[";
+  bool first = true;
   File file = root.openNextFile();
   while (file) {
     if (!file.isDirectory()) {
@@ -285,6 +293,42 @@ bool listRecipeRfids(uint32_t* out, size_t max, size_t& count) {
     file = root.openNextFile();
   }
   return true;
+}
+
+      if (name.startsWith("/recipes/")) {
+        name = name.substring(strlen("/recipes/"));
+      }
+      if (name.endsWith(".json")) {
+        name = name.substring(0, name.length() - strlen(".json"));
+      }
+      if (!first) outJson += ",";
+      outJson += "\"";
+      outJson += name;
+      outJson += "\"";
+      first = false;
+    }
+    file = root.openNextFile();
+  }
+  outJson += "]";
+  return true;
+}
+
+// Read a recipe JSON file as raw text.
+bool readRecipeJson(uint32_t toolheadRfid, String& outJson) {
+  if (toolheadRfid == 0) return false;
+  File f = LittleFS.open(recipePath(toolheadRfid), "r");
+  if (!f) return false;
+
+  outJson = f.readString();
+  f.close();
+  outJson.trim();
+  return outJson.length() > 0;
+}
+
+// Delete a recipe file for a toolhead RFID.
+bool deleteRecipe(uint32_t toolheadRfid) {
+  if (toolheadRfid == 0) return false;
+  return LittleFS.remove(recipePath(toolheadRfid));
 }
 
 // RecipeDTO version

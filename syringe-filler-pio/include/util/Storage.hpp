@@ -52,5 +52,8 @@ bool loadRecipe(uint32_t toolheadRfid, Util::Recipe& recipe);
 bool saveRecipe(uint32_t toolheadRfid, const Util::Recipe& recipe);
 bool deleteRecipe(uint32_t toolheadRfid);
 bool listRecipeRfids(uint32_t* out, size_t max, size_t& count);
+bool listRecipes(String& outJson);
+bool readRecipeJson(uint32_t toolheadRfid, String& outJson);
+bool deleteRecipe(uint32_t toolheadRfid);
 
 } // namespace Util
