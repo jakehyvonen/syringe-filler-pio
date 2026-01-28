@@ -261,7 +261,7 @@ bool deleteRecipe(uint32_t recipeId) {
 }
 
 // List recipe IDs from the /recipes directory.
-bool listRecipeRfids(uint32_t* out, size_t max, size_t& count) {
+bool listRecipeIds(uint32_t* out, size_t max, size_t& count) {
   count = 0;
   File root = LittleFS.open("/recipes");
   if (!root || !root.isDirectory()) return false;
@@ -339,7 +339,7 @@ bool readRecipeJson(uint32_t recipeId, String& outJson) {
 // RecipeDTO version
 // Save a RecipeDTO to LittleFS as JSON.
 bool saveRecipe(uint32_t recipeId, const RecipeDTO& in) {
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", recipeId);
   doc["recipe_id"] = buf;
@@ -363,7 +363,7 @@ bool loadRecipe(uint32_t recipeId, RecipeDTO& out) {
   File f = LittleFS.open(recipePath(recipeId), "r");
   if (!f) return false;
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
@@ -386,7 +386,7 @@ bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe) {
   File f = LittleFS.open(recipePath(recipeId), "w");
   if (!f) return false;
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", recipeId);
   doc["recipe_id"] = buf;
@@ -404,7 +404,7 @@ bool loadRecipe(uint32_t recipeId, Util::Recipe& recipe) {
   File f = LittleFS.open(recipePath(recipeId), "r");
   if (!f) return false;
 
-  StaticJsonDocument<2048> doc;
+  JsonDocument doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;

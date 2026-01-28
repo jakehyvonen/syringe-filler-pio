@@ -101,6 +101,14 @@ void printStructured(const char *cmd, const PositionResult &res) {
   printStructured(cmd, static_cast<const ActionResult &>(res), data);
 }
 
+bool parseRecipeIdArg(const String &args, uint32_t &recipeIdOut) {
+  if (args.length() == 0) return false;
+  char *end = nullptr;
+  recipeIdOut = strtoul(args.c_str(), &end, 16);
+  if (end == args.c_str()) return false;
+  return recipeIdOut != 0;
+}
+
 // Handle "speed" command for gantry speed changes.
 void handleSpeed(const String &args) {
   long sps = args.toInt();
@@ -243,7 +251,7 @@ void handleSfcRun(const String &args) { printStructured("sfc.run", sfcRunRecipe(
 // Handle "sfc.load" command to load a recipe.
 void handleSfcLoad(const String &args) {
   uint32_t recipeId = 0;
-  if (!parseRfidArg(args, recipeId)) {
+  if (!parseRecipeIdArg(args, recipeId)) {
     printStructured("sfc.load", {false, "usage: sfc.load <recipe_id>"});
     return;
   }
@@ -253,7 +261,7 @@ void handleSfcLoad(const String &args) {
 // Handle "sfc.save" command to save the recipe.
 void handleSfcSave(const String &args) {
   uint32_t recipeId = 0;
-  if (!parseRfidArg(args, recipeId)) {
+  if (!parseRecipeIdArg(args, recipeId)) {
     printStructured("sfc.save", {false, "usage: sfc.save <recipe_id>"});
     return;
   }
@@ -316,7 +324,7 @@ void handleShowVolumes(const String &args) {
 // Handle "sfc.recipe.save" command to save the recipe.
 void handleSfcRecipeSave(const String &args) {
   uint32_t recipeId = 0;
-  if (!parseRfidArg(args, recipeId)) {
+  if (!parseRecipeIdArg(args, recipeId)) {
     printStructured("sfc.recipe.save", {false, "usage: sfc.recipe.save <recipe_id>"});
     return;
   }
@@ -326,7 +334,7 @@ void handleSfcRecipeSave(const String &args) {
 // Handle "sfc.recipe.load" command to load the recipe.
 void handleSfcRecipeLoad(const String &args) {
   uint32_t recipeId = 0;
-  if (!parseRfidArg(args, recipeId)) {
+  if (!parseRecipeIdArg(args, recipeId)) {
     printStructured("sfc.recipe.load", {false, "usage: sfc.recipe.load <recipe_id>"});
     return;
   }
@@ -425,13 +433,6 @@ void handleI2cScan(const String &args) {
   printStructured("i2cscan", i2cScanBoth());
 }
 
-bool parseRfidArg(const String &args, uint32_t &rfidOut) {
-  if (args.length() == 0) return false;
-  char *end = nullptr;
-  rfidOut = strtoul(args.c_str(), &end, 16);
-  return end != args.c_str();
-}
-
 void handleSfcRecipeList(const String &args) {
   (void)args;
   String data;
@@ -444,7 +445,7 @@ void handleSfcRecipeList(const String &args) {
 
 void handleSfcRecipeShow(const String &args) {
   uint32_t recipeId = 0;
-  if (!parseRfidArg(args, recipeId)) {
+  if (!parseRecipeIdArg(args, recipeId)) {
     printStructured("sfc.recipe.show", {false, "usage: sfc.recipe.show <recipe_id>"});
     return;
   }
@@ -458,7 +459,7 @@ void handleSfcRecipeShow(const String &args) {
 
 void handleSfcRecipeDelete(const String &args) {
   uint32_t recipeId = 0;
-  if (!parseRfidArg(args, recipeId)) {
+  if (!parseRecipeIdArg(args, recipeId)) {
     printStructured("sfc.recipe.delete", {false, "usage: sfc.recipe.delete <recipe_id>"});
     return;
   }
