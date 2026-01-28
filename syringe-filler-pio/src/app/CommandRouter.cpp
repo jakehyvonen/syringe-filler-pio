@@ -12,6 +12,7 @@
 #include "hw/Bases.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Pots.hpp"
+#include "util/Storage.hpp"
 
 namespace CommandRouter {
 
@@ -396,6 +397,58 @@ void handleI2cScan(const String &args) {
   printStructured("i2cscan", i2cScanBoth());
 }
 
+bool parseRfidArg(const String &args, uint32_t &rfidOut) {
+  if (args.length() == 0) return false;
+  char *end = nullptr;
+  rfidOut = strtoul(args.c_str(), &end, 16);
+  return end != args.c_str();
+}
+
+void handleSfcRecipeList(const String &args) {
+  (void)args;
+  String data;
+  ActionResult res{true, ""};
+  if (!Util::listRecipes(data)) {
+    res = {false, "unable to list recipes"};
+  }
+  printStructured("sfc.recipe.list", res, data);
+}
+
+void handleSfcRecipeShow(const String &args) {
+  uint32_t rfid = 0;
+  if (!parseRfidArg(args, rfid)) {
+    printStructured("sfc.recipe.show", {false, "usage: sfc.recipe.show <rfid>"});
+    return;
+  }
+  String data;
+  ActionResult res{true, ""};
+  if (!Util::readRecipeJson(rfid, data)) {
+    res = {false, "recipe not found"};
+  }
+  printStructured("sfc.recipe.show", res, data);
+}
+
+void handleSfcRecipeDelete(const String &args) {
+  uint32_t rfid = 0;
+  if (!parseRfidArg(args, rfid)) {
+    printStructured("sfc.recipe.delete", {false, "usage: sfc.recipe.delete <rfid>"});
+    return;
+  }
+  ActionResult res{true, ""};
+  if (!Util::deleteRecipe(rfid)) {
+    res = {false, "delete failed"};
+  }
+  String data;
+  if (res.ok) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%08X", rfid);
+    data = "{\"rfid\":\"";
+    data += buf;
+    data += "\"}";
+  }
+  printStructured("sfc.recipe.delete", res, data);
+}
+
 const CommandDescriptor COMMANDS[] = {
     {"speed", "set gantry speed (steps/sec)", handleSpeed},
     {"home", "home gantry", handleHome},
@@ -442,6 +495,9 @@ const CommandDescriptor COMMANDS[] = {
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
+    {"sfc.recipe.list", "list recipe RFIDs in storage", handleSfcRecipeList},
+    {"sfc.recipe.show", "show recipe JSON for a toolhead RFID", handleSfcRecipeShow},
+    {"sfc.recipe.delete", "delete recipe for a toolhead RFID", handleSfcRecipeDelete},
 };
 
 const size_t COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
