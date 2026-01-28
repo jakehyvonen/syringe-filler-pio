@@ -6,6 +6,7 @@
 #include "util/Recipe.hpp"
 #include "hw/Pots.hpp"
 
+#include <Arduino.h>
 #include <nvs_flash.h>
 #include <nvs.h>
 #include <LittleFS.h>
@@ -384,6 +385,7 @@ bool readRecipeJson(uint32_t recipeId, String& outJson) {
 // RecipeDTO version
 // Save a RecipeDTO to LittleFS as JSON.
 bool saveRecipe(uint32_t recipeId, const RecipeDTO& in) {
+  Serial.printf("[Storage] saveRecipe(RecipeDTO): recipeId=%08X count=%u\n", recipeId, in.count);
   JsonDocument doc;
   char buf[16];
   snprintf(buf, sizeof(buf), "%08X", recipeId);
@@ -394,11 +396,21 @@ bool saveRecipe(uint32_t recipeId, const RecipeDTO& in) {
     JsonObject o = arr.add<JsonObject>();
     o["base_slot"] = in.steps[i].baseSlot;
     o["ml"]        = in.steps[i].ml;
+    o["volume_ml"] = in.steps[i].ml;
+    Serial.printf("[Storage] saveRecipe(RecipeDTO) step %u: base_slot=%u ml=%.3f\n",
+                  i, in.steps[i].baseSlot, in.steps[i].ml);
   }
 
   File f = LittleFS.open(recipePath(recipeId), "w");
-  if (!f) return false;
-  if (serializeJson(doc, f) == 0) { f.close(); return false; }
+  if (!f) {
+    Serial.printf("[Storage] saveRecipe(RecipeDTO): failed to open file for %08X\n", recipeId);
+    return false;
+  }
+  if (serializeJson(doc, f) == 0) {
+    Serial.printf("[Storage] saveRecipe(RecipeDTO): serialize failed for %08X\n", recipeId);
+    f.close();
+    return false;
+  }
   f.close();
   return true;
 }
@@ -406,21 +418,32 @@ bool saveRecipe(uint32_t recipeId, const RecipeDTO& in) {
 // Load a RecipeDTO from LittleFS JSON.
 bool loadRecipe(uint32_t recipeId, RecipeDTO& out) {
   File f = LittleFS.open(recipePath(recipeId), "r");
-  if (!f) return false;
+  if (!f) {
+    Serial.printf("[Storage] loadRecipe(RecipeDTO): failed to open file for %08X\n", recipeId);
+    return false;
+  }
 
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
-  if (err) return false;
+  if (err) {
+    Serial.printf("[Storage] loadRecipe(RecipeDTO): JSON error for %08X: %s\n",
+                  recipeId, err.c_str());
+    return false;
+  }
 
   JsonArray arr = doc["steps"].as<JsonArray>();
   out.count = 0;
   for (JsonVariant v : arr) {
     if (out.count >= RecipeDTO::kMaxSteps) break;
     out.steps[out.count].baseSlot = v["base_slot"] | 0;
-    out.steps[out.count].ml       = v["ml"] | 0.0f;
+    out.steps[out.count].ml       = v["ml"] | v["volume_ml"] | 0.0f;
+    Serial.printf("[Storage] loadRecipe(RecipeDTO) step %u: base_slot=%u ml=%.3f\n",
+                  out.count, out.steps[out.count].baseSlot, out.steps[out.count].ml);
     out.count++;
   }
+  Serial.printf("[Storage] loadRecipe(RecipeDTO): loaded %u step(s) for %08X\n",
+                out.count, recipeId);
   return true;
 }
 
@@ -428,8 +451,13 @@ bool loadRecipe(uint32_t recipeId, RecipeDTO& out) {
 // Save a Util::Recipe to LittleFS JSON.
 bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe) {
   if (recipeId == 0) return false;
+  Serial.printf("[Storage] saveRecipe(Util::Recipe): recipeId=%08X count=%u\n",
+                recipeId, recipe.count);
   File f = LittleFS.open(recipePath(recipeId), "w");
-  if (!f) return false;
+  if (!f) {
+    Serial.printf("[Storage] saveRecipe(Util::Recipe): failed to open file for %08X\n", recipeId);
+    return false;
+  }
 
   JsonDocument doc;
   char buf[16];
@@ -440,6 +468,9 @@ bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe) {
 
   bool ok = (serializeJson(doc, f) != 0);
   f.close();
+  if (!ok) {
+    Serial.printf("[Storage] saveRecipe(Util::Recipe): serialize failed for %08X\n", recipeId);
+  }
   return ok;
 }
 
@@ -447,15 +478,24 @@ bool saveRecipe(uint32_t recipeId, const Util::Recipe& recipe) {
 bool loadRecipe(uint32_t recipeId, Util::Recipe& recipe) {
   if (recipeId == 0) return false;
   File f = LittleFS.open(recipePath(recipeId), "r");
-  if (!f) return false;
+  if (!f) {
+    Serial.printf("[Storage] loadRecipe(Util::Recipe): failed to open file for %08X\n", recipeId);
+    return false;
+  }
 
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, f);
   f.close();
-  if (err) return false;
+  if (err) {
+    Serial.printf("[Storage] loadRecipe(Util::Recipe): JSON error for %08X: %s\n",
+                  recipeId, err.c_str());
+    return false;
+  }
 
   JsonArrayConst arr = doc["steps"].as<JsonArrayConst>();
   recipe.fromJson(arr);
+  Serial.printf("[Storage] loadRecipe(Util::Recipe): parsed %u step(s) for %08X\n",
+                recipe.count, recipeId);
   return !recipe.isEmpty();
 }
 
