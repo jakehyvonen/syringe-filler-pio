@@ -6,6 +6,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <ESPmDNS.h>
 #include <WebServer.h>
 #include <WiFi.h>
 
@@ -24,6 +25,9 @@ namespace {
 WebServer server(80);
 
 constexpr size_t kMaxRecipeList = 64;
+constexpr uint32_t kWifiConnectTimeoutMs = 20000;
+constexpr uint32_t kWifiPollIntervalMs = 500;
+constexpr char kMdnsHostname[] = "syringe-filler";
 
 const char kIndexHtml[] PROGMEM = R"HTML(
 <!DOCTYPE html>
@@ -303,7 +307,59 @@ void handleApiRecipeItem() {
   }
 }
 
-void startWiFi() {
+const char* wifiStatusToString(wl_status_t status) {
+  switch (status) {
+    case WL_NO_SSID_AVAIL: return "NO_SSID_AVAIL";
+    case WL_SCAN_COMPLETED: return "SCAN_COMPLETED";
+    case WL_CONNECTED: return "CONNECTED";
+    case WL_CONNECT_FAILED: return "CONNECT_FAILED";
+    case WL_CONNECTION_LOST: return "CONNECTION_LOST";
+    case WL_DISCONNECTED: return "DISCONNECTED";
+    case WL_IDLE_STATUS: return "IDLE";
+    default: return "UNKNOWN";
+  }
+}
+
+bool startMdns() {
+  if (!MDNS.begin(kMdnsHostname)) {
+    Serial.println("[WebUI] mDNS failed to start.");
+    return false;
+  }
+  MDNS.addService("http", "tcp", 80);
+  Serial.printf("[WebUI] mDNS started: http://%s.local/\n", kMdnsHostname);
+  return true;
+}
+
+bool connectToWiFi(const String& ssid, const String& password) {
+  Serial.printf("[WebUI] Connecting to WiFi SSID '%s'...\n", ssid.c_str());
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid.c_str(), password.c_str());
+
+  unsigned long start = millis();
+  wl_status_t lastStatus = WL_IDLE_STATUS;
+  while (millis() - start < kWifiConnectTimeoutMs) {
+    wl_status_t status = WiFi.status();
+    if (status != lastStatus) {
+      Serial.printf("[WebUI] WiFi status: %s\n", wifiStatusToString(status));
+      lastStatus = status;
+    }
+    if (status == WL_CONNECTED) {
+      IPAddress ip = WiFi.localIP();
+      Serial.printf("[WebUI] WiFi connected. IP: %s RSSI: %ld dBm\n",
+                    ip.toString().c_str(), WiFi.RSSI());
+      startMdns();
+      return true;
+    }
+    delay(kWifiPollIntervalMs);
+  }
+
+  Serial.println("[WebUI] WiFi connection timed out.");
+  return false;
+}
+
+void startAccessPoint() {
   WiFi.mode(WIFI_AP);
   bool ok = WiFi.softAP(SYRINGE_FILLER_WIFI_SSID, SYRINGE_FILLER_WIFI_PASS);
   if (!ok) {
@@ -312,6 +368,21 @@ void startWiFi() {
   }
   IPAddress ip = WiFi.softAPIP();
   Serial.printf("[WebUI] AP '%s' started. IP: %s\n", SYRINGE_FILLER_WIFI_SSID, ip.toString().c_str());
+  Serial.println("[WebUI] Open http://192.168.4.1/wifi to configure STA WiFi.");
+}
+
+void startWiFi() {
+  String ssid;
+  String password;
+  if (Util::loadWiFiCredentials(ssid, password)) {
+    if (connectToWiFi(ssid, password)) {
+      return;
+    }
+    Serial.println("[WebUI] Falling back to AP mode.");
+  } else {
+    Serial.println("[WebUI] No saved WiFi credentials found.");
+  }
+  startAccessPoint();
 }
 
 } // namespace
