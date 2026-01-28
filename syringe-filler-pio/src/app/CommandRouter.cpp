@@ -149,15 +149,11 @@ bool connectToWiFi(const String &ssid, const String &password) {
     Serial.println("[WiFi] Missing SSID.");
     return false;
   }
-  Serial.println("[WiFi] Starting STA connect sequence...");
-  Serial.printf("[WiFi] Target SSID: '%s' (password length: %u)\n", ssid.c_str(), password.length());
-  Serial.printf("[WiFi] Device MAC: %s\n", WiFi.macAddress().c_str());
+  Serial.printf("[WiFi] Connecting to SSID '%s'...\n", ssid.c_str());
   WiFi.softAPdisconnect(true);
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
-  Serial.println("[WiFi] WiFi mode set to STA.");
   WiFi.begin(ssid.c_str(), password.c_str());
-  Serial.println("[WiFi] WiFi.begin() issued.");
 
   unsigned long start = millis();
   wl_status_t lastStatus = WL_IDLE_STATUS;
@@ -171,8 +167,6 @@ bool connectToWiFi(const String &ssid, const String &password) {
       IPAddress ip = WiFi.localIP();
       Serial.printf("[WiFi] Connected. IP: %s RSSI: %ld dBm\n",
                     ip.toString().c_str(), WiFi.RSSI());
-      Serial.printf("[WiFi] BSSID: %s Channel: %d\n",
-                    WiFi.BSSIDstr().c_str(), WiFi.channel());
       startMdns();
       return true;
     }
@@ -180,7 +174,6 @@ bool connectToWiFi(const String &ssid, const String &password) {
   }
 
   Serial.println("[WiFi] Connection timed out.");
-  Serial.printf("[WiFi] Final status: %s\n", wifiStatusToString(WiFi.status()));
   return false;
 }
 
@@ -194,30 +187,6 @@ void startAccessPoint() {
   }
   IPAddress ip = WiFi.softAPIP();
   Serial.printf("[WiFi] AP '%s' started. IP: %s\n", SYRINGE_FILLER_WIFI_SSID, ip.toString().c_str());
-}
-
-void handleWifiScan(const String &args) {
-  (void)args;
-  Serial.println("[WiFi] Scanning for networks...");
-  int count = WiFi.scanNetworks();
-  if (count < 0) {
-    printStructured("wifi.scan", {false, "scan failed"});
-    return;
-  }
-  JsonDocument doc;
-  JsonArray arr = doc["networks"].to<JsonArray>();
-  for (int i = 0; i < count; ++i) {
-    JsonObject entry = arr.add<JsonObject>();
-    entry["ssid"] = WiFi.SSID(i);
-    entry["rssi"] = WiFi.RSSI(i);
-    entry["channel"] = WiFi.channel(i);
-    entry["secure"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
-  }
-  doc["count"] = count;
-  String data;
-  serializeJson(doc, data);
-  printStructured("wifi.scan", {true, ""}, data);
-  WiFi.scanDelete();
 }
 
 void handleWifiStatus(const String &args) {
@@ -664,7 +633,6 @@ void handleSfcRecipeDelete(const String &args) {
 }
 
 const CommandDescriptor COMMANDS[] = {
-    {"wifi.scan", "scan for nearby WiFi networks", handleWifiScan},
     {"wifi.status", "show WiFi status, IP, and mDNS hostname", handleWifiStatus},
     {"wifi.set", "save WiFi credentials and connect", handleWifiSet},
     {"wifi.connect", "connect using saved WiFi credentials", handleWifiConnect},
