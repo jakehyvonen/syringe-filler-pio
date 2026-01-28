@@ -19,7 +19,7 @@ namespace App {
 
 namespace {
   constexpr bool DEBUG_FLAG = true;
-  constexpr long kBaseRfidScanErrorThreshold = 2300;
+  constexpr long kBaseRfidScanErrorThreshold = 1700;
   constexpr uint32_t kBaseRfidScanIntervalMs = 75;
 
   // used by BaseRFID listener
@@ -122,7 +122,8 @@ SyringeFillController::SyringeFillController()
 // Scan all base slots and load any detected syringes.
 void SyringeFillController::scanAllBaseSyringes() {
   dbg("scanAllBaseSyringes() start");
-  for (uint8_t i = 0; i < Bases::kCount; ++i) {
+  Axis::setSpeedSPS(2300);
+  for (uint8_t i = 1; i < Bases::kCount; ++i) {
     if (!scanBaseSyringe(i)) {
       if (DEBUG_FLAG) {
         Serial.print("[SFC] WARN: scanBaseSyringe(");
@@ -131,6 +132,15 @@ void SyringeFillController::scanAllBaseSyringes() {
       }
     }
   }
+  //scan slot 0 last because of RFID scanning physics
+  if (!scanBaseSyringe(0)) {
+      if (DEBUG_FLAG) {
+        Serial.print("[SFC] WARN: scanBaseSyringe(");
+        Serial.print(0);
+        Serial.println(") failed");
+      }
+    }
+
   dbg("scanAllBaseSyringes() done");
 }
 
