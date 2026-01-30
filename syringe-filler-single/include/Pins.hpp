@@ -14,11 +14,10 @@ constexpr int STEPPER_DIR  = 20;
 constexpr int BUTTON_WITHDRAW = 10;
 constexpr int BUTTON_DISPENSE = 9;
 
-// PN532 RFID (I2C)
-constexpr int I2C_SDA = 8;
-constexpr int I2C_SCL = 7;
-constexpr uint32_t I2C_FREQ = 400000;
-constexpr int PN532_IRQ = 6;
+// PN532 RFID (SPI)
+constexpr int PN532_MISO = 8;
+constexpr int PN532_MOSI = 7;
+constexpr int PN532_SCK = 6;
+constexpr int PN532_SS = 4;
 constexpr int PN532_RST = 5;
-//test a change
 }  // namespace Pins
