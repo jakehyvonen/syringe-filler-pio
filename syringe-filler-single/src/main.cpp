@@ -90,47 +90,137 @@ void loop() {
 #include "WebUI.hpp"
 
 namespace {
-constexpr uint32_t kStepIntervalUs = 800;  // ~1250 steps/sec
+constexpr uint32_t kDefaultSpeedSps = 800;
+constexpr uint32_t kMinSpeedSps = 1;
+constexpr uint32_t kMaxSpeedSps = 20000;
 constexpr uint16_t kStepPulseWidthUs = 10;
+constexpr uint16_t kDebounceMs = 15;
 constexpr bool kWithdrawDirHigh = true;
+
+const uint8_t kEnableLevel = LOW;
+const uint8_t kDisableLevel = HIGH;
 
 Shared::WifiManager g_wifi;
 RfidReader g_rfid;
 
+struct DebouncedButton {
+  bool stable_state = HIGH;
+  bool last_read = HIGH;
+  uint32_t last_change_ms = 0;
+
+  bool update(bool raw, uint32_t now_ms) {
+    if (raw != last_read) {
+      last_read = raw;
+      last_change_ms = now_ms;
+    }
+    if ((now_ms - last_change_ms) >= kDebounceMs) {
+      stable_state = raw;
+    }
+    return stable_state == LOW;
+  }
+};
+
 class StepperControl {
  public:
   void begin() {
-
     pinMode(Pins::STEPPER_STEP, OUTPUT);
     pinMode(Pins::STEPPER_DIR, OUTPUT);
     digitalWrite(Pins::STEPPER_STEP, LOW);
     digitalWrite(Pins::STEPPER_DIR, LOW);
+    if (Pins::STEPPER_ENABLE >= 0) {
+      pinMode(Pins::STEPPER_ENABLE, OUTPUT);
+      digitalWrite(Pins::STEPPER_ENABLE, kDisableLevel);
+    }
+    applySpeed(kDefaultSpeedSps);
   }
 
-  void setDirection(bool withdraw) {
-    digitalWrite(Pins::STEPPER_DIR, withdraw ? HIGH : LOW);
-  }
+  void setDirection(bool withdraw) { setDirectionLevel(withdraw ? HIGH : LOW); }
 
   void setMoving(bool moving) { m_moving = moving; }
 
+  void applySpeed(uint32_t sps) {
+    if (sps < kMinSpeedSps) sps = kMinSpeedSps;
+    if (sps > kMaxSpeedSps) sps = kMaxSpeedSps;
+    m_speed_sps = sps;
+    m_step_interval_us = 1000000UL / sps;
+  }
+
+  void motorEnable(bool enable) {
+    if (Pins::STEPPER_ENABLE >= 0) {
+      digitalWrite(Pins::STEPPER_ENABLE, enable ? kEnableLevel : kDisableLevel);
+    }
+    m_driver_enabled = enable;
+  }
+
+  void setForceEnable(bool force) { m_force_enable = force; }
+
   void update() {
-    if (!m_moving) return;
+    if (!m_moving) {
+      if (!m_force_enable) {
+        motorEnable(false);
+      }
+      return;
+    }
+
+    motorEnable(true);
     uint32_t now = micros();
-    if (now - m_lastStepUs < kStepIntervalUs) return;
+    if ((uint32_t)(now - m_lastStepUs) < m_step_interval_us) return;
     m_lastStepUs = now;
     digitalWrite(Pins::STEPPER_STEP, HIGH);
     delayMicroseconds(kStepPulseWidthUs);
     digitalWrite(Pins::STEPPER_STEP, LOW);
   }
 
+  uint32_t speedSps() const { return m_speed_sps; }
+  uint32_t stepIntervalUs() const { return m_step_interval_us; }
+  bool driverEnabled() const { return m_driver_enabled; }
+  bool forceEnable() const { return m_force_enable; }
+  int directionLevel() const { return m_dir_level; }
+
  private:
+  void setDirectionLevel(int level) {
+    digitalWrite(Pins::STEPPER_DIR, level);
+    m_dir_level = level;
+  }
+
   bool m_moving = false;
   uint32_t m_lastStepUs = 0;
+  uint32_t m_speed_sps = kDefaultSpeedSps;
+  uint32_t m_step_interval_us = 1000000UL / kDefaultSpeedSps;
+  bool m_driver_enabled = false;
+  bool m_force_enable = false;
+  int m_dir_level = LOW;
 };
 
 StepperControl g_stepper;
 
 String g_input;
+
+DebouncedButton g_withdraw_button;
+DebouncedButton g_dispense_button;
+
+bool g_last_withdraw_pressed = false;
+bool g_last_dispense_pressed = false;
+bool g_last_moving = false;
+uint32_t g_last_status_ms = 0;
+uint32_t g_last_button_report_ms = 0;
+
+void printStepperState(const char* context) {
+  Serial.print("[Stepper] ");
+  Serial.print(context);
+  Serial.print(" speed_sps=");
+  Serial.print(g_stepper.speedSps());
+  Serial.print(" interval_us=");
+  Serial.print(g_stepper.stepIntervalUs());
+  Serial.print(" dir=");
+  Serial.print(g_stepper.directionLevel());
+  Serial.print(" enabled=");
+  Serial.print(g_stepper.driverEnabled() ? "1" : "0");
+  Serial.print(" force=");
+  Serial.print(g_stepper.forceEnable() ? "1" : "0");
+  Serial.print(" enable_pin=");
+  Serial.println(Pins::STEPPER_ENABLE);
+}
 
 void printStructured(const char* cmd, bool ok, const String& message = "", const String& data = "") {
   Serial.print("{\"cmd\":\"");
@@ -202,7 +292,47 @@ void handleWifiScan() {
   printStructured("wifi.scan", true, "", g_wifi.buildScanJson());
 }
 
+bool handleStepperCommand(const String& line) {
+  if (line.startsWith("speed ")) {
+    uint32_t sps = static_cast<uint32_t>(line.substring(6).toInt());
+    g_stepper.applySpeed(sps);
+    Serial.print("OK speed ");
+    Serial.println(g_stepper.speedSps());
+    printStepperState("speed");
+    return true;
+  }
+  if (line.startsWith("dir ")) {
+    int dir_level = line.substring(4).toInt() ? HIGH : LOW;
+    g_stepper.setDirection(dir_level == HIGH);
+    Serial.print("OK dir ");
+    Serial.println(dir_level == HIGH ? 1 : 0);
+    printStepperState("dir");
+    return true;
+  }
+  if (line == "on") {
+    g_stepper.setForceEnable(true);
+    g_stepper.motorEnable(true);
+    Serial.println("OK on");
+    printStepperState("on");
+    return true;
+  }
+  if (line == "off") {
+    g_stepper.setForceEnable(false);
+    g_stepper.motorEnable(false);
+    Serial.println("OK off");
+    printStepperState("off");
+    return true;
+  }
+  if (line == "state") {
+    printStepperState("state");
+    return true;
+  }
+  return false;
+}
+
 void handleCommand(const String& line) {
+  if (handleStepperCommand(line)) return;
+
   int sp = line.indexOf(' ');
   String cmd = (sp < 0) ? line : line.substring(0, sp);
   String args = (sp < 0) ? "" : line.substring(sp + 1);
@@ -262,10 +392,16 @@ void setup() {
   Serial.begin(115200);
   delay(200);
   Serial.println("\n[Single] Booting...");
+  Serial.println("[Single] Stepper debug enabled.");
+  Serial.println("[Single] Stepper commands: speed <sps>, dir <0|1>, on, off, state");
 
   pinMode(Pins::BUTTON_WITHDRAW, INPUT_PULLUP);
   pinMode(Pins::BUTTON_DISPENSE, INPUT_PULLUP);
   g_stepper.begin();
+  printStepperState("init");
+  if (Pins::STEPPER_ENABLE < 0) {
+    Serial.println("[Stepper] Warning: STEPPER_ENABLE is -1 (driver always enabled or wired differently).");
+  }
 
   if (!Storage::init()) {
     Serial.println("[Storage] Failed to init LittleFS.");
@@ -288,22 +424,48 @@ void loop() {
     WebUI::setCurrentRfid(g_rfid.currentTag());
   }
 
-  bool withdrawPressed = digitalRead(Pins::BUTTON_WITHDRAW) == LOW;
-  bool dispensePressed = digitalRead(Pins::BUTTON_DISPENSE) == LOW;
+  bool withdrawPressed = g_withdraw_button.update(digitalRead(Pins::BUTTON_WITHDRAW), nowMs);
+  bool dispensePressed = g_dispense_button.update(digitalRead(Pins::BUTTON_DISPENSE), nowMs);
+
+  if (withdrawPressed != g_last_withdraw_pressed || dispensePressed != g_last_dispense_pressed) {
+    Serial.print("[Buttons] withdraw=");
+    Serial.print(withdrawPressed ? "pressed" : "released");
+    Serial.print(" dispense=");
+    Serial.println(dispensePressed ? "pressed" : "released");
+    g_last_withdraw_pressed = withdrawPressed;
+    g_last_dispense_pressed = dispensePressed;
+  }
+
+  if (nowMs - g_last_button_report_ms >= 2000) {
+    g_last_button_report_ms = nowMs;
+    Serial.print("[Buttons] poll withdraw=");
+    Serial.print(withdrawPressed ? "1" : "0");
+    Serial.print(" dispense=");
+    Serial.println(dispensePressed ? "1" : "0");
+  }
 
   if (withdrawPressed && !dispensePressed) {
     g_stepper.setDirection(kWithdrawDirHigh);
     g_stepper.setMoving(true);
-    Serial.println("withdrawPressed");
   } else if (dispensePressed && !withdrawPressed) {
     g_stepper.setDirection(!kWithdrawDirHigh);
     g_stepper.setMoving(true);
-    Serial.println("dispensePressed");
   } else {
     g_stepper.setMoving(false);
   }
 
+  bool moving = withdrawPressed != dispensePressed;
+  if (moving != g_last_moving) {
+    g_last_moving = moving;
+    Serial.println(moving ? "[Stepper] motion start" : "[Stepper] motion stop");
+    printStepperState("motion");
+  }
+
   g_stepper.update();
+
+  if (nowMs - g_last_status_ms >= 5000) {
+    g_last_status_ms = nowMs;
+    printStepperState("heartbeat");
+  }
   //WebUI::handle();
 }
-
