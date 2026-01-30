@@ -15,4 +15,6 @@ class RfidReader {
 
  private:
   uint32_t m_currentTag = 0;
+  bool m_available = false;
+  uint32_t m_lastStatusLogMs = 0;
 };
