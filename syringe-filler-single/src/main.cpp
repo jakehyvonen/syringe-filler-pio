@@ -91,7 +91,7 @@ void loop() {
 
 namespace {
 constexpr uint32_t kStepIntervalUs = 800;  // ~1250 steps/sec
-constexpr uint16_t kStepPulseWidthUs = 3;
+constexpr uint16_t kStepPulseWidthUs = 10;
 constexpr bool kWithdrawDirHigh = true;
 
 Shared::WifiManager g_wifi;
@@ -304,6 +304,6 @@ void loop() {
   }
 
   g_stepper.update();
-  WebUI::handle();
+  //WebUI::handle();
 }
 
