@@ -7,7 +7,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-namespace App {
+namespace Shared {
 
 class WifiManager {
  public:
@@ -26,4 +26,4 @@ class WifiManager {
   static const char* authModeToString(wifi_auth_mode_t mode);
 };
 
-}  // namespace App
+}  // namespace Shared

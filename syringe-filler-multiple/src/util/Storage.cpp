@@ -112,51 +112,6 @@ bool initStorage() {
   return true;
 }
 
-// ---------------------- WiFi credentials ----------------
-struct WifiBlob {
-  char ssid[33];
-  char password[65];
-  uint32_t crc;
-};
-
-bool loadWiFiCredentials(String& ssid, String& password) {
-  size_t required = 0;
-  if (!nvsGetBlobSize("wifi", "creds", required)) return false;
-  if (required != sizeof(WifiBlob)) return false;
-
-  WifiBlob blob{};
-  if (!nvsLoadBlob("wifi", "creds", &blob, sizeof(blob))) return false;
-
-  uint32_t calc = crcForBlob(&blob, sizeof(blob), &blob.crc);
-  if (blob.crc != calc) return false;
-
-  blob.ssid[sizeof(blob.ssid) - 1] = '\0';
-  blob.password[sizeof(blob.password) - 1] = '\0';
-  ssid = String(blob.ssid);
-  password = String(blob.password);
-  return ssid.length() > 0;
-}
-
-bool saveWiFiCredentials(const String& ssid, const String& password) {
-  if (ssid.length() == 0) return false;
-
-  WifiBlob blob{};
-  strncpy(blob.ssid, ssid.c_str(), sizeof(blob.ssid) - 1);
-  strncpy(blob.password, password.c_str(), sizeof(blob.password) - 1);
-  blob.crc = 0;
-  blob.crc = crc32_acc(reinterpret_cast<const uint8_t*>(&blob), sizeof(blob));
-  return nvsSaveBlob("wifi", "creds", &blob, sizeof(blob));
-}
-
-bool clearWiFiCredentials() {
-  nvs_handle_t h;
-  if (nvs_open("wifi", NVS_READWRITE, &h) != ESP_OK) return false;
-  esp_err_t err = nvs_erase_key(h, "creds");
-  if (err == ESP_OK) err = nvs_commit(h);
-  nvs_close(h);
-  return err == ESP_OK || err == ESP_ERR_NVS_NOT_FOUND;
-}
-
 // ---------------------- calibration ----------------------
 // Load toolhead calibration data for an RFID.
 bool loadCalibration(uint32_t rfid, App::PotCalibration& out) {

@@ -8,7 +8,8 @@
 #include "app/CommandRouter.hpp"
 #include "app/DeviceActions.hpp"
 #include "app/SyringeFillController.hpp"
-#include "app/WifiManager.hpp"
+#include <WifiCredentials.hpp>
+#include <WifiManager.hpp>
 
 #include "hw/Bases.hpp"
 #include "hw/Pins.hpp"
@@ -74,7 +75,7 @@ struct CommandDescriptor {
 
 static String input;
 static App::SyringeFillController g_sfc;
-static App::WifiManager g_wifi;
+static Shared::WifiManager g_wifi;
 
 // Emit a JSON response for a simple action result.
 void printStructured(const char *cmd, const ActionResult &res, const String &data = "") {
@@ -127,7 +128,7 @@ void handleWifiSet(const String &args) {
     return;
   }
 
-  if (!Util::saveWiFiCredentials(ssid, password)) {
+  if (!Shared::WiFiCredentials::save(ssid, password)) {
     printStructured("wifi.set", {false, "failed to save credentials"});
     return;
   }
@@ -140,7 +141,7 @@ void handleWifiConnect(const String &args) {
   (void)args;
   String ssid;
   String password;
-  if (!Util::loadWiFiCredentials(ssid, password)) {
+  if (!Shared::WiFiCredentials::load(ssid, password)) {
     printStructured("wifi.connect", {false, "no saved credentials"});
     return;
   }
@@ -150,7 +151,7 @@ void handleWifiConnect(const String &args) {
 
 void handleWifiClear(const String &args) {
   (void)args;
-  if (!Util::clearWiFiCredentials()) {
+  if (!Shared::WiFiCredentials::clear()) {
     printStructured("wifi.clear", {false, "failed to clear credentials"});
     return;
   }
