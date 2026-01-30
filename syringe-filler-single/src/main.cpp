@@ -1,8 +1,85 @@
+/*
+#include <Arduino.h>
+
+static String line;
+static uint32_t lastBeat = 0;
+
+static void printBanner() {
+  Serial.println();
+  Serial.println("=== ESP32-C3 Serial Echo Test ===");
+  Serial.println("Type something and press Enter.");
+  Serial.println("Commands: ping | help | baud?");
+  Serial.println();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Give the host time to open the port, then spam banner briefly
+  for (int i = 0; i < 10; i++) {
+    printBanner();
+    delay(200);
+  }
+
+  line.reserve(128);
+}
+
+void loop() {
+  // Heartbeat so you always know it's alive
+  if (millis() - lastBeat > 1000) {
+    lastBeat = millis();
+    Serial.println("tick");
+  }
+
+  // Read bytes and build a line
+  while (Serial.available() > 0) {
+    char c = (char)Serial.read();
+
+    // Optional: show every character immediately (true echo)
+    Serial.write(c);
+
+    // Line handling
+    if (c == '\r') continue;          // ignore CR
+    if (c == '\n') {
+      String cmd = line;
+      line = "";
+
+      cmd.trim();
+      if (cmd.length() == 0) {
+        Serial.println();
+        continue;
+      }
+
+      Serial.print("\r\nYou said: ");
+      Serial.println(cmd);
+
+      if (cmd.equalsIgnoreCase("ping")) {
+        Serial.println("pong");
+      } else if (cmd.equalsIgnoreCase("help")) {
+        Serial.println("Commands: ping | help | baud?");
+      } else if (cmd.equalsIgnoreCase("baud?")) {
+        Serial.println("115200 (fixed in sketch)");
+      } else {
+        Serial.println("(no command matched)");
+      }
+
+      Serial.println();
+    } else {
+      // Protect against runaway input
+      if (line.length() < 200) line += c;
+      else {
+        line = "";
+        Serial.println("\r\n(line too long; cleared)");
+      }
+    }
+  }
+}
+*/
 /**
  * @file main.cpp
  * @brief Single-syringe firmware: stepper + buttons + PN532 + web UI.
  */
-#include <Arduino.h>
+ #include <Arduino.h>
 
 #include <WifiCredentials.hpp>
 #include <WifiManager.hpp>
@@ -23,6 +100,7 @@ RfidReader g_rfid;
 class StepperControl {
  public:
   void begin() {
+
     pinMode(Pins::STEPPER_STEP, OUTPUT);
     pinMode(Pins::STEPPER_DIR, OUTPUT);
     digitalWrite(Pins::STEPPER_STEP, LOW);
@@ -216,9 +294,11 @@ void loop() {
   if (withdrawPressed && !dispensePressed) {
     g_stepper.setDirection(kWithdrawDirHigh);
     g_stepper.setMoving(true);
+    Serial.println("withdrawPressed");
   } else if (dispensePressed && !withdrawPressed) {
     g_stepper.setDirection(!kWithdrawDirHigh);
     g_stepper.setMoving(true);
+    Serial.println("dispensePressed");
   } else {
     g_stepper.setMoving(false);
   }
@@ -226,3 +306,4 @@ void loop() {
   g_stepper.update();
   WebUI::handle();
 }
+
