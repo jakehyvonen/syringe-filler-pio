@@ -2,12 +2,12 @@
  * @file WifiManager.cpp
  * @brief WiFi connection helpers and diagnostics.
  */
-#include "app/WifiManager.hpp"
+#include "WifiManager.hpp"
 
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
 
-namespace App {
+namespace Shared {
 namespace {
 constexpr uint32_t kWifiConnectTimeoutMs = 20000;
 constexpr uint32_t kWifiPollIntervalMs = 500;
@@ -166,7 +166,6 @@ String WifiManager::buildScanJson() {
       entry["rssi"] = WiFi.RSSI(i);
       entry["channel"] = WiFi.channel(i);
       entry["auth"] = authModeToString(WiFi.encryptionType(i));
-      //entry["hidden"] = WiFi.isHidden(i);
     }
   }
   String data;
@@ -182,4 +181,4 @@ String WifiManager::buildScanJson() {
 
 const char* WifiManager::hostname() const { return kMdnsHostname; }
 
-}  // namespace App
+}  // namespace Shared
