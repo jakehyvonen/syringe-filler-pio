@@ -20,5 +20,5 @@ constexpr int I2C_SCL = 20;
 constexpr uint32_t I2C_FREQ = 400000;
 constexpr int PN532_IRQ = 25;
 constexpr int PN532_RST = 14;
-
+//test a change
 }  // namespace Pins
