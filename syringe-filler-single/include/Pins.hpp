@@ -11,14 +11,14 @@ constexpr int STEPPER_STEP = 21;
 constexpr int STEPPER_DIR  = 20;
 
 // Buttons (active LOW, internal pullups)
-constexpr int BUTTON_WITHDRAW = 8;
-constexpr int BUTTON_DISPENSE = 7;
+constexpr int BUTTON_WITHDRAW = 10;
+constexpr int BUTTON_DISPENSE = 9;
 
 // PN532 RFID (I2C)
-constexpr int I2C_SDA = 21;
-constexpr int I2C_SCL = 20;
+constexpr int I2C_SDA = 8;
+constexpr int I2C_SCL = 7;
 constexpr uint32_t I2C_FREQ = 400000;
-constexpr int PN532_IRQ = 25;
-constexpr int PN532_RST = 14;
+constexpr int PN532_IRQ = 6;
+constexpr int PN532_RST = 5;
 //test a change
 }  // namespace Pins
