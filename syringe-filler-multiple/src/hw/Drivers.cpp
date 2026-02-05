@@ -87,22 +87,6 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Serial.printf("[I2C] clock updated to %lu Hz\n", (unsigned long)freq);
   }
 
-  // ---- ADS1115 detection ----
-  g_hasADS = false;
-  g_adsAddr = 0;
-  if (i2cPresentQuick(0x48) && Drivers::ADS.begin(0x48)) {
-    g_hasADS = true; g_adsAddr = 0x48;
-  } else if (i2cPresentQuick(0x49) && Drivers::ADS.begin(0x49)) {
-    g_hasADS = true; g_adsAddr = 0x49;
-  }
-
-  if (g_hasADS) {
-    Drivers::ADS.setGain(GAIN_ONE);
-    Serial.printf("ADS1115 detected @0x%02X (GAIN_ONE)\n", g_adsAddr);
-  } else {
-    Serial.println("WARN: ADS1115 not found; pot readings disabled.");
-  }
-
   // ---- PCA9685 detection ----
   if (i2cPresentQuick(0x40)) {
     Drivers::PCA.begin();
@@ -146,6 +130,22 @@ bool Drivers::initI2C2() {
     Wire1.setClock(Pins::I2C2_FREQ);
     g_i2c2Freq = Pins::I2C2_FREQ;
     Serial.printf("[I2C2] clock updated to %lu Hz\n", (unsigned long)Pins::I2C2_FREQ);
+  }
+
+  // ---- ADS1115 detection ----
+  g_hasADS = false;
+  g_adsAddr = 0;
+  if (i2c2PresentQuick(0x48) && Drivers::ADS.begin(0x48, &Wire1)) {
+    g_hasADS = true; g_adsAddr = 0x48;
+  } else if (i2c2PresentQuick(0x49) && Drivers::ADS.begin(0x49, &Wire1)) {
+    g_hasADS = true; g_adsAddr = 0x49;
+  }
+
+  if (g_hasADS) {
+    Drivers::ADS.setGain(GAIN_ONE);
+    Serial.printf("ADS1115 detected @0x%02X on I2C2 (GAIN_ONE)\n", g_adsAddr);
+  } else {
+    Serial.println("WARN: ADS1115 not found on I2C2; pot readings disabled.");
   }
 
   // ---- PN532 detection (I2C1) ----

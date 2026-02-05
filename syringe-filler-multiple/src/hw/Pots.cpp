@@ -7,6 +7,7 @@
 #include "hw/Pins.hpp"
 #include <Arduino.h>
 #include <Adafruit_ADS1X15.h>
+#include <Wire.h>
 
 namespace Pots {
 
@@ -63,7 +64,7 @@ void init() {
   // If Drivers/Wire aren’t already up elsewhere, ensure I2C is started there.
 
   for (int i = 0; i < 2; ++i) {
-    s_ads_present[i] = s_ads[i].begin(s_addr[i]);  // <-- pass address here
+    s_ads_present[i] = s_ads[i].begin(s_addr[i], &Wire1);
     if (s_ads_present[i]) {
       s_ads[i].setGain(PGA);
       // Optional: s_ads[i].setDataRate(RATE_ADS1115_250SPS);
