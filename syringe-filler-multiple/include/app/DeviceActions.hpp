@@ -84,5 +84,8 @@ ActionResult potMove(uint16_t target, long sps);
 // Diagnostics
 ActionResult i2cScanBoth();
 
+// Encoder
+ActionResult handleEncoderPollingCommand(const String &args);
+
 }  // namespace DeviceActions
 }  // namespace App

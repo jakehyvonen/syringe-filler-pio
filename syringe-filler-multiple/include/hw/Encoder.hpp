@@ -44,6 +44,9 @@ bool polling();
 // to be called from App::loop() so "enc on" can print
 void service();
 
+// Emit a throttled homing-time encoder debug line when polling is enabled.
+void reportHomingReading(const char *phase);
+
 // Optional hook for an index interrupt path.
 void onIndexPulse();
 

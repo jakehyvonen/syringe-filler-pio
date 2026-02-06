@@ -12,7 +12,6 @@
 #include <WifiManager.hpp>
 
 #include "hw/Bases.hpp"
-#include "hw/Encoder.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Pots.hpp"
 #include "util/Storage.hpp"
@@ -66,6 +65,7 @@ using App::DeviceActions::readBasePot;
 using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
 using App::DeviceActions::i2cScanBoth;
+using App::DeviceActions::handleEncoderPollingCommand;
 
 namespace {
 struct CommandDescriptor {
@@ -506,31 +506,15 @@ void handleI2cScan(const String &args) {
 
 
 void handleEncDebug(const String &args) {
-  if (args == "on") {
-    EncoderHW::setPolling(true);
-    printStructured("encdebug", {true, "encoder debug polling enabled"});
-    return;
-  }
-  if (args == "off") {
-    EncoderHW::setPolling(false);
-    printStructured("encdebug", {true, "encoder debug polling disabled"});
-    return;
-  }
-  printStructured("encdebug", {false, "usage: encdebug <on|off>"});
+  ActionResult res = handleEncoderPollingCommand(args);
+  if (!res.ok && res.message == "usage: <on|off>") res.message = "usage: encdebug <on|off>";
+  printStructured("encdebug", res);
 }
 
 void handleEnc(const String &args) {
-  if (args == "on") {
-    EncoderHW::setPolling(true);
-    printStructured("enc", {true, "encoder polling enabled"});
-    return;
-  }
-  if (args == "off") {
-    EncoderHW::setPolling(false);
-    printStructured("enc", {true, "encoder polling disabled"});
-    return;
-  }
-  printStructured("enc", {false, "usage: enc <on|off>"});
+  ActionResult res = handleEncoderPollingCommand(args);
+  if (!res.ok && res.message == "usage: <on|off>") res.message = "usage: enc <on|off>";
+  printStructured("enc", res);
 }
 
 void handleSfcRecipeList(const String &args) {

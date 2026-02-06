@@ -89,6 +89,20 @@ void service() {
   }
 }
 
+
+// Emit a throttled homing-time encoder debug line when polling is enabled.
+void reportHomingReading(const char *phase) {
+  if (!s_poll) return;
+
+  static uint32_t lastHomingPrintMs = 0;
+  const uint32_t now = millis();
+  if ((now - lastHomingPrintMs) < 100) return;
+  lastHomingPrintMs = now;
+
+  const long c = count();
+  Serial.printf("[HOMING ENC] phase=%s count=%ld mm=%.3f\n", phase, c, mm());
+}
+
 // Optional helper for an index ISR path.
 // Update offset to match the current hardware count.
 void onIndexPulse() {
