@@ -51,6 +51,7 @@ void home() {
   while (digitalRead(Pins::LIMIT) == HIGH) {
     stepOnceTimed();
     Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+    EncoderHW::reportHomingReading("fast_approach");
     if ((millis() - start) > timeoutMs) {
       Serial.println("HOMING ERROR: timeout (fast approach).");
       Axis::enable(false);
@@ -66,6 +67,7 @@ void home() {
     for (int i = 0; i < backOff; ++i) {
       stepOnceTimed();
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
+      EncoderHW::reportHomingReading("backoff");
     }
   }
   delay(10);
@@ -79,6 +81,7 @@ void home() {
   while (digitalRead(Pins::LIMIT) == HIGH) {
     stepOnceTimed();
     Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+    EncoderHW::reportHomingReading("slow_approach");
     if ((millis() - start) > timeoutMs) {
       Serial.println("HOMING ERROR: timeout (slow approach).");
       s_fastIntervalUs = saved;
@@ -97,6 +100,7 @@ void home() {
     for (int i = 0; i < releaseSteps; ++i) {
       stepOnceTimed();
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
+      EncoderHW::reportHomingReading("release");
     }
   }
 
@@ -119,6 +123,7 @@ void home() {
       stepsMoved++;
       // keep stepper position in sync while searching
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
+      EncoderHW::reportHomingReading("index_search");
 
       if (digitalRead(Pins::ENC_Z) == HIGH) {
         // index found right here → make THIS the encoder zero
@@ -135,6 +140,7 @@ void home() {
     for (long i = 0; i < stepsMoved; ++i) {
       stepOnceTimed();
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+      EncoderHW::reportHomingReading("return_to_home");
     }
     // ensure exact logical 0
     Axis::setCurrent(homePosSteps);

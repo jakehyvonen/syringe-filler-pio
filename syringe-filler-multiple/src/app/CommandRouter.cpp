@@ -65,6 +65,7 @@ using App::DeviceActions::readBasePot;
 using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
 using App::DeviceActions::i2cScanBoth;
+using App::DeviceActions::handleEncoderPollingCommand;
 
 namespace {
 struct CommandDescriptor {
@@ -503,6 +504,19 @@ void handleI2cScan(const String &args) {
   printStructured("i2cscan", i2cScanBoth());
 }
 
+
+void handleEncDebug(const String &args) {
+  ActionResult res = handleEncoderPollingCommand(args);
+  if (!res.ok && res.message == "usage: <on|off>") res.message = "usage: encdebug <on|off>";
+  printStructured("encdebug", res);
+}
+
+void handleEnc(const String &args) {
+  ActionResult res = handleEncoderPollingCommand(args);
+  if (!res.ok && res.message == "usage: <on|off>") res.message = "usage: enc <on|off>";
+  printStructured("enc", res);
+}
+
 void handleSfcRecipeList(const String &args) {
   (void)args;
   String data;
@@ -633,6 +647,8 @@ const CommandDescriptor COMMANDS[] = {
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
+    {"enc", "toggle encoder periodic prints (on|off)", handleEnc},
+    {"encdebug", "toggle encoder debug prints during homing (on|off)", handleEncDebug},
     {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
     {"sfc.recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
     {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},

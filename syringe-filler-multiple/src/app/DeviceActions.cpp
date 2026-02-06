@@ -11,6 +11,7 @@
 #include "hw/Pots.hpp"
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
+#include "hw/Encoder.hpp"
 #include "hw/Pins.hpp"
 #include "motion/Axis.hpp"
 #include "motion/AxisPair.hpp"
@@ -402,6 +403,19 @@ ActionResult potMove(uint16_t target, long sps) {
 ActionResult i2cScanBoth() {
   Drivers::i2cScanBoth();
   return {true, "i2c scan complete"};
+}
+
+// Handle encoder polling command arguments (on/off).
+ActionResult handleEncoderPollingCommand(const String &args) {
+  if (args == "on") {
+    EncoderHW::setPolling(true);
+    return {true, "encoder polling enabled"};
+  }
+  if (args == "off") {
+    EncoderHW::setPolling(false);
+    return {true, "encoder polling disabled"};
+  }
+  return {false, "usage: <on|off>"};
 }
 
 }  // namespace DeviceActions
