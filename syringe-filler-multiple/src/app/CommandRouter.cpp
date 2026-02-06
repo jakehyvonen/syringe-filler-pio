@@ -12,6 +12,7 @@
 #include <WifiManager.hpp>
 
 #include "hw/Bases.hpp"
+#include "hw/Encoder.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Pots.hpp"
 #include "util/Storage.hpp"
@@ -503,6 +504,35 @@ void handleI2cScan(const String &args) {
   printStructured("i2cscan", i2cScanBoth());
 }
 
+
+void handleEncDebug(const String &args) {
+  if (args == "on") {
+    EncoderHW::setPolling(true);
+    printStructured("encdebug", {true, "encoder debug polling enabled"});
+    return;
+  }
+  if (args == "off") {
+    EncoderHW::setPolling(false);
+    printStructured("encdebug", {true, "encoder debug polling disabled"});
+    return;
+  }
+  printStructured("encdebug", {false, "usage: encdebug <on|off>"});
+}
+
+void handleEnc(const String &args) {
+  if (args == "on") {
+    EncoderHW::setPolling(true);
+    printStructured("enc", {true, "encoder polling enabled"});
+    return;
+  }
+  if (args == "off") {
+    EncoderHW::setPolling(false);
+    printStructured("enc", {true, "encoder polling disabled"});
+    return;
+  }
+  printStructured("enc", {false, "usage: enc <on|off>"});
+}
+
 void handleSfcRecipeList(const String &args) {
   (void)args;
   String data;
@@ -633,6 +663,8 @@ const CommandDescriptor COMMANDS[] = {
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
+    {"enc", "toggle encoder periodic prints (on|off)", handleEnc},
+    {"encdebug", "toggle encoder debug prints during homing (on|off)", handleEncDebug},
     {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
     {"sfc.recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
     {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},

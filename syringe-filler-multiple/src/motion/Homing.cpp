@@ -26,6 +26,22 @@ static inline void stepOnceTimed() {
   digitalWrite(Pins::STEP1, state ? HIGH : LOW);
 }
 
+// Conditionally emit encoder readings while homing when debug polling is enabled.
+static inline void maybePrintEncoderReading(const char *phase, unsigned long &lastPrintMs) {
+  if (!EncoderHW::polling()) return;
+
+  const unsigned long now = millis();
+  if ((now - lastPrintMs) < 100) return;  // throttle output during step loops
+  lastPrintMs = now;
+
+  Serial.print("[HOMING ENC] phase=");
+  Serial.print(phase);
+  Serial.print(" count=");
+  Serial.print(EncoderHW::count());
+  Serial.print(" mm=");
+  Serial.println(EncoderHW::mm(), 3);
+}
+
 // Home the primary axis and zero the encoder.
 void home() {
   if (!Toolhead::ensureRaised()) {
@@ -34,6 +50,7 @@ void home() {
   }
 
   s_fastIntervalUs = 1000; // ~500 sps full-steps (two toggles per step)
+  unsigned long lastEncoderPrintMs = 0;
 
   Axis::enable(true);
 
@@ -51,6 +68,7 @@ void home() {
   while (digitalRead(Pins::LIMIT) == HIGH) {
     stepOnceTimed();
     Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+    maybePrintEncoderReading("fast_approach", lastEncoderPrintMs);
     if ((millis() - start) > timeoutMs) {
       Serial.println("HOMING ERROR: timeout (fast approach).");
       Axis::enable(false);
@@ -66,6 +84,7 @@ void home() {
     for (int i = 0; i < backOff; ++i) {
       stepOnceTimed();
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
+      maybePrintEncoderReading("backoff", lastEncoderPrintMs);
     }
   }
   delay(10);
@@ -79,6 +98,7 @@ void home() {
   while (digitalRead(Pins::LIMIT) == HIGH) {
     stepOnceTimed();
     Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+    maybePrintEncoderReading("slow_approach", lastEncoderPrintMs);
     if ((millis() - start) > timeoutMs) {
       Serial.println("HOMING ERROR: timeout (slow approach).");
       s_fastIntervalUs = saved;
@@ -97,6 +117,7 @@ void home() {
     for (int i = 0; i < releaseSteps; ++i) {
       stepOnceTimed();
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
+      maybePrintEncoderReading("release", lastEncoderPrintMs);
     }
   }
 
@@ -119,6 +140,7 @@ void home() {
       stepsMoved++;
       // keep stepper position in sync while searching
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? -1 : +1));
+      maybePrintEncoderReading("index_search", lastEncoderPrintMs);
 
       if (digitalRead(Pins::ENC_Z) == HIGH) {
         // index found right here → make THIS the encoder zero
@@ -135,6 +157,7 @@ void home() {
     for (long i = 0; i < stepsMoved; ++i) {
       stepOnceTimed();
       Axis::setCurrent(Axis::current() + (Pins::HOME_DIR_HIGH ? +1 : -1));
+      maybePrintEncoderReading("return_to_home", lastEncoderPrintMs);
     }
     // ensure exact logical 0
     Axis::setCurrent(homePosSteps);
