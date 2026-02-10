@@ -20,6 +20,11 @@ namespace CommandRouter {
 
 using App::ActionResult;
 using App::PositionResult;
+
+// ------------------------------------------------------------
+// Device action imports grouped by responsibility
+// ------------------------------------------------------------
+// Gantry and axis motion primitives.
 using App::DeviceActions::axis2Position;
 using App::DeviceActions::axis3Position;
 using App::DeviceActions::coupleSyringes;
@@ -61,10 +66,14 @@ using App::DeviceActions::setGantrySpeed;
 using App::DeviceActions::setServoAngle;
 using App::DeviceActions::setServoAngleSlow;
 using App::DeviceActions::setServoPulseRaw;
+
+// ADC/pot and bus diagnostics.
 using App::DeviceActions::readBasePot;
 using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
 using App::DeviceActions::i2cScanBoth;
+
+// Serial diagnostics and run controls.
 using App::DeviceActions::handleEncoderPollingCommand;
 using App::DeviceActions::setBreakpointsOff;
 using App::DeviceActions::setBreakpointsOn;
@@ -79,6 +88,10 @@ struct CommandDescriptor {
 static String input;
 static App::SyringeFillController g_sfc;
 static Shared::WifiManager g_wifi;
+
+// ------------------------------------------------------------
+// Shared command utilities
+// ------------------------------------------------------------
 
 // Emit a JSON response for a simple action result.
 void printStructured(const char *cmd, const ActionResult &res, const String &data = "") {
@@ -114,6 +127,10 @@ bool parseRecipeIdArg(const String &args, uint32_t &recipeIdOut) {
   if (end == args.c_str()) return false;
   return recipeIdOut != 0;
 }
+
+// ------------------------------------------------------------
+// WiFi command handlers
+// ------------------------------------------------------------
 
 void handleWifiStatus(const String &args) {
   (void)args;
@@ -171,6 +188,10 @@ void handleWifiScan(const String &args) {
   (void)args;
   printStructured("wifi.scan", {true, ""}, g_wifi.buildScanJson());
 }
+
+// ------------------------------------------------------------
+// Motion, base selection, and servo command handlers
+// ------------------------------------------------------------
 
 // Handle "speed" command for gantry speed changes.
 void handleSpeed(const String &args) {
@@ -304,6 +325,10 @@ void handleRfid(const String &args) { printStructured("rfid", handleRfidCommand(
 
 // Handle "rfid2" command for base RFID control.
 void handleRfid2(const String &args) { printStructured("rfid2", handleBaseRfidCommand(args)); }
+
+// ------------------------------------------------------------
+// SyringeFillController command handlers
+// ------------------------------------------------------------
 
 // Handle "sfc.scanBases" command to scan all bases.
 void handleSfcScanBases(const String &args) { printStructured("sfc.scanBases", sfcScanBases(g_sfc)); }
@@ -460,6 +485,10 @@ void handleSfcCalToolForceZero(const String &args) {
   printStructured("cal.tool.force0", sfcForceToolCalZero(g_sfc));
 }
 
+// ------------------------------------------------------------
+// Potentiometer and low-level diagnostics handlers
+// ------------------------------------------------------------
+
 // Handle "potraw" command to read a pot value.
 void handlePotRaw(const String &args) {
   uint16_t counts = 0, scaled = 0;
@@ -506,28 +535,39 @@ void handleI2cScan(const String &args) {
   printStructured("i2cscan", i2cScanBoth());
 }
 
+// ------------------------------------------------------------
+// Runtime debug toggles and breakpoints
+// ------------------------------------------------------------
 
+// Toggle verbose encoder debug output used during homing flows.
 void handleEncDebug(const String &args) {
   ActionResult res = handleEncoderPollingCommand(args);
   if (!res.ok && res.message == "usage: <on|off>") res.message = "usage: encdebug <on|off>";
   printStructured("encdebug", res);
 }
 
+// Toggle periodic encoder polling output for serial diagnostics.
 void handleEnc(const String &args) {
   ActionResult res = handleEncoderPollingCommand(args);
   if (!res.ok && res.message == "usage: <on|off>") res.message = "usage: enc <on|off>";
   printStructured("enc", res);
 }
 
+// Disable run-recipe serial breakpoints so recipes execute without pauses.
 void handleBreakPointsOff(const String &args) {
   (void)args;
   printStructured("breakPointsOff", setBreakpointsOff(g_sfc));
 }
 
+// Enable run-recipe serial breakpoints to support step-by-step debugging.
 void handleBreakPointsOn(const String &args) {
   (void)args;
   printStructured("breakPointsOn", setBreakpointsOn(g_sfc));
 }
+
+// ------------------------------------------------------------
+// Recipe storage query handlers
+// ------------------------------------------------------------
 
 void handleSfcRecipeList(const String &args) {
   (void)args;
@@ -608,12 +648,15 @@ void handleSfcRecipeDelete(const String &args) {
 }
 
 const CommandDescriptor COMMANDS[] = {
+    // WiFi provisioning and connectivity.
     {"wifi.status", "show WiFi status, IP, and mDNS hostname", handleWifiStatus},
     {"wifi.set", "save WiFi credentials and connect", handleWifiSet},
     {"wifi.connect", "connect using saved WiFi credentials", handleWifiConnect},
     {"wifi.clear", "clear saved WiFi credentials", handleWifiClear},
     {"wifi.ap", "start access point for setup", handleWifiAp},
     {"wifi.scan", "scan for nearby WiFi networks", handleWifiScan},
+
+    // Core gantry/base/servo motion.
     {"speed", "set gantry speed (steps/sec)", handleSpeed},
     {"home", "home gantry", handleHome},
     {"pos", "report gantry position", handlePos},
@@ -633,8 +676,12 @@ const CommandDescriptor COMMANDS[] = {
     {"m23", "move axis2 and 3", handleM23},
     {"pos2", "report axis2 position", handlePos2},
     {"pos3", "report axis3 position", handlePos3},
+
+    // RFID reader controls.
     {"rfid", "rfid controls", handleRfid},
     {"rfid2", "base rfid controls", handleRfid2},
+
+    // SyringeFillController recipe and transfer flow.
     {"sfc.scanall", "scan all base syringes", handleSfcScanAllBaseSyringes},
     {"sfc.run", "run current recipe", handleSfcRun},
     {"sfc.load", "load recipe by recipe ID", handleSfcLoad},
@@ -654,15 +701,21 @@ const CommandDescriptor COMMANDS[] = {
     {"cal.base.point", "add base calibration point <ml> [slot]", handleSfcCalBasePoint},
     {"cal.base.clear", "clear current base calibration points", handleSfcCalBaseClear},
     {"cal.base.force0", "force base calibration to 0 mL", handleSfcCalBaseForceZero},
+
+    // Potentiometer and bus diagnostics.
     {"potraw", "read pot", handlePotRaw},
     {"basepot", "read base pot", handleBasePot},
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
+
+    // Runtime debug and breakpoint controls.
     {"enc", "toggle encoder periodic prints (on|off)", handleEnc},
     {"encdebug", "toggle encoder debug prints during homing (on|off)", handleEncDebug},
     {"breakPointsOff", "disable recipe run breakpoints", handleBreakPointsOff},
     {"breakPointsOn", "enable recipe run breakpoints", handleBreakPointsOn},
+
+    // Recipe file-system introspection.
     {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
     {"sfc.recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
     {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},

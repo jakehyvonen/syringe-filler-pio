@@ -18,6 +18,9 @@
 namespace App {
 
 namespace {
+  // ------------------------------------------------------------
+  // Tunables and derived motion constants
+  // ------------------------------------------------------------
   constexpr bool DEBUG_FLAG = true;
   constexpr long kBaseRfidScanErrorThreshold = 1700;
   constexpr uint32_t kBaseRfidScanIntervalMs = 75;
@@ -30,25 +33,29 @@ namespace {
   constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
   constexpr float kRetractionMl = 0.17f;
 
-  // used by BaseRFID listener
+  // ------------------------------------------------------------
+  // RFID capture helpers
+  // ------------------------------------------------------------
+  // Captures the latest base RFID UID packed into a 32-bit value.
   struct BaseTagCapture {
     bool     got    = false;
     uint32_t packed = 0;
   };
 
-  // used by Toolhead RFID listener
+  // Captures the latest toolhead RFID UID packed into a 32-bit value.
   struct ToolheadTagCapture {
     bool     got    = false;
     uint32_t packed = 0;
   };
 
+  // Context passed while moving gantry so base RFID polling can be throttled.
   struct BaseRfidMoveScanContext {
     BaseTagCapture* capture = nullptr;
     uint32_t lastPollMs = 0;
   };
 
-  // listener that BaseRFID will call
-  // Pack a base RFID UID into a 32-bit value for capture.
+  // Base RFID listener callback.
+  // Packs up to 4 UID bytes into a single uint32_t for easier downstream use.
   void baseTagHandler(const uint8_t* uid, uint8_t len, void* user) {
     auto* cap = static_cast<BaseTagCapture*>(user);
     if (!cap) return;
@@ -61,8 +68,8 @@ namespace {
     cap->got    = true;
   }
 
-  // listener that Toolhead RFID will call
-  // Pack a toolhead RFID UID into a 32-bit value for capture.
+  // Toolhead RFID listener callback.
+  // Packs up to 4 UID bytes into a single uint32_t for easier downstream use.
   void toolheadTagHandler(const uint8_t* uid, uint8_t len, void* user) {
     auto* cap = static_cast<ToolheadTagCapture*>(user);
     if (!cap) return;
@@ -75,6 +82,8 @@ namespace {
     cap->got    = true;
   }
 
+  // Move hook executed during goToBase() to opportunistically poll the base reader.
+  // Polling is skipped when position error is too high or polling interval is too short.
   void baseRfidMoveHook(long errSteps, void* user) {
     auto* ctx = static_cast<BaseRfidMoveScanContext*>(user);
     if (!ctx || !ctx->capture || ctx->capture->got) {
@@ -90,6 +99,10 @@ namespace {
     ctx->lastPollMs = now;
     BaseRFID::tick();
   }
+
+  // ------------------------------------------------------------
+  // Logging and conversion helpers
+  // ------------------------------------------------------------
 
   // Print a debug message when DEBUG_FLAG is enabled.
   void dbg(const char* msg) {
@@ -130,7 +143,9 @@ namespace {
     }
   }
 
+  // Convert mL transfer values into toolhead axis steps.
   long toolStepsForMl(float ml) { return lroundf(ml * kToolStepsPerMl); }
+  // Convert mL transfer values into base axis steps.
   long baseStepsForMl(float ml) { return lroundf(ml * kBaseStepsPerMl); }
 
 }
@@ -159,7 +174,7 @@ SyringeFillController::SyringeFillController()
 
 
 // ------------------------------------------------------------
-// scan all / scan one base
+// Base scanning and initialization
 // ------------------------------------------------------------
 // Scan all base slots and load any detected syringes.
 void SyringeFillController::scanAllBaseSyringes() {
@@ -186,9 +201,6 @@ void SyringeFillController::scanAllBaseSyringes() {
   dbg("scanAllBaseSyringes() done");
 }
 
-// --------------------------------------------------
-// scan *one* base – now auto-creates in NVS
-// --------------------------------------------------
 // Scan a single base slot and load its syringe data.
 bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
   if (slot >= Bases::kCount) {
@@ -263,6 +275,9 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
 
   return true;
 }
+// ------------------------------------------------------------
+// Calibration pass-through APIs
+// ------------------------------------------------------------
 // Capture a toolhead calibration point via the calibration helper.
 bool SyringeFillController::captureToolheadCalibrationPoint(float ml, String& message) {
   return m_calibration.captureToolheadCalibrationPoint(ml, message);
@@ -297,7 +312,7 @@ void SyringeFillController::printBaseInfo(uint8_t slot, Stream& s) {
   m_calibration.printBaseInfo(slot, s);
 }
 // ------------------------------------------------------------
-// blocking base-RFID read (with tick)
+// RFID blocking scan helpers
 // ------------------------------------------------------------
 // Block until a base RFID tag is read or timeout expires.
 uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
@@ -368,7 +383,7 @@ uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
 }
 
 // ------------------------------------------------------------
-// toolhead side
+// Toolhead scanning and initialization
 // ------------------------------------------------------------
 
 // Block until a toolhead RFID tag is read.
@@ -392,9 +407,6 @@ bool SyringeFillController::scanToolheadBlocking() {
 }
 
 
-// ------------------------------------------------------------
-// blocking TOOLHEAD RFID read (I2C PN532 #1)
-// ------------------------------------------------------------
 // Block until a toolhead RFID tag is read or timeout expires.
 uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
   Serial.print("[SFC] readToolheadRFIDBlocking(): start, timeout=");
@@ -462,6 +474,9 @@ uint32_t SyringeFillController::readToolheadRFIDBlocking(uint32_t timeoutMs) {
   return cap.packed;
 }
 
+// ------------------------------------------------------------
+// Status and recipe persistence helpers
+// ------------------------------------------------------------
 // Print toolhead calibration information.
 void App::SyringeFillController::printToolheadInfo(Stream& out) {
   m_calibration.printToolheadInfo(out);
@@ -541,7 +556,7 @@ bool SyringeFillController::saveRecipeToFS(uint32_t recipeId) {
 }
 
 // ------------------------------------------------------------
-// run recipe
+// Recipe execution and breakpoint control
 // ------------------------------------------------------------
 // Execute the current recipe by transferring from each base.
 void SyringeFillController::setBreakpointsEnabled(bool enabled) {
@@ -552,6 +567,7 @@ void SyringeFillController::setBreakpointsEnabled(bool enabled) {
 
 bool SyringeFillController::breakpointsEnabled() const { return m_breakpointsEnabled; }
 
+// Block at serial breakpoints between recipe steps when enabled.
 bool SyringeFillController::serialBreakpoint(const String &label) {
   if (!m_breakpointsEnabled) {
     return true;
@@ -659,7 +675,7 @@ void SyringeFillController::runRecipe() {
 }
 
 // ------------------------------------------------------------
-// positioning
+// Positioning and live RFID polling
 // ------------------------------------------------------------
 // Move the gantry to a stored base position and update selection.
 bool SyringeFillController::goToBase(uint8_t slot, Axis::MoveHook hook, void* context) {
@@ -699,7 +715,7 @@ bool SyringeFillController::goToBase(uint8_t slot, Axis::MoveHook hook, void* co
 
 
 // ------------------------------------------------------------
-// toolhead reader (I2C PN532 #1)
+// One-shot RFID reads
 // ------------------------------------------------------------
 // Poll the toolhead RFID reader for a single tag.
 uint32_t SyringeFillController::readRFIDNow() {
@@ -750,7 +766,7 @@ uint32_t SyringeFillController::readRFIDNow() {
 }
 
 // ------------------------------------------------------------
-// transfer
+// Transfer and retraction motion
 // ------------------------------------------------------------
 // Transfer volume from a base to the toolhead using step calculations.
 bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
@@ -826,6 +842,7 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   return true;
 }
 
+// Retract a small volume on the toolhead to reduce drips between actions.
 bool SyringeFillController::retractToolhead(float ml) {
   if (!isfinite(ml) || ml <= 0.0f) {
     if (DEBUG_FLAG) {
@@ -860,6 +877,7 @@ bool SyringeFillController::retractToolhead(float ml) {
   return true;
 }
 
+// Build a compact controller status snapshot for command responses.
 bool SyringeFillController::buildStatusJson(String& data) const {
   String out = "{";
 
