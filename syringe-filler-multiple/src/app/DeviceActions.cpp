@@ -355,6 +355,16 @@ ActionResult sfcTransferFromBase(App::SyringeFillController &sfc, uint8_t slot, 
   return {ok, ok ? "transfer completed" : "transfer failed"};
 }
 
+ActionResult setBreakpointsOff(App::SyringeFillController &sfc) {
+  sfc.setBreakpointsEnabled(false);
+  return {true, "recipe breakpoints disabled"};
+}
+
+ActionResult setBreakpointsOn(App::SyringeFillController &sfc) {
+  sfc.setBreakpointsEnabled(true);
+  return {true, "recipe breakpoints enabled"};
+}
+
 // Pots
 // Read a pot channel in raw and scaled units.
 ActionResult readPot(uint8_t idx, uint16_t &counts, uint16_t &scaled) {

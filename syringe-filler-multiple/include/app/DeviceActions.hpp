@@ -72,6 +72,8 @@ ActionResult sfcClearToolCalPoints(App::SyringeFillController &sfc);
 ActionResult sfcForceBaseCalZero(App::SyringeFillController &sfc);
 ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc);
 ActionResult sfcTransferFromBase(App::SyringeFillController &sfc, uint8_t slot, float ml);
+ActionResult setBreakpointsOff(App::SyringeFillController &sfc);
+ActionResult setBreakpointsOn(App::SyringeFillController &sfc);
 
 // Pots
 ActionResult readPot(uint8_t idx, uint16_t &counts, uint16_t &scaled);
