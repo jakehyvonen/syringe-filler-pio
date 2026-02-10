@@ -33,6 +33,7 @@ namespace {
   constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
   constexpr float kRetractionMl = 0.17f;
 
+  #pragma region RFID
   // ------------------------------------------------------------
   // RFID capture helpers
   // ------------------------------------------------------------
@@ -100,6 +101,11 @@ namespace {
     BaseRFID::tick();
   }
 
+#pragma endregion
+//do I need a comment here or something?
+
+  #pragma region Helpers
+
   // ------------------------------------------------------------
   // Logging and conversion helpers
   // ------------------------------------------------------------
@@ -150,6 +156,8 @@ namespace {
 
 }
 
+#pragma endregion
+
 // ------------------------------------------------------------
 // ctor
 // ------------------------------------------------------------
@@ -172,7 +180,7 @@ SyringeFillController::SyringeFillController()
   m_baseToPot[4] = 1;
 }
 
-
+#pragma region Base Syringes
 // ------------------------------------------------------------
 // Base scanning and initialization
 // ------------------------------------------------------------
@@ -275,6 +283,8 @@ bool SyringeFillController::scanBaseSyringe(uint8_t slot) {
 
   return true;
 }
+
+
 // ------------------------------------------------------------
 // Calibration pass-through APIs
 // ------------------------------------------------------------
@@ -381,6 +391,7 @@ uint32_t SyringeFillController::readBaseRFIDBlocking(uint32_t timeoutMs) {
   Serial.println(cap.packed, HEX);
   return cap.packed;
 }
+#pragma endregion
 
 // ------------------------------------------------------------
 // Toolhead scanning and initialization

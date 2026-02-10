@@ -716,10 +716,10 @@ const CommandDescriptor COMMANDS[] = {
     {"breakPointsOn", "enable recipe run breakpoints", handleBreakPointsOn},
 
     // Recipe file-system introspection.
-    {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
-    {"sfc.recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
-    {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},
-    {"sfc.recipe.delete", "delete recipe for a recipe ID", handleSfcRecipeDelete},
+    {"recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
+    {"recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
+    {"recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},
+    {"recipe.delete", "delete recipe for a recipe ID", handleSfcRecipeDelete},
 };
 
 const size_t COMMAND_COUNT = sizeof(COMMANDS) / sizeof(COMMANDS[0]);
