@@ -66,6 +66,8 @@ using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
 using App::DeviceActions::i2cScanBoth;
 using App::DeviceActions::handleEncoderPollingCommand;
+using App::DeviceActions::setBreakpointsOff;
+using App::DeviceActions::setBreakpointsOn;
 
 namespace {
 struct CommandDescriptor {
@@ -517,6 +519,16 @@ void handleEnc(const String &args) {
   printStructured("enc", res);
 }
 
+void handleBreakPointsOff(const String &args) {
+  (void)args;
+  printStructured("breakPointsOff", setBreakpointsOff(g_sfc));
+}
+
+void handleBreakPointsOn(const String &args) {
+  (void)args;
+  printStructured("breakPointsOn", setBreakpointsOn(g_sfc));
+}
+
 void handleSfcRecipeList(const String &args) {
   (void)args;
   String data;
@@ -649,6 +661,8 @@ const CommandDescriptor COMMANDS[] = {
     {"i2cscan", "scan both I2C buses", handleI2cScan},
     {"enc", "toggle encoder periodic prints (on|off)", handleEnc},
     {"encdebug", "toggle encoder debug prints during homing (on|off)", handleEncDebug},
+    {"breakPointsOff", "disable recipe run breakpoints", handleBreakPointsOff},
+    {"breakPointsOn", "enable recipe run breakpoints", handleBreakPointsOn},
     {"sfc.recipe.list", "list recipe IDs in storage", handleSfcRecipeList},
     {"sfc.recipe.list.desc", "list recipe IDs in descending order", handleSfcRecipeListDesc},
     {"sfc.recipe.show", "show recipe JSON for a recipe ID", handleSfcRecipeShow},

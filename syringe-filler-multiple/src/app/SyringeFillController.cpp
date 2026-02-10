@@ -544,6 +544,58 @@ bool SyringeFillController::saveRecipeToFS(uint32_t recipeId) {
 // run recipe
 // ------------------------------------------------------------
 // Execute the current recipe by transferring from each base.
+void SyringeFillController::setBreakpointsEnabled(bool enabled) {
+  m_breakpointsEnabled = enabled;
+  Serial.print("[SFC] breakpoints ");
+  Serial.println(m_breakpointsEnabled ? "enabled" : "disabled");
+}
+
+bool SyringeFillController::breakpointsEnabled() const { return m_breakpointsEnabled; }
+
+bool SyringeFillController::serialBreakpoint(const String &label) {
+  if (!m_breakpointsEnabled) {
+    return true;
+  }
+
+  Serial.println("[SFC] --- BREAKPOINT ---");
+  if (label.length()) {
+    Serial.print("[SFC] ");
+    Serial.println(label);
+  }
+  Serial.println("[SFC] Send 'c' to continue or 'breakPointsOff' to disable breakpoints.");
+
+  String input;
+  while (true) {
+    while (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\r') {
+        continue;
+      }
+      if (c == '\n') {
+        input.trim();
+        if (input == "c") {
+          Serial.println("[SFC] breakpoint continue");
+          return true;
+        }
+        if (input == "breakPointsOff") {
+          setBreakpointsEnabled(false);
+          Serial.println("[SFC] breakpoint continue (breakpoints disabled)");
+          return true;
+        }
+        if (input.length()) {
+          Serial.print("[SFC] Unknown breakpoint command: ");
+          Serial.println(input);
+        }
+        Serial.println("[SFC] Waiting... send 'c' or 'breakPointsOff'.");
+        input = "";
+      } else {
+        input += c;
+      }
+    }
+    delay(5);
+  }
+}
+
 void SyringeFillController::runRecipe() {
   dbg("runRecipe() start");
   if (DEBUG_FLAG) {
@@ -580,6 +632,7 @@ void SyringeFillController::runRecipe() {
       continue;
     }
     anyTransfer = true;
+    serialBreakpoint(String("runRecipe step ") + String(i) + " complete");
     if (i + 1 < m_recipe.count) {
       if (DEBUG_FLAG) {
         Serial.println("[SFC] runRecipe(): retracting between steps");

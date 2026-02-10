@@ -35,6 +35,9 @@ public:
   bool loadRecipeFromFS(uint32_t recipeId);
   bool saveRecipeToFS(uint32_t recipeId);
   void runRecipe();
+  void setBreakpointsEnabled(bool enabled);
+  bool breakpointsEnabled() const;
+  bool serialBreakpoint(const String &label = "");
 
   // calibration for toolhead already here...
   bool captureToolheadCalibrationPoint(float ml, String& message);
@@ -62,6 +65,7 @@ private:
   Syringe m_bases[Bases::kCount];
   uint8_t  m_baseToPot[Bases::kCount];
   int8_t  m_currentSlot = -1;
+  bool m_breakpointsEnabled = true;
   SyringeCalibration m_calibration;
   Util::RecipeDTO m_recipe;
 };
