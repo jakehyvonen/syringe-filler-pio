@@ -56,7 +56,7 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       <h3>Editor</h3>
       <label>Recipe ID (hex)</label>
       <input id="recipeId" type="text" placeholder="e.g. 1A2B3C4D" />
-      <div class="muted">Volume uses mL. Base slot is 1-based.</div>
+      <div class="muted">Volume uses mL. Base slot is 0-based.</div>
       <table>
         <thead>
           <tr><th>Volume (mL)</th><th>Base Slot</th><th></th></tr>
@@ -80,11 +80,11 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       statusEl.style.color = ok ? '#2b6' : '#c33';
     }
 
-    function addRow(step = { volume_ml: 1, base_slot: 1 }) {
+    function addRow(step = { volume_ml: 1, base_slot: 0 }) {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td><input type="number" step="0.1" min="0.1" value="${step.volume_ml}" /></td>
-        <td><input type="number" min="1" value="${step.base_slot}" /></td>
+        <td><input type="number" min="0" value="${step.base_slot}" /></td>
         <td><button class="remove">Remove</button></td>
       `;
       tr.querySelector('.remove').onclick = () => tr.remove();

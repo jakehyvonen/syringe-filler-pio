@@ -29,9 +29,9 @@ ActionResult moveGantryToSteps(long targetSteps);
 ActionResult moveGantryToMm(float targetMm);
 
 // Bases
-ActionResult selectBase(uint8_t idx);
-uint8_t selectedBase();
-ActionResult moveToBase(uint8_t idx, long &targetSteps);
+ActionResult selectBase(uint8_t idx0);
+int8_t selectedBase();
+ActionResult moveToBase(uint8_t idx0, long &targetSteps);
 
 // Servos / toolhead
 ActionResult setServoPulseRaw(int channel, int us);

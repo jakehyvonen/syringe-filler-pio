@@ -70,23 +70,26 @@ ActionResult moveGantryToSteps(long targetSteps) {
 ActionResult moveGantryToMm(float targetMm) { return moveGantryToSteps(mmToSteps(targetMm)); }
 
 // Bases
-// Select a base by 1-based index.
-ActionResult selectBase(uint8_t idx) {
-  if (!Bases::select(idx)) {
+// Select a base by 0-based index.
+ActionResult selectBase(uint8_t idx0) {
+  if (idx0 >= Pins::NUM_BASES || !Bases::select(static_cast<uint8_t>(idx0 + 1))) {
     return {false, "invalid base index"};
   }
   return {true, "base selected"};
 }
 
-// Return the currently selected base index.
-uint8_t selectedBase() { return Bases::selected(); }
+// Return the currently selected base index (0-based, -1 if none).
+int8_t selectedBase() {
+  const uint8_t selected = Bases::selected();
+  return selected == 0 ? -1 : static_cast<int8_t>(selected - 1);
+}
 
 // Move the gantry to the stored position for a base index.
-ActionResult moveToBase(uint8_t idx, long &targetSteps) {
-  if (idx < 1 || idx > Pins::NUM_BASES) {
+ActionResult moveToBase(uint8_t idx0, long &targetSteps) {
+  if (idx0 >= Pins::NUM_BASES) {
     return {false, "base index out of range"};
   }
-  targetSteps = Bases::getPos(idx);
+  targetSteps = Bases::positionSteps(idx0);
   if (targetSteps < 0) {
     return {false, "base position unknown"};
   }

@@ -217,8 +217,12 @@ void handleGotoMm(const String &args) { printStructured("gotomm", moveGantryToMm
 
 // Handle "base" command to select a base.
 void handleBase(const String &args) {
-  int idx = args.toInt();
-  printStructured("base", selectBase((uint8_t)idx), "{\"selected\":" + String(selectedBase()) + "}");
+  int idx0 = args.toInt();
+  if (idx0 < 0) {
+    printStructured("base", {false, "base index must be >= 0"}, "{\"selected\":" + String(selectedBase()) + "}");
+    return;
+  }
+  printStructured("base", selectBase((uint8_t)idx0), "{\"selected\":" + String(selectedBase()) + "}");
 }
 
 // Handle "whichbase" command to report current base.
@@ -230,7 +234,12 @@ void handleWhichBase(const String &args) {
 // Handle "gobase" command to move to a stored base position.
 void handleGoBase(const String &args) {
   long target = 0;
-  ActionResult res = moveToBase((uint8_t)args.toInt(), target);
+  int idx0 = args.toInt();
+  if (idx0 < 0) {
+    printStructured("gobase", {false, "base index must be >= 0"});
+    return;
+  }
+  ActionResult res = moveToBase((uint8_t)idx0, target);
   String data;
   if (res.ok) { data = "{\"targetSteps\":" + String(target) + "}"; }
   printStructured("gobase", res, data);
@@ -292,7 +301,7 @@ void handleMove2(const String &args) { printStructured("move2", moveAxis2(args.t
 
 // Handle "move3" command for axis 3 motion.
 void handleMove3(const String &args) {
-  if (selectedBase() == 0) {
+  if (selectedBase() < 0) {
     printStructured("move3", {false, "no base selected"});
     return;
   }
