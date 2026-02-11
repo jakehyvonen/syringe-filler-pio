@@ -3,7 +3,6 @@
  * @brief PCA9685 servo control for toolhead lift and coupling.
  */
 #include "servo/Toolhead.hpp"
-#include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
 #include <Arduino.h>
 #include <Adafruit_PWMServoDriver.h>
@@ -57,7 +56,7 @@ static inline void ensureAnglesInit() {
 
 // Initialize toolhead state.
 void init() {
-  ensureServoInit();
+  // Lazy init happens on first servo command.
 }
 
 // Return true when the toolhead raised switch is active.

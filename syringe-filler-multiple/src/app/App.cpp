@@ -48,7 +48,6 @@ void setup() {
   Bases::init();
   Axis::init();
   AxisPair::init();
-  Toolhead::init();
 
   // Encoder init
   EncoderHW::begin();
