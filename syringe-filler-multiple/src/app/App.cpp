@@ -65,6 +65,7 @@ void setup() {
     Serial.println("WARN: base MCP23017 expander not detected; base outputs unavailable.");
   }
 
+  Toolhead::init();
   if (!Toolhead::ensureRaised()) {
     Serial.println("ERROR: toolhead not raised.");
     //while (true) delay(1000);
