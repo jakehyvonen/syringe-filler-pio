@@ -66,9 +66,10 @@ bool ensureAttached(uint8_t ch) {
   if (*attached) return true;
 
   servo->setPeriodHertz(Pins::SERVO_HZ);
-  const int attachPin = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
-  if (attachPin != pin) {
-    Serial.printf("ERROR: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, attachPin);
+  const int attachResult = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
+  // ESP32Servo::attach returns the allocated LEDC channel (0..N), not the GPIO pin.
+  if (attachResult < 0) {
+    Serial.printf("ERROR: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, attachResult);
     *attached = false;
     return false;
   }
