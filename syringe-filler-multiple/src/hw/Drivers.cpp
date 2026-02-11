@@ -15,8 +15,9 @@
 // ----------------------------------------------------------
 // Global hardware objects
 // ----------------------------------------------------------
-Adafruit_MCP23X17    Drivers::MCP;   // MCP23017 base expander
-Adafruit_ADS1115        Drivers::ADS;   // 0x48 or 0x49
+Adafruit_MCP23X17    Drivers::MCP;              // MCP23017 on primary I2C bus
+Adafruit_ADS1115       Drivers::ADS;              // ADS1115 on secondary I2C bus
+Adafruit_MCP23X17      Drivers::BASE_EN_EXPANDER; // MCP23X17 for base-enable outputs
 
 // ----------------------------------------------------------
 // Internal state
