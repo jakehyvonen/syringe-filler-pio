@@ -245,28 +245,105 @@ void handleGoBase(const String &args) {
   printStructured("gobase", res, data);
 }
 
-// Handle "servopulse" command to set raw servo pulse width.
-void handleServoPulse(const String &args) {
-  int sp = args.indexOf(' ');
-  if (sp > 0) {
-    int ch = args.substring(0, sp).toInt();
-    int us = args.substring(sp + 1).toInt();
-    printStructured("servopulse", setServoPulseRaw(ch, us));
-  } else {
-    printStructured("servopulse", {false, "usage: servopulse <channel> <us>"});
-  }
+namespace {
+int parseServoNameToChannel(const String &name) {
+  if (name == "toolhead") return 0;
+  if (name == "coupler") return 1;
+  return -1;
 }
 
-// Handle "servo" command to set a servo angle.
+int parseLegacyServoChannel(const String &raw) {
+  int ch = raw.toInt();
+  if (ch == 0 || ch == 3) return 0;
+  if (ch == 1 || ch == 5) return 1;
+  return -1;
+}
+
+const char *servoVerbForChannel(int channel) {
+  if (channel == 0) return "servo.toolhead";
+  if (channel == 1) return "servo.coupler";
+  return "servo";
+}
+}  // namespace
+
+// Handle "servo.raw" command to set raw servo pulse width.
+void handleServoRaw(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp <= 0) {
+    printStructured("servo.raw", {false, "usage: servo.raw <toolhead|coupler> <us>"});
+    return;
+  }
+  String which = args.substring(0, sp);
+  which.trim();
+  int channel = parseServoNameToChannel(which);
+  if (channel < 0) {
+    printStructured("servo.raw", {false, "servo must be toolhead or coupler"});
+    return;
+  }
+  int us = args.substring(sp + 1).toInt();
+  printStructured("servo.raw", setServoPulseRaw(channel, us));
+}
+
+// Handle deprecated "servopulse" command (legacy wrapper).
+void handleServoPulse(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp <= 0) {
+    printStructured("servopulse", {false, "deprecated: use servo.raw <toolhead|coupler> <us>"});
+    return;
+  }
+  String rawChannel = args.substring(0, sp);
+  rawChannel.trim();
+  int channel = parseLegacyServoChannel(rawChannel);
+  if (channel < 0) {
+    printStructured("servopulse", {false, "deprecated: channel must map to toolhead(0/3) or coupler(1/5)"});
+    return;
+  }
+  int us = args.substring(sp + 1).toInt();
+  ActionResult res = setServoPulseRaw(channel, us);
+  if (res.ok) {
+    res.message = "deprecated wrapper; " + res.message;
+  }
+  printStructured("servopulse", res);
+}
+
+// Handle "servo.toolhead" command.
+void handleServoToolhead(const String &args) {
+  if (args.length() == 0) {
+    printStructured("servo.toolhead", {false, "usage: servo.toolhead <angle>"});
+    return;
+  }
+  printStructured("servo.toolhead", setServoAngle(0, args.toInt()));
+}
+
+// Handle "servo.coupler" command.
+void handleServoCoupler(const String &args) {
+  if (args.length() == 0) {
+    printStructured("servo.coupler", {false, "usage: servo.coupler <angle>"});
+    return;
+  }
+  printStructured("servo.coupler", setServoAngle(1, args.toInt()));
+}
+
+// Handle deprecated "servo" command (legacy wrapper).
 void handleServo(const String &args) {
   int sp = args.indexOf(' ');
-  if (sp > 0) {
-    int ch = args.substring(0, sp).toInt();
-    int angle = args.substring(sp + 1).toInt();
-    printStructured("servo", setServoAngle(ch, angle));
-  } else {
-    printStructured("servo", {false, "usage: servo <ch> <angle>"});
+  if (sp <= 0) {
+    printStructured("servo", {false, "deprecated: use servo.toolhead <angle> or servo.coupler <angle>"});
+    return;
   }
+
+  int channel = parseLegacyServoChannel(args.substring(0, sp));
+  if (channel < 0) {
+    printStructured("servo", {false, "deprecated: channel must map to toolhead(0/3) or coupler(1/5)"});
+    return;
+  }
+
+  int angle = args.substring(sp + 1).toInt();
+  ActionResult res = setServoAngle(channel, angle);
+  if (res.ok) {
+    res.message = "deprecated wrapper; " + res.message;
+  }
+  printStructured(servoVerbForChannel(channel), res);
 }
 
 // Handle "raise" command to lift the toolhead.
@@ -275,22 +352,28 @@ void handleRaise(const String &args) { printStructured("raise", raiseToolhead())
 // Handle "servoslow" command for slow servo sweeps.
 void handleServoSlow(const String &args) {
   int sp = args.indexOf(' ');
-  if (sp > 0) {
-    int ch = args.substring(0, sp).toInt();
-    String rest = args.substring(sp + 1);
-    int sp2 = rest.indexOf(' ');
-    int angle = 0;
-    int delayMs = 15;
-    if (sp2 > 0) {
-      angle = rest.substring(0, sp2).toInt();
-      delayMs = rest.substring(sp2 + 1).toInt();
-    } else {
-      angle = rest.toInt();
-    }
-    printStructured("servoslow", setServoAngleSlow(ch, angle, delayMs));
-  } else {
+  if (sp <= 0) {
     printStructured("servoslow", {false, "usage: servoslow <ch> <angle> [delay]"});
+    return;
   }
+
+  int channel = parseLegacyServoChannel(args.substring(0, sp));
+  if (channel < 0) {
+    printStructured("servoslow", {false, "channel must map to toolhead(0/3) or coupler(1/5)"});
+    return;
+  }
+
+  String rest = args.substring(sp + 1);
+  int sp2 = rest.indexOf(' ');
+  int angle = 0;
+  int delayMs = 15;
+  if (sp2 > 0) {
+    angle = rest.substring(0, sp2).toInt();
+    delayMs = rest.substring(sp2 + 1).toInt();
+  } else {
+    angle = rest.toInt();
+  }
+  printStructured("servoslow", setServoAngleSlow(channel, angle, delayMs));
 }
 
 // Handle "couple" command for toolhead coupling sequence.
@@ -674,8 +757,11 @@ const CommandDescriptor COMMANDS[] = {
     {"base", "select base", handleBase},
     {"whichbase", "report selected base", handleWhichBase},
     {"gobase", "move to base", handleGoBase},
-    {"servopulse", "set servo pulse", handleServoPulse},
-    {"servo", "set servo angle", handleServo},
+    {"servo.toolhead", "set toolhead servo angle", handleServoToolhead},
+    {"servo.coupler", "set coupler servo angle", handleServoCoupler},
+    {"servo.raw", "set raw servo pulse (toolhead|coupler)", handleServoRaw},
+    {"servopulse", "DEPRECATED: use servo.raw <toolhead|coupler> <us>", handleServoPulse},
+    {"servo", "DEPRECATED: use servo.toolhead/servo.coupler", handleServo},
     {"raise", "raise toolhead", handleRaise},
     {"servoslow", "set servo slowly", handleServoSlow},
     {"couple", "couple syringes", handleCouple},

@@ -22,6 +22,20 @@ namespace App {
 namespace {
 inline long mmToSteps(float mm) { return (long)lround(mm * Pins::STEPS_PER_MM); }
 
+bool normalizeServoChannel(int inputChannel, uint8_t &channelOut, const char *&nameOut) {
+  if (inputChannel == 0 || inputChannel == 3) {
+    channelOut = 0;
+    nameOut = "toolhead";
+    return true;
+  }
+  if (inputChannel == 1 || inputChannel == 5) {
+    channelOut = 1;
+    nameOut = "coupler";
+    return true;
+  }
+  return false;
+}
+
 void ensureToolheadRaised() {
   if (!Toolhead::isRaised()) {
     Toolhead::raise();
@@ -106,26 +120,56 @@ ActionResult moveToBase(uint8_t idx0, long &targetSteps) {
 // Servos / toolhead
 // Set a raw servo pulse width in microseconds.
 ActionResult setServoPulseRaw(int channel, int us) {
-  Toolhead::setPulseRaw(channel, us);
-  return {true, "servo pulse set"};
+  uint8_t normalizedChannel = 0;
+  const char *servoName = nullptr;
+  if (!normalizeServoChannel(channel, normalizedChannel, servoName)) {
+    return {false, "servo must be toolhead(0/3) or coupler(1/5)"};
+  }
+  if (us < 0 || us > Pins::SERVO_MAX_US) {
+    return {false, "pulse must be 0.." + String(Pins::SERVO_MAX_US) + " us"};
+  }
+  if (us > 0 && us < Pins::SERVO_MIN_US) {
+    return {false, "pulse must be 0 (detach) or " + String(Pins::SERVO_MIN_US) + ".." + String(Pins::SERVO_MAX_US) + " us"};
+  }
+
+  Toolhead::setPulseRaw(normalizedChannel, us);
+  if (us == 0) {
+    return {true, String(servoName) + " servo detached"};
+  }
+  return {true, String(servoName) + " pulse set"};
 }
 
 // Set a servo channel to a target angle.
 ActionResult setServoAngle(int channel, int angle) {
-  if (!(channel == 0 || channel == 1 || channel == 3 || channel == 5)) {
-    return {false, "channel must be 0/1 (or legacy 3/5)"};
+  uint8_t normalizedChannel = 0;
+  const char *servoName = nullptr;
+  if (!normalizeServoChannel(channel, normalizedChannel, servoName)) {
+    return {false, "servo must be toolhead(0/3) or coupler(1/5)"};
   }
-  Toolhead::setAngle(channel, angle);
-  return {true, "servo angle set"};
+  if (angle < 0 || angle > 180) {
+    return {false, "angle must be 0..180"};
+  }
+
+  Toolhead::setAngle(normalizedChannel, angle);
+  return {true, String(servoName) + " angle set"};
 }
 
 // Sweep a servo channel to a target angle with delay.
 ActionResult setServoAngleSlow(int channel, int angle, int delayMs) {
-  if (!(channel == 0 || channel == 1 || channel == 3 || channel == 5)) {
-    return {false, "channel must be 0/1 (or legacy 3/5)"};
+  uint8_t normalizedChannel = 0;
+  const char *servoName = nullptr;
+  if (!normalizeServoChannel(channel, normalizedChannel, servoName)) {
+    return {false, "servo must be toolhead(0/3) or coupler(1/5)"};
   }
-  Toolhead::setAngleSlow(channel, angle, delayMs);
-  return {true, "servo angle set slowly"};
+  if (angle < 0 || angle > 180) {
+    return {false, "angle must be 0..180"};
+  }
+  if (delayMs <= 0) {
+    return {false, "delay must be > 0 ms"};
+  }
+
+  Toolhead::setAngleSlow(normalizedChannel, angle, delayMs);
+  return {true, String(servoName) + " angle set slowly"};
 }
 
 // Raise the toolhead to the safe position.
