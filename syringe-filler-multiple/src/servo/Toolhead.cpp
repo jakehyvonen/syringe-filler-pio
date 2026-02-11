@@ -7,12 +7,12 @@
 #include "hw/Pins.hpp"
 
 #include <Arduino.h>
-#include <Adafruit_PWMServoDriver.h>
 #include <ESP32Servo.h>
 
 namespace Toolhead {
 namespace {
-static constexpr uint8_t TOOLHEAD_SERVO = 3; // keep legacy caller channel mapping
+// Keep legacy caller mapping support from older PCA9685 channels.
+static constexpr uint8_t TOOLHEAD_SERVO = 3;
 static constexpr uint8_t COUPLING_SERVO = 5;
 
 static constexpr int TOOLHEAD_SERVO_RAISED_POS    = 111;
@@ -20,8 +20,8 @@ static constexpr int TOOLHEAD_SERVO_COUPLING_POS1 = 140;
 static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 
-static constexpr int RAMP_MS_FAST = 11;  // per-degree delay for quick but smooth moves
-static constexpr int RAMP_MS_SLOW = 17;  // increase if brownouts occur
+static constexpr int RAMP_MS_FAST = 11;
+static constexpr int RAMP_MS_SLOW = 17;
 
 Servo s_toolheadServo;
 Servo s_couplerServo;
@@ -57,28 +57,6 @@ int resolvePin(uint8_t ch) {
   return -1;
 }
 
-static Adafruit_PWMServoDriver s_pca; // local servo controller ownership
-static bool s_servoInitTried = false;
-static bool s_servoReady = false;
-
-static void ensureServoInit() {
-  if (s_servoInitTried) return;
-  s_servoInitTried = true;
-  if (s_pca.begin()) {
-    s_pca.setPWMFreq(60);
-    s_servoReady = true;
-    Serial.println("Toolhead servo controller ready @0x40");
-  } else {
-    s_servoReady = false;
-    Serial.println("WARN: Toolhead servo controller not found @0x40.");
-  }
-}
-
-
-static inline void ensureAnglesInit() {
-  if (!s_anglesInit) {
-    for (int i = 0; i < 16; ++i) s_angles[i] = 90;
-    s_anglesInit = true;
 void ensureAttached(uint8_t ch) {
   Servo* servo = resolveServo(ch);
   bool* attached = resolveAttachedSlot(ch);
@@ -86,6 +64,7 @@ void ensureAttached(uint8_t ch) {
   if (!servo || !attached || pin < 0) return;
 
   if (*attached) return;
+
   servo->setPeriodHertz(Pins::SERVO_HZ);
   const int attachPin = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
   if (attachPin != pin) {
@@ -94,12 +73,11 @@ void ensureAttached(uint8_t ch) {
   }
   *attached = true;
 }
-} // namespace
 
-// Initialize toolhead state.
-void init() {
-  // Lazy init happens on first servo command.
-void init() {
+void ensureServoInit() {
+  if (s_servoReady) return;
+
+  // ESP32Servo requires timer allocation before attach.
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
@@ -108,29 +86,20 @@ void init() {
   s_toolheadServo.setPeriodHertz(Pins::SERVO_HZ);
   s_couplerServo.setPeriodHertz(Pins::SERVO_HZ);
 
-  const int attachedToolhead = s_toolheadServo.attach(Pins::SERVO_PIN_TOOLHEAD,
-                                                       Pins::SERVO_MIN_US,
-                                                       Pins::SERVO_MAX_US);
-  if (attachedToolhead != Pins::SERVO_PIN_TOOLHEAD) {
-    Serial.printf("FATAL: toolhead servo attach failed (pin=%d ret=%d)\n",
+  ensureAttached(TOOLHEAD_SERVO);
+  ensureAttached(COUPLING_SERVO);
+
+  s_servoReady = s_toolheadAttached && s_couplerAttached;
+  if (s_servoReady) {
+    Serial.printf("Toolhead servos ready on GPIO %u/%u\n",
                   Pins::SERVO_PIN_TOOLHEAD,
-                  attachedToolhead);
-    while (true) delay(1000);
+                  Pins::SERVO_PIN_COUPLER);
   }
+}
+} // namespace
 
-  const int attachedCoupler = s_couplerServo.attach(Pins::SERVO_PIN_COUPLER,
-                                                     Pins::SERVO_MIN_US,
-                                                     Pins::SERVO_MAX_US);
-  if (attachedCoupler != Pins::SERVO_PIN_COUPLER) {
-    Serial.printf("FATAL: coupler servo attach failed (pin=%d ret=%d)\n",
-                  Pins::SERVO_PIN_COUPLER,
-                  attachedCoupler);
-    while (true) delay(1000);
-  }
-
-  s_toolheadAttached = true;
-  s_couplerAttached = true;
-  s_servoReady = true;
+void init() {
+  ensureServoInit();
 }
 
 bool isRaised() {
@@ -139,8 +108,6 @@ bool isRaised() {
 
 void setPulseRaw(uint8_t ch, int pulse) {
   ensureServoInit();
-  if (!s_servoReady) return;
-  s_pca.writeMicroseconds(ch, pulse);
   if (!s_servoReady) return;
 
   Servo* servo = resolveServo(ch);
@@ -160,8 +127,6 @@ void setPulseRaw(uint8_t ch, int pulse) {
 void setAngle(uint8_t ch, int angle) {
   ensureServoInit();
   if (!s_servoReady) return;
-  ensureAnglesInit();
-  if (!s_servoReady) return;
 
   Servo* servo = resolveServo(ch);
   int* angleSlot = resolveAngleSlot(ch);
@@ -170,8 +135,6 @@ void setAngle(uint8_t ch, int angle) {
   const int bounded = constrain(angle, 0, 180);
   if (*angleSlot == bounded) return;
 
-  uint16_t p = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
-  s_pca.setPWM(ch, 0, p);
   ensureAttached(ch);
   servo->write(bounded);
   *angleSlot = bounded;
@@ -186,26 +149,15 @@ void setAngle(uint8_t ch, int angle) {
 void setAngleSlow(uint8_t ch, int target, int stepDelay) {
   ensureServoInit();
   if (!s_servoReady) return;
-  ensureAnglesInit();
-  if (!s_servoReady) return;
 
   int* angleSlot = resolveAngleSlot(ch);
   if (!angleSlot) return;
 
   const int boundedTarget = constrain(target, 0, 180);
-  int start = *angleSlot;
+  const int start = *angleSlot;
   if (start == boundedTarget) return;
 
-  int step = (target > start) ? 1 : -1;
-  for (int a = start; a != target; a += step) {
-    uint16_t p = map(a, 0, 180, SERVO_MIN, SERVO_MAX);
-    s_pca.setPWM(ch, 0, p);
-    delay(stepDelay <= 0 ? 1 : stepDelay);
-  }
-  uint16_t p = map(target, 0, 180, SERVO_MIN, SERVO_MAX);
-  s_pca.setPWM(ch, 0, p);
-  s_angles[ch] = target;
-  int step = (boundedTarget > start) ? 1 : -1;
+  const int step = (boundedTarget > start) ? 1 : -1;
   for (int a = start; a != boundedTarget; a += step) {
     setAngle(ch, a);
     delay(stepDelay <= 0 ? 1 : stepDelay);
@@ -238,6 +190,7 @@ void couple() {
 
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, RAMP_MS_SLOW);
   delay(100);
+
   setPulseRaw(COUPLING_SERVO, 0);
   s_isCoupled = isRaised();
 }
@@ -258,7 +211,7 @@ bool ensureRaised(uint16_t timeout_ms) {
   delay(100);
   setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS);
 
-  unsigned long start = millis();
+  const unsigned long start = millis();
   while (!isRaised() && (millis() - start) < timeout_ms) {
     setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
     delay(100);
