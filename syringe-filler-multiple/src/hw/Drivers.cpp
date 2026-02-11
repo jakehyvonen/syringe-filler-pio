@@ -10,12 +10,12 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include <Adafruit_ADS1X15.h>
-#include <Adafruit_PWMServoDriver.h>
+#include <Adafruit_MCP23X17.h>
 
 // ----------------------------------------------------------
 // Global hardware objects
 // ----------------------------------------------------------
-Adafruit_PWMServoDriver Drivers::PCA;   // default 0x40
+Adafruit_MCP23X17    Drivers::MCP;   // MCP23017 base expander
 Adafruit_ADS1115        Drivers::ADS;   // 0x48 or 0x49
 
 // ----------------------------------------------------------
@@ -28,7 +28,8 @@ namespace {
   bool     g_i2c2Init = false;
   uint32_t g_i2c2Freq = 0;
 
-  bool g_hasPCA = false;
+  bool g_hasMCP = false;
+  uint8_t g_mcpAddr = 0;
   bool g_hasADS = false;
 
   uint8_t g_adsAddr = 0;  // 0 if none; otherwise 0x48 or 0x49
@@ -87,15 +88,25 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Serial.printf("[I2C] clock updated to %lu Hz\n", (unsigned long)freq);
   }
 
-  // ---- PCA9685 detection ----
-  if (i2cPresentQuick(0x40)) {
-    Drivers::PCA.begin();
-    Drivers::PCA.setPWMFreq(60);
-    g_hasPCA = true;
-    Serial.println("PCA9685 detected @0x40");
+  // ---- MCP23017 detection ----
+  g_hasMCP = false;
+  g_mcpAddr = 0;
+  for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
+    if (!i2cPresentQuick(addr)) continue;
+
+    if (Drivers::MCP.begin_I2C(addr, &Wire)) {
+      g_hasMCP = true;
+      g_mcpAddr = addr;
+      break;
+    }
+
+    Serial.printf("WARN: MCP23017 ACK at 0x%02X but init failed.\n", addr);
+  }
+
+  if (g_hasMCP) {
+    Serial.printf("MCP23017 detected @0x%02X on I2C0\n", g_mcpAddr);
   } else {
-    g_hasPCA = false;
-    Serial.println("WARN: PCA9685 not found; servo control disabled.");
+    Serial.println("WARN: MCP23017 not found on I2C0 (checked 0x20-0x27). Base expander offline.");
   }
 
   // ---- PN532 detection (I2C0) ----
@@ -185,7 +196,7 @@ void Drivers::i2cScanBoth() {
 }
 
 // ---- Status getters ----
-// Return true if the PCA9685 was detected.
-bool Drivers::hasPCA() { return g_hasPCA; }
+// Return true if the MCP23017 base expander was detected.
+bool Drivers::hasMCP() { return g_hasMCP; }
 // Return true if the ADS1115 was detected.
 bool Drivers::hasADS() { return g_hasADS; }

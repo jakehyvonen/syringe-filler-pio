@@ -6,6 +6,7 @@
 #include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
 #include <Arduino.h>
+#include <Adafruit_PWMServoDriver.h>
 
 namespace Toolhead {
 
@@ -29,6 +30,24 @@ static bool s_anglesInit = false;
 static bool s_isCoupled = false;
 
 
+static Adafruit_PWMServoDriver s_pca; // local servo controller ownership
+static bool s_servoInitTried = false;
+static bool s_servoReady = false;
+
+static void ensureServoInit() {
+  if (s_servoInitTried) return;
+  s_servoInitTried = true;
+  if (s_pca.begin()) {
+    s_pca.setPWMFreq(60);
+    s_servoReady = true;
+    Serial.println("Toolhead servo controller ready @0x40");
+  } else {
+    s_servoReady = false;
+    Serial.println("WARN: Toolhead servo controller not found @0x40.");
+  }
+}
+
+
 static inline void ensureAnglesInit() {
   if (!s_anglesInit) {
     for (int i = 0; i < 16; ++i) s_angles[i] = 90;
@@ -36,9 +55,9 @@ static inline void ensureAnglesInit() {
   }
 }
 
-// Initialize toolhead state (PCA already configured elsewhere).
+// Initialize toolhead state.
 void init() {
-  // nothing special; PCA is initialized in Drivers
+  ensureServoInit();
 }
 
 // Return true when the toolhead raised switch is active.
@@ -49,13 +68,15 @@ bool isRaised() {
 
 // Set a raw microsecond pulse on a PCA9685 channel.
 void setPulseRaw(uint8_t ch, int pulse) {
-  if (!Drivers::hasPCA()) return;
-  Drivers::PCA.writeMicroseconds(ch, pulse);
+  ensureServoInit();
+  if (!s_servoReady) return;
+  s_pca.writeMicroseconds(ch, pulse);
 }
 
 // Set a servo channel to an absolute angle.
 void setAngle(uint8_t ch, int angle) {
-  if (!Drivers::hasPCA()) return;
+  ensureServoInit();
+  if (!s_servoReady) return;
   ensureAnglesInit();
 
   if (angle < 0) angle = 0;
@@ -64,7 +85,7 @@ void setAngle(uint8_t ch, int angle) {
   if (s_angles[ch] == angle) return; // avoid redundant I2C writes
 
   uint16_t p = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
-  Drivers::PCA.setPWM(ch, 0, p);
+  s_pca.setPWM(ch, 0, p);
 
   s_angles[ch] = angle;
   Serial.print("Servo "); Serial.print(ch);
@@ -74,7 +95,8 @@ void setAngle(uint8_t ch, int angle) {
 
 // Sweep a servo channel to a target angle with delay.
 void setAngleSlow(uint8_t ch, int target, int stepDelay) {
-  if (!Drivers::hasPCA()) return;
+  ensureServoInit();
+  if (!s_servoReady) return;
   ensureAnglesInit();
 
   if (target < 0) target = 0;
@@ -86,11 +108,11 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
   int step = (target > start) ? 1 : -1;
   for (int a = start; a != target; a += step) {
     uint16_t p = map(a, 0, 180, SERVO_MIN, SERVO_MAX);
-    Drivers::PCA.setPWM(ch, 0, p);
+    s_pca.setPWM(ch, 0, p);
     delay(stepDelay <= 0 ? 1 : stepDelay);
   }
   uint16_t p = map(target, 0, 180, SERVO_MIN, SERVO_MAX);
-  Drivers::PCA.setPWM(ch, 0, p);
+  s_pca.setPWM(ch, 0, p);
   s_angles[ch] = target;
 
   Serial.print("Servo "); Serial.print(ch);
@@ -134,8 +156,9 @@ bool isCoupled() {
 
 // Raise the toolhead if needed and enforce a timeout.
 bool ensureRaised(uint16_t timeout_ms) {
-  if (!Drivers::hasPCA()) {
-    Serial.println("ERROR: No PCA9685; cannot raise toolhead.");
+  ensureServoInit();
+  if (!s_servoReady) {
+    Serial.println("ERROR: Toolhead controller unavailable; cannot raise toolhead.");
     return false;
   }
   if (isRaised()) return true;

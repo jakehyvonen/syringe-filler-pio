@@ -48,6 +48,7 @@ void setup() {
   Bases::init();
   Axis::init();
   AxisPair::init();
+  Toolhead::init();
 
   // Encoder init
   EncoderHW::begin();
@@ -59,13 +60,15 @@ void setup() {
     Serial.println("WARN: ADS1115 not found; pot readings disabled.");
   }
 
-  if (Drivers::hasPCA()) {
-    if (!Toolhead::ensureRaised()) {
-      Serial.println("ERROR: toolhead not raised.");
-      //while (true) delay(1000);
-    }
+  if (Drivers::hasMCP()) {
+    Serial.println("Base MCP23017 expander ready.");
   } else {
-    Serial.println("WARN: no PCA9685; movement will be blocked by safety where needed.");
+    Serial.println("WARN: base MCP23017 expander not detected; base outputs unavailable.");
+  }
+
+  if (!Toolhead::ensureRaised()) {
+    Serial.println("ERROR: toolhead not raised.");
+    //while (true) delay(1000);
   }
 
   Serial.println("Setup complete. Type commands: on/off, home, move, servo, enc ...");
