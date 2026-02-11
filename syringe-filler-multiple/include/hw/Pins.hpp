@@ -61,8 +61,8 @@ constexpr uint8_t RAISED = 35; // input-only
 // ==========  DIRECT SERVO OUTPUTS (ESP32 LEDC)  =========
 // =======================================================
 // Keep these separate from STEP/DIR/EN, encoder, and I2C pins.
-constexpr uint8_t SERVO_PIN_TOOLHEAD = 0;
-constexpr uint8_t SERVO_PIN_COUPLER  = 3;
+constexpr uint8_t SERVO_PIN_TOOLHEAD = 25;
+constexpr uint8_t SERVO_PIN_COUPLER  = 26;
 
 constexpr uint16_t SERVO_MIN_US = 500;
 constexpr uint16_t SERVO_MAX_US = 2400;
