@@ -7,6 +7,7 @@
 
 namespace Toolhead {
   void init();
+  bool isReady();
   bool isRaised(); // reads Pins::RAISED
   void setAngle(uint8_t ch, int angle);
   void setAngleSlow(uint8_t ch, int target, int stepDelay = 23);

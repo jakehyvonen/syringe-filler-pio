@@ -57,21 +57,24 @@ int resolvePin(uint8_t ch) {
   return -1;
 }
 
-void ensureAttached(uint8_t ch) {
+bool ensureAttached(uint8_t ch) {
   Servo* servo = resolveServo(ch);
   bool* attached = resolveAttachedSlot(ch);
   const int pin = resolvePin(ch);
-  if (!servo || !attached || pin < 0) return;
+  if (!servo || !attached || pin < 0) return false;
 
-  if (*attached) return;
+  if (*attached) return true;
 
   servo->setPeriodHertz(Pins::SERVO_HZ);
   const int attachPin = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
   if (attachPin != pin) {
-    Serial.printf("FATAL: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, attachPin);
-    while (true) delay(1000);
+    Serial.printf("ERROR: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, attachPin);
+    *attached = false;
+    return false;
   }
+
   *attached = true;
+  return true;
 }
 
 void ensureServoInit() {
@@ -86,10 +89,10 @@ void ensureServoInit() {
   s_toolheadServo.setPeriodHertz(Pins::SERVO_HZ);
   s_couplerServo.setPeriodHertz(Pins::SERVO_HZ);
 
-  ensureAttached(TOOLHEAD_SERVO);
-  ensureAttached(COUPLING_SERVO);
+  const bool toolheadOk = ensureAttached(TOOLHEAD_SERVO);
+  const bool couplerOk = ensureAttached(COUPLING_SERVO);
 
-  s_servoReady = s_toolheadAttached && s_couplerAttached;
+  s_servoReady = toolheadOk && couplerOk && s_toolheadAttached && s_couplerAttached;
   if (s_servoReady) {
     Serial.printf("Toolhead servos ready on GPIO %u/%u\n",
                   Pins::SERVO_PIN_TOOLHEAD,
@@ -100,6 +103,10 @@ void ensureServoInit() {
 
 void init() {
   ensureServoInit();
+}
+
+bool isReady() {
+  return s_servoReady;
 }
 
 bool isRaised() {
@@ -120,7 +127,11 @@ void setPulseRaw(uint8_t ch, int pulse) {
     return;
   }
 
-  ensureAttached(ch);
+  if (!ensureAttached(ch)) {
+    Serial.printf("ERROR: setPulseRaw failed; servo ch %u unavailable.\n", ch);
+    return;
+  }
+
   servo->writeMicroseconds(pulse);
 }
 
@@ -135,7 +146,11 @@ void setAngle(uint8_t ch, int angle) {
   const int bounded = constrain(angle, 0, 180);
   if (*angleSlot == bounded) return;
 
-  ensureAttached(ch);
+  if (!ensureAttached(ch)) {
+    Serial.printf("ERROR: setAngle failed; servo ch %u unavailable.\n", ch);
+    return;
+  }
+
   servo->write(bounded);
   *angleSlot = bounded;
 
@@ -171,6 +186,11 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
 }
 
 void raise() {
+  if (!isReady()) {
+    Serial.println("ERROR: raise requested before toolhead init.");
+    return;
+  }
+
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
   delay(50);
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
@@ -178,6 +198,11 @@ void raise() {
 }
 
 void couple() {
+  if (!isReady()) {
+    Serial.println("ERROR: couple requested before toolhead init.");
+    return;
+  }
+
   s_isCoupled = false;
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
   delay(100);
@@ -202,7 +227,7 @@ bool isCoupled() {
 bool ensureRaised(uint16_t timeout_ms) {
   ensureServoInit();
   if (!s_servoReady) {
-    Serial.println("ERROR: Toolhead controller unavailable; cannot raise toolhead.");
+    Serial.println("ERROR: ensureRaised aborted; toolhead servos are uninitialized.");
     return false;
   }
   if (isRaised()) return true;
