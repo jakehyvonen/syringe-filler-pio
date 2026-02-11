@@ -4,11 +4,13 @@
  */
 #pragma once
 #include <Adafruit_ADS1X15.h>
+#include <Adafruit_MCP23X17.h>
 #include <stdint.h>
 #include "hw/Pins.hpp"
 
 namespace Drivers {
   extern Adafruit_ADS1115       ADS;
+  extern Adafruit_MCP23X17      BASE_EN_EXPANDER;
 
   // Uses Pins::I2C_SDA / Pins::I2C_SCL / Pins::I2C_FREQ
   bool initI2C();
@@ -21,6 +23,7 @@ namespace Drivers {
   void i2cRecover();        // attempt bus recovery on lockup
 
   bool hasADS();
+  bool hasBaseEnableExpander();
   bool i2cPresent(uint8_t addr);
   bool i2c2Present(uint8_t addr);
   void i2cScanBoth();
