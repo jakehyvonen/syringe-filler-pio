@@ -8,7 +8,7 @@
 namespace Pins {
 
 // =======================================================
-// ==========  I2C BUS (for first PN532 + ADS/PCA)  =======
+// ==========  I2C BUS (for first PN532 + ADS)  ===========
 // =======================================================
 constexpr int      I2C_SDA  = 21;
 constexpr int      I2C_SCL  = 22;
@@ -55,6 +55,17 @@ constexpr uint8_t TOOL_POT_IDX = 2; //ADS0, A3
 
 constexpr uint8_t LIMIT  = 34; // input-only
 constexpr uint8_t RAISED = 35; // input-only
+
+// =======================================================
+// ==========  DIRECT SERVO OUTPUTS (ESP32 LEDC)  =========
+// =======================================================
+// Keep these separate from STEP/DIR/EN, encoder, and I2C pins.
+constexpr uint8_t SERVO_PIN_TOOLHEAD = 0;
+constexpr uint8_t SERVO_PIN_COUPLER  = 3;
+
+constexpr uint16_t SERVO_MIN_US = 500;
+constexpr uint16_t SERVO_MAX_US = 2400;
+constexpr uint8_t  SERVO_HZ     = 50;
 
 // =======================================================
 // ==========  MOTION CONFIG  =============================

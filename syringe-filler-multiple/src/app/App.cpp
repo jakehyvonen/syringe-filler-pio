@@ -59,13 +59,10 @@ void setup() {
     Serial.println("WARN: ADS1115 not found; pot readings disabled.");
   }
 
-  if (Drivers::hasPCA()) {
-    if (!Toolhead::ensureRaised()) {
-      Serial.println("ERROR: toolhead not raised.");
-      //while (true) delay(1000);
-    }
-  } else {
-    Serial.println("WARN: no PCA9685; movement will be blocked by safety where needed.");
+  Toolhead::init();
+  if (!Toolhead::ensureRaised()) {
+    Serial.println("ERROR: toolhead not raised.");
+    //while (true) delay(1000);
   }
 
   Serial.println("Setup complete. Type commands: on/off, home, move, servo, enc ...");

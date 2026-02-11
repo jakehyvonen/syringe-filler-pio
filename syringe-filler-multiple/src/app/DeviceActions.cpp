@@ -112,8 +112,8 @@ ActionResult setServoPulseRaw(int channel, int us) {
 
 // Set a servo channel to a target angle.
 ActionResult setServoAngle(int channel, int angle) {
-  if (channel < 0 || channel > 15) {
-    return {false, "channel must be 0-15"};
+  if (!(channel == 0 || channel == 1 || channel == 3 || channel == 5)) {
+    return {false, "channel must be 0/1 (or legacy 3/5)"};
   }
   Toolhead::setAngle(channel, angle);
   return {true, "servo angle set"};
@@ -121,8 +121,8 @@ ActionResult setServoAngle(int channel, int angle) {
 
 // Sweep a servo channel to a target angle with delay.
 ActionResult setServoAngleSlow(int channel, int angle, int delayMs) {
-  if (channel < 0 || channel > 15) {
-    return {false, "channel must be 0-15"};
+  if (!(channel == 0 || channel == 1 || channel == 3 || channel == 5)) {
+    return {false, "channel must be 0/1 (or legacy 3/5)"};
   }
   Toolhead::setAngleSlow(channel, angle, delayMs);
   return {true, "servo angle set slowly"};
