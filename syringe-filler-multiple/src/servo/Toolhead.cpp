@@ -15,7 +15,7 @@ namespace {
 static constexpr uint8_t TOOLHEAD_SERVO = 3;
 static constexpr uint8_t COUPLING_SERVO = 5;
 
-static constexpr int TOOLHEAD_SERVO_RAISED_POS    = 111;
+static constexpr int TOOLHEAD_SERVO_RAISED_POS    = 113;
 static constexpr int TOOLHEAD_SERVO_COUPLING_POS1 = 140;
 static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
