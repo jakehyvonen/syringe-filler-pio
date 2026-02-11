@@ -11,7 +11,7 @@ namespace Util {
 // Represents one paint addition step (ordered)
 struct RecipeEntry {
     float      volumeMl = 0.0f;     // always required
-    int8_t     baseSlot = -1;       // 1-based index, -1 if none
+    int8_t     baseSlot = -1;       // 0-based index, -1 if none
     uint32_t   baseRFID = 0;        // optional
     String     colorHex;             // optional (e.g. "#12ABEF")
     uint32_t   paintId = 0;          // optional numeric ID
@@ -20,7 +20,7 @@ struct RecipeEntry {
     // Return true when the entry has a valid volume and identifier.
     bool isValid() const {
         return (volumeMl > 0.0f) && (
-            baseSlot > 0 ||
+            baseSlot >= 0 ||
             baseRFID != 0 ||
             (colorHex.length() > 0) ||
             paintId != 0
@@ -31,7 +31,7 @@ struct RecipeEntry {
     // Serialize the entry to a JSON object.
     void toJson(JsonObject obj) const {
         obj["volume_ml"] = volumeMl;
-        if (baseSlot > 0) obj["base_slot"] = baseSlot;
+        if (baseSlot >= 0) obj["base_slot"] = baseSlot;
         if (baseRFID != 0) obj["base_rfid"] = baseRFID;
         if (colorHex.length()) obj["color_hex"] = colorHex;
         if (paintId != 0) obj["paint_id"] = paintId;

@@ -31,7 +31,7 @@ keys:
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
 | `volume_ml` | number | yes | Must be `> 0`. |
-| `base_slot` | integer | no | 1-based base index. Must be `> 0` if provided. |
+| `base_slot` | integer | no | 0-based base index. Must be `>= 0` if provided. |
 | `base_rfid` | integer | no | RFID of the base. Must be `> 0` if provided. |
 | `color_hex` | string | no | `#RRGGBB` string. |
 | `paint_id` | integer | no | Numeric ID for the paint. Must be `> 0` if provided. |
@@ -43,7 +43,7 @@ Example recipe:
 
 ```json
 [
-  {"volume_ml": 1.5, "base_slot": 1},
+  {"volume_ml": 1.5, "base_slot": 0},
   {"volume_ml": 0.75, "color_hex": "#12ABEF", "paint_id": 42}
 ]
 ```
@@ -87,7 +87,7 @@ Show a stored recipe by recipe ID.
 {
   "recipe_id": 305419896,
   "recipe": [
-    {"volume_ml": 1.5, "base_slot": 1}
+    {"volume_ml": 1.5, "base_slot": 0}
   ]
 }
 ```
@@ -104,7 +104,7 @@ Save a recipe for a recipe ID.
   "data": {
     "recipe_id": 305419896,
     "recipe": [
-      {"volume_ml": 1.5, "base_slot": 1}
+      {"volume_ml": 1.5, "base_slot": 0}
     ]
   }
 }

@@ -30,6 +30,10 @@ def _is_positive_int(value: Any) -> bool:
     return isinstance(value, int) and value > 0
 
 
+def _is_non_negative_int(value: Any) -> bool:
+    return isinstance(value, int) and value >= 0
+
+
 def validate_recipe_steps(steps: Iterable[Dict[str, Any]]) -> List[ValidationError]:
     errors: List[ValidationError] = []
     steps_list = list(steps)
@@ -58,7 +62,7 @@ def validate_recipe_steps(steps: Iterable[Dict[str, Any]]) -> List[ValidationErr
         paint_id = step.get("paint_id")
 
         identifiers = [
-            _is_positive_int(base_slot),
+            _is_non_negative_int(base_slot),
             _is_positive_int(base_rfid),
             isinstance(color_hex, str) and bool(color_hex.strip()),
             _is_positive_int(paint_id),
@@ -71,8 +75,8 @@ def validate_recipe_steps(steps: Iterable[Dict[str, Any]]) -> List[ValidationErr
                 )
             )
 
-        if base_slot is not None and not _is_positive_int(base_slot):
-            errors.append(ValidationError(idx, "base_slot must be a positive integer"))
+        if base_slot is not None and not _is_non_negative_int(base_slot):
+            errors.append(ValidationError(idx, "base_slot must be a non-negative integer"))
         if base_rfid is not None and not _is_positive_int(base_rfid):
             errors.append(ValidationError(idx, "base_rfid must be a positive integer"))
         if paint_id is not None and not _is_positive_int(paint_id):
