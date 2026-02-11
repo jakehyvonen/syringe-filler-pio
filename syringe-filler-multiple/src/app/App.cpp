@@ -66,7 +66,9 @@ void setup() {
   }
 
   Toolhead::init();
-  if (!Toolhead::ensureRaised()) {
+  if (!Toolhead::isReady()) {
+    Serial.println("WARN: toolhead servos unavailable; raise check skipped.");
+  } else if (!Toolhead::ensureRaised()) {
     Serial.println("ERROR: toolhead not raised.");
     //while (true) delay(1000);
   }
