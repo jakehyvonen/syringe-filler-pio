@@ -31,6 +31,7 @@ namespace {
   bool g_hasMCP = false;
   uint8_t g_mcpAddr = 0;
   bool g_hasADS = false;
+  bool g_hasBaseEnableExpander = false;
 
   uint8_t g_adsAddr = 0;  // 0 if none; otherwise 0x48 or 0x49
 
@@ -159,6 +160,16 @@ bool Drivers::initI2C2() {
     Serial.println("WARN: ADS1115 not found on I2C2; pot readings disabled.");
   }
 
+  // ---- MCP23X17 detection (I2C1) ----
+  g_hasBaseEnableExpander = Drivers::BASE_EN_EXPANDER.begin_I2C(Pins::BASE_EN_MCP_ADDR, &Wire1);
+  if (g_hasBaseEnableExpander) {
+    Serial.printf("MCP23X17 base enable expander detected @0x%02X on I2C2\n",
+                  Pins::BASE_EN_MCP_ADDR);
+  } else {
+    Serial.printf("WARN: MCP23X17 base enable expander not found @0x%02X on I2C2.\n",
+                  Pins::BASE_EN_MCP_ADDR);
+  }
+
   // ---- PN532 detection (I2C1) ----
   if (i2c2PresentQuick(0x24)) {
     Serial.println("INFO: PN532 ACK at 0x24 (Wire1)");
@@ -200,3 +211,4 @@ void Drivers::i2cScanBoth() {
 bool Drivers::hasMCP() { return g_hasMCP; }
 // Return true if the ADS1115 was detected.
 bool Drivers::hasADS() { return g_hasADS; }
+bool Drivers::hasBaseEnableExpander() { return g_hasBaseEnableExpander; }

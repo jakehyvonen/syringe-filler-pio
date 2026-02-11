@@ -35,11 +35,12 @@ constexpr uint8_t DIR3  = 14;
 
 
 // =======================================================
-// ==========  BASE ENABLE LINES (active LOW)  ============
+// ==========  BASE ENABLE LINES (MCP23X17)  ==============
 // =======================================================
 
 constexpr uint8_t NUM_BASES = 5;
-constexpr uint8_t BASE_EN[NUM_BASES] = {27, 26, 25, 33, 32};
+constexpr uint8_t BASE_EN_MCP_ADDR = 0x20;
+constexpr uint8_t BASE_EN_MCP[NUM_BASES] = {0, 1, 2, 3, 4};
 
 
 // =======================================================
@@ -71,6 +72,9 @@ constexpr uint8_t  SERVO_HZ     = 50;
 // ==========  MOTION CONFIG  =============================
 // =======================================================
 
+// Logical base-enable levels written by software.
+// If MCP expander inversion is configured, the electrical level on the MCP
+// output can be the opposite of these constants.
 constexpr uint8_t  ENABLE_LEVEL  = LOW;
 constexpr uint8_t  DISABLE_LEVEL = HIGH;
 constexpr bool     HOME_DIR_HIGH = false;

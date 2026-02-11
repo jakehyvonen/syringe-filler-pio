@@ -11,6 +11,7 @@
 namespace Drivers {
   extern Adafruit_MCP23X17    MCP;
   extern Adafruit_ADS1115       ADS;
+  extern Adafruit_MCP23X17      BASE_EN_EXPANDER;
 
   // Uses Pins::I2C_SDA / Pins::I2C_SCL / Pins::I2C_FREQ
   bool initI2C();
@@ -24,6 +25,7 @@ namespace Drivers {
 
   bool hasMCP();
   bool hasADS();
+  bool hasBaseEnableExpander();
   bool i2cPresent(uint8_t addr);
   bool i2c2Present(uint8_t addr);
   void i2cScanBoth();
