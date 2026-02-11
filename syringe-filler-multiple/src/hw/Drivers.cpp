@@ -10,12 +10,10 @@
 #include <Wire.h>
 #include <Arduino.h>
 #include <Adafruit_ADS1X15.h>
-#include <Adafruit_PWMServoDriver.h>
 
 // ----------------------------------------------------------
 // Global hardware objects
 // ----------------------------------------------------------
-Adafruit_PWMServoDriver Drivers::PCA;   // default 0x40
 Adafruit_ADS1115        Drivers::ADS;   // 0x48 or 0x49
 
 // ----------------------------------------------------------
@@ -28,7 +26,6 @@ namespace {
   bool     g_i2c2Init = false;
   uint32_t g_i2c2Freq = 0;
 
-  bool g_hasPCA = false;
   bool g_hasADS = false;
 
   uint8_t g_adsAddr = 0;  // 0 if none; otherwise 0x48 or 0x49
@@ -85,17 +82,6 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Wire.setClock(freq);
     g_i2cFreq = freq;
     Serial.printf("[I2C] clock updated to %lu Hz\n", (unsigned long)freq);
-  }
-
-  // ---- PCA9685 detection ----
-  if (i2cPresentQuick(0x40)) {
-    Drivers::PCA.begin();
-    Drivers::PCA.setPWMFreq(60);
-    g_hasPCA = true;
-    Serial.println("PCA9685 detected @0x40");
-  } else {
-    g_hasPCA = false;
-    Serial.println("WARN: PCA9685 not found; servo control disabled.");
   }
 
   // ---- PN532 detection (I2C0) ----
@@ -185,7 +171,5 @@ void Drivers::i2cScanBoth() {
 }
 
 // ---- Status getters ----
-// Return true if the PCA9685 was detected.
-bool Drivers::hasPCA() { return g_hasPCA; }
 // Return true if the ADS1115 was detected.
 bool Drivers::hasADS() { return g_hasADS; }
