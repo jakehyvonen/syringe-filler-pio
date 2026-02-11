@@ -9,6 +9,7 @@
 #include "hw/Pins.hpp"
 
 namespace Drivers {
+  extern Adafruit_MCP23X17    MCP;
   extern Adafruit_ADS1115       ADS;
   extern Adafruit_MCP23X17      BASE_EN_EXPANDER;
 
@@ -22,6 +23,7 @@ namespace Drivers {
   //bool initI2C(int sda = Pins::I2C_SDA, int scl = Pins::I2C_SCL, uint32_t freq = 100000);
   void i2cRecover();        // attempt bus recovery on lockup
 
+  bool hasMCP();
   bool hasADS();
   bool hasBaseEnableExpander();
   bool i2cPresent(uint8_t addr);

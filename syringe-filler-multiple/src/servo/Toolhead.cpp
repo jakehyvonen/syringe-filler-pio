@@ -7,6 +7,7 @@
 #include "hw/Pins.hpp"
 
 #include <Arduino.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <ESP32Servo.h>
 
 namespace Toolhead {
@@ -56,6 +57,28 @@ int resolvePin(uint8_t ch) {
   return -1;
 }
 
+static Adafruit_PWMServoDriver s_pca; // local servo controller ownership
+static bool s_servoInitTried = false;
+static bool s_servoReady = false;
+
+static void ensureServoInit() {
+  if (s_servoInitTried) return;
+  s_servoInitTried = true;
+  if (s_pca.begin()) {
+    s_pca.setPWMFreq(60);
+    s_servoReady = true;
+    Serial.println("Toolhead servo controller ready @0x40");
+  } else {
+    s_servoReady = false;
+    Serial.println("WARN: Toolhead servo controller not found @0x40.");
+  }
+}
+
+
+static inline void ensureAnglesInit() {
+  if (!s_anglesInit) {
+    for (int i = 0; i < 16; ++i) s_angles[i] = 90;
+    s_anglesInit = true;
 void ensureAttached(uint8_t ch) {
   Servo* servo = resolveServo(ch);
   bool* attached = resolveAttachedSlot(ch);
@@ -73,6 +96,9 @@ void ensureAttached(uint8_t ch) {
 }
 } // namespace
 
+// Initialize toolhead state.
+void init() {
+  // Lazy init happens on first servo command.
 void init() {
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
@@ -112,6 +138,9 @@ bool isRaised() {
 }
 
 void setPulseRaw(uint8_t ch, int pulse) {
+  ensureServoInit();
+  if (!s_servoReady) return;
+  s_pca.writeMicroseconds(ch, pulse);
   if (!s_servoReady) return;
 
   Servo* servo = resolveServo(ch);
@@ -129,6 +158,9 @@ void setPulseRaw(uint8_t ch, int pulse) {
 }
 
 void setAngle(uint8_t ch, int angle) {
+  ensureServoInit();
+  if (!s_servoReady) return;
+  ensureAnglesInit();
   if (!s_servoReady) return;
 
   Servo* servo = resolveServo(ch);
@@ -138,6 +170,8 @@ void setAngle(uint8_t ch, int angle) {
   const int bounded = constrain(angle, 0, 180);
   if (*angleSlot == bounded) return;
 
+  uint16_t p = map(angle, 0, 180, SERVO_MIN, SERVO_MAX);
+  s_pca.setPWM(ch, 0, p);
   ensureAttached(ch);
   servo->write(bounded);
   *angleSlot = bounded;
@@ -150,6 +184,9 @@ void setAngle(uint8_t ch, int angle) {
 }
 
 void setAngleSlow(uint8_t ch, int target, int stepDelay) {
+  ensureServoInit();
+  if (!s_servoReady) return;
+  ensureAnglesInit();
   if (!s_servoReady) return;
 
   int* angleSlot = resolveAngleSlot(ch);
@@ -159,6 +196,15 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
   int start = *angleSlot;
   if (start == boundedTarget) return;
 
+  int step = (target > start) ? 1 : -1;
+  for (int a = start; a != target; a += step) {
+    uint16_t p = map(a, 0, 180, SERVO_MIN, SERVO_MAX);
+    s_pca.setPWM(ch, 0, p);
+    delay(stepDelay <= 0 ? 1 : stepDelay);
+  }
+  uint16_t p = map(target, 0, 180, SERVO_MIN, SERVO_MAX);
+  s_pca.setPWM(ch, 0, p);
+  s_angles[ch] = target;
   int step = (boundedTarget > start) ? 1 : -1;
   for (int a = start; a != boundedTarget; a += step) {
     setAngle(ch, a);
@@ -201,6 +247,11 @@ bool isCoupled() {
 }
 
 bool ensureRaised(uint16_t timeout_ms) {
+  ensureServoInit();
+  if (!s_servoReady) {
+    Serial.println("ERROR: Toolhead controller unavailable; cannot raise toolhead.");
+    return false;
+  }
   if (isRaised()) return true;
 
   setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);

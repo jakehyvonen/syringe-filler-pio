@@ -59,6 +59,12 @@ void setup() {
     Serial.println("WARN: ADS1115 not found; pot readings disabled.");
   }
 
+  if (Drivers::hasMCP()) {
+    Serial.println("Base MCP23017 expander ready.");
+  } else {
+    Serial.println("WARN: base MCP23017 expander not detected; base outputs unavailable.");
+  }
+
   Toolhead::init();
   if (!Toolhead::ensureRaised()) {
     Serial.println("ERROR: toolhead not raised.");

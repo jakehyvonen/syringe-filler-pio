@@ -15,8 +15,8 @@
 // ----------------------------------------------------------
 // Global hardware objects
 // ----------------------------------------------------------
-Adafruit_ADS1115        Drivers::ADS;               // 0x48 or 0x49
-Adafruit_MCP23X17       Drivers::BASE_EN_EXPANDER;   // base enable outputs
+Adafruit_MCP23X17    Drivers::MCP;   // MCP23017 base expander
+Adafruit_ADS1115        Drivers::ADS;   // 0x48 or 0x49
 
 // ----------------------------------------------------------
 // Internal state
@@ -28,6 +28,8 @@ namespace {
   bool     g_i2c2Init = false;
   uint32_t g_i2c2Freq = 0;
 
+  bool g_hasMCP = false;
+  uint8_t g_mcpAddr = 0;
   bool g_hasADS = false;
   bool g_hasBaseEnableExpander = false;
 
@@ -85,6 +87,27 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Wire.setClock(freq);
     g_i2cFreq = freq;
     Serial.printf("[I2C] clock updated to %lu Hz\n", (unsigned long)freq);
+  }
+
+  // ---- MCP23017 detection ----
+  g_hasMCP = false;
+  g_mcpAddr = 0;
+  for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
+    if (!i2cPresentQuick(addr)) continue;
+
+    if (Drivers::MCP.begin_I2C(addr, &Wire)) {
+      g_hasMCP = true;
+      g_mcpAddr = addr;
+      break;
+    }
+
+    Serial.printf("WARN: MCP23017 ACK at 0x%02X but init failed.\n", addr);
+  }
+
+  if (g_hasMCP) {
+    Serial.printf("MCP23017 detected @0x%02X on I2C0\n", g_mcpAddr);
+  } else {
+    Serial.println("WARN: MCP23017 not found on I2C0 (checked 0x20-0x27). Base expander offline.");
   }
 
   // ---- PN532 detection (I2C0) ----
@@ -184,6 +207,8 @@ void Drivers::i2cScanBoth() {
 }
 
 // ---- Status getters ----
+// Return true if the MCP23017 base expander was detected.
+bool Drivers::hasMCP() { return g_hasMCP; }
 // Return true if the ADS1115 was detected.
 bool Drivers::hasADS() { return g_hasADS; }
 bool Drivers::hasBaseEnableExpander() { return g_hasBaseEnableExpander; }
