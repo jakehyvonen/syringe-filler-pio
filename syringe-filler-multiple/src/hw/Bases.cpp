@@ -110,7 +110,9 @@ void init() {
 // Disable all base enable outputs.
 void disableAll() {
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
-    writeEnablePin(Pins::BASE_EN_MCP[i], Pins::DISABLE_LEVEL);
+    const uint8_t pin = Pins::BASE_EN_MCP[i];
+    setEnablePinMode(pin, OUTPUT);
+    writeEnablePin(pin, Pins::DISABLE_LEVEL);
   }
 }
 
@@ -137,6 +139,14 @@ bool select(uint8_t idx1) {
 
   s_selected = idx1;
   disableAll();
+
+  // Base enable outputs are active-low. Selecting a base should immediately
+  // assert its MCP pin LOW so exactly one base driver is enabled.
+  const uint8_t enPin = selectedEnPin();
+  if (enPin != 255) {
+    setEnablePinMode(enPin, OUTPUT);
+    writeEnablePin(enPin, Pins::ENABLE_LEVEL);
+  }
 
   Serial.print("[Bases] Base selected: "); Serial.println(idx1);
   debugDumpEN("after select(n)");
