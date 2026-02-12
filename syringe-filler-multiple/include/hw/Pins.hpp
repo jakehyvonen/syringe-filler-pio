@@ -39,7 +39,7 @@ constexpr uint8_t DIR3  = 14;
 // =======================================================
 
 constexpr uint8_t NUM_BASES = 5;
-constexpr uint8_t BASE_EN_MCP_ADDR = 0x20;
+constexpr uint8_t BASE_EN_MCP_ADDR = 0x27;
 constexpr uint8_t BASE_EN_MCP[NUM_BASES] = {0, 1, 2, 3, 4};
 
 
