@@ -122,14 +122,19 @@ struct DebouncedButton {
 
 class StepperControl {
  public:
+  bool enablePinConfigured() const { return m_enable_pin_configured; }
+
   void begin() {
     pinMode(Pins::STEPPER_STEP, OUTPUT);
     pinMode(Pins::STEPPER_DIR, OUTPUT);
     digitalWrite(Pins::STEPPER_STEP, LOW);
     digitalWrite(Pins::STEPPER_DIR, LOW);
     if (Pins::STEPPER_ENABLE >= 0) {
-      pinMode(Pins::STEPPER_ENABLE, OUTPUT);
-      digitalWrite(Pins::STEPPER_ENABLE, kDisableLevel);
+      if (digitalPinCanOutput(Pins::STEPPER_ENABLE)) {
+        pinMode(Pins::STEPPER_ENABLE, OUTPUT);
+        digitalWrite(Pins::STEPPER_ENABLE, kDisableLevel);
+        m_enable_pin_configured = true;
+      }
     }
     applySpeed(kDefaultSpeedSps);
   }
@@ -146,7 +151,7 @@ class StepperControl {
   }
 
   void motorEnable(bool enable) {
-    if (Pins::STEPPER_ENABLE >= 0) {
+    if (m_enable_pin_configured) {
       digitalWrite(Pins::STEPPER_ENABLE, enable ? kEnableLevel : kDisableLevel);
     }
     m_driver_enabled = enable;
@@ -192,6 +197,7 @@ class StepperControl {
   bool m_driver_enabled = false;
   bool m_force_enable = false;
   bool m_button_enable = false;
+  bool m_enable_pin_configured = false;
   int m_dir_level = LOW;
 };
 
@@ -406,6 +412,10 @@ void setup() {
   printStepperState("init");
   if (Pins::STEPPER_ENABLE < 0) {
     Serial.println("[Stepper] Warning: STEPPER_ENABLE is -1 (driver always enabled or wired differently).");
+  } else if (!g_stepper.enablePinConfigured()) {
+    Serial.print("[Stepper] Warning: STEPPER_ENABLE pin ");
+    Serial.print(Pins::STEPPER_ENABLE);
+    Serial.println(" does not support output on esp32dev; EN will not be driven.");
   }
 
   if (!Storage::init()) {
