@@ -347,8 +347,8 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
   }
   if (CAL_DBG) {
     int8_t potIdx = getBasePotIndex(slot);
-    uint16_t counts = (potIdx >= 0) ? Pots::readCounts((uint8_t)potIdx) : 0;
-    float percent = Pots::ratioFromCounts(counts);
+    uint16_t counts = (potIdx >= 0) ? Pots::filt((uint8_t)potIdx) : 0;
+    float percent = ratio * 100.0f;
     Serial.print("[SFC] cal.base.point: base slot=");
     Serial.print(slot);
     Serial.print(" RFID=0x");
