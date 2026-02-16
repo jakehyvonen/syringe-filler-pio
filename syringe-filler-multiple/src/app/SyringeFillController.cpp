@@ -303,15 +303,11 @@ bool SyringeFillController::clearToolheadCalibrationPoints(String& message) {
   return m_calibration.clearToolheadCalibrationPoints(message);
 }
 
-// Force the current base calibration through zero.
-bool SyringeFillController::forceCurrentBaseCalibrationZero(String& message) {
-  return m_calibration.forceCurrentBaseCalibrationZero(message);
+// Set steps-per-mL for a base calibration profile.
+bool SyringeFillController::setBaseStepsPermL(uint8_t slot, float stepsPermL, String& message) {
+  return m_calibration.setBaseStepsPermL(slot, stepsPermL, message);
 }
 
-// Force the toolhead calibration through zero.
-bool SyringeFillController::forceToolheadCalibrationZero(String& message) {
-  return m_calibration.forceToolheadCalibrationZero(message);
-}
 // Capture a base calibration point for a slot.
 bool SyringeFillController::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
   return m_calibration.captureBaseCalibrationPoint(slot, ml, message);

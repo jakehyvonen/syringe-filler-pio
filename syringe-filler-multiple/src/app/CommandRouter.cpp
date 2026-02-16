@@ -44,8 +44,6 @@ using App::DeviceActions::sfcCaptureBaseCalPoint;
 using App::DeviceActions::sfcCaptureToolCalPoint;
 using App::DeviceActions::sfcClearBaseCalPoints;
 using App::DeviceActions::sfcClearToolCalPoints;
-using App::DeviceActions::sfcForceBaseCalZero;
-using App::DeviceActions::sfcForceToolCalZero;
 using App::DeviceActions::sfcLoadRecipe;
 using App::DeviceActions::sfcRecipeLoad;
 using App::DeviceActions::sfcRecipeSave;
@@ -57,6 +55,7 @@ using App::DeviceActions::sfcScanTool;
 using App::DeviceActions::sfcTransferFromBase;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
+using App::DeviceActions::sfcSetBaseStepsPermL;
 using App::DeviceActions::showVolumes;
 using App::DeviceActions::sfcStatus;
 using App::DeviceActions::selectedBase;
@@ -282,28 +281,6 @@ void handleServoRaw(const String &args) {
   }
   int us = args.substring(sp + 1).toInt();
   printStructured("servo.raw", setServoPulseRaw(channel, us));
-}
-
-// Handle deprecated "servopulse" command (legacy wrapper).
-void handleServoPulse(const String &args) {
-  int sp = args.indexOf(' ');
-  if (sp <= 0) {
-    printStructured("servopulse", {false, "deprecated: use servo.raw <toolhead|coupler> <us>"});
-    return;
-  }
-  String rawChannel = args.substring(0, sp);
-  rawChannel.trim();
-  int channel = parseLegacyServoChannel(rawChannel);
-  if (channel < 0) {
-    printStructured("servopulse", {false, "deprecated: channel must map to toolhead(0/3) or coupler(1/5)"});
-    return;
-  }
-  int us = args.substring(sp + 1).toInt();
-  ActionResult res = setServoPulseRaw(channel, us);
-  if (res.ok) {
-    res.message = "deprecated wrapper; " + res.message;
-  }
-  printStructured("servopulse", res);
 }
 
 // Handle "servo.toolhead" command.
@@ -557,6 +534,30 @@ void handleSfcCalBasePoint(const String &args) {
   printStructured("cal.base.point", sfcCaptureBaseCalPoint(g_sfc, ml, slot));
 }
 
+// Handle "cal.base.stepsmL" command to set base steps/mL calibration.
+void handleSfcCalBaseStepsML(const String &args) {
+  int sp = args.indexOf(' ');
+  float stepsPermL = 0.0f;
+  int slot = -1;
+  if (sp < 0) {
+    if (args.length() == 0) {
+      printStructured("cal.base.stepsmL", {false, "usage: cal.base.stepsmL <steps_mL> [slot]"});
+      return;
+    }
+    stepsPermL = args.toFloat();
+  } else {
+    stepsPermL = args.substring(0, sp).toFloat();
+    slot = args.substring(sp + 1).toInt();
+  }
+
+  if (stepsPermL <= 0.0f) {
+    printStructured("cal.base.stepsmL", {false, "steps_mL must be > 0"});
+    return;
+  }
+
+  printStructured("cal.base.stepsmL", sfcSetBaseStepsPermL(g_sfc, stepsPermL, slot));
+}
+
 // Handle "cal.base.clear" command to clear base calibration points.
 void handleSfcCalBaseClear(const String &args) {
   printStructured("cal.base.clear", sfcClearBaseCalPoints(g_sfc));
@@ -565,16 +566,6 @@ void handleSfcCalBaseClear(const String &args) {
 // Handle "cal.tool.clear" command to clear toolhead calibration points.
 void handleSfcCalToolClear(const String &args) {
   printStructured("cal.tool.clear", sfcClearToolCalPoints(g_sfc));
-}
-
-// Handle "cal.base.force0" command to force base calibration through zero.
-void handleSfcCalBaseForceZero(const String &args) {
-  printStructured("cal.base.force0", sfcForceBaseCalZero(g_sfc));
-}
-
-// Handle "cal.tool.force0" command to force toolhead calibration through zero.
-void handleSfcCalToolForceZero(const String &args) {
-  printStructured("cal.tool.force0", sfcForceToolCalZero(g_sfc));
 }
 
 // ------------------------------------------------------------
@@ -760,7 +751,6 @@ const CommandDescriptor COMMANDS[] = {
     {"servo.toolhead", "set toolhead servo angle", handleServoToolhead},
     {"servo.coupler", "set coupler servo angle", handleServoCoupler},
     {"servo.raw", "set raw servo pulse (toolhead|coupler)", handleServoRaw},
-    {"servopulse", "DEPRECATED: use servo.raw <toolhead|coupler> <us>", handleServoPulse},
     {"servo", "DEPRECATED: use servo.toolhead/servo.coupler", handleServo},
     {"raise", "raise toolhead", handleRaise},
     {"servoslow", "set servo slowly", handleServoSlow},
@@ -787,15 +777,14 @@ const CommandDescriptor COMMANDS[] = {
     {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
-    {"cal.tool.force0", "force toolhead syringe calibration to 0 mL", handleSfcCalToolForceZero},
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
     {"showvolumes", "show volumes for scanned syringes", handleShowVolumes},
     {"sfc.recipe.save", "save recipe by recipe ID", handleSfcRecipeSave},
     {"sfc.recipe.load", "load recipe by recipe ID", handleSfcRecipeLoad},
     {"sfc.base.show", "show current base", handleSfcBaseShow},
     {"cal.base.point", "add base calibration point <ml> [slot]", handleSfcCalBasePoint},
+    {"cal.base.stepsmL", "set base calibration steps_mL <steps_mL> [slot]", handleSfcCalBaseStepsML},
     {"cal.base.clear", "clear current base calibration points", handleSfcCalBaseClear},
-    {"cal.base.force0", "force base calibration to 0 mL", handleSfcCalBaseForceZero},
 
     // Potentiometer and bus diagnostics.
     {"potraw", "read pot", handlePotRaw},

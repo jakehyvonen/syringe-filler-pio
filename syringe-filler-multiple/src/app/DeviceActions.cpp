@@ -369,6 +369,23 @@ ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, i
   return {ok, message.length() ? message : (ok ? "calibration point saved" : "calibration point failed")};
 }
 
+ActionResult sfcSetBaseStepsPermL(App::SyringeFillController &sfc, float stepsPermL, int8_t slot) {
+  String message;
+  bool ok = false;
+  if (slot < 0) {
+    int8_t currentSlot = sfc.currentSlot();
+    if (currentSlot < 0) {
+      message = "no current base";
+    } else {
+      ok = sfc.setBaseStepsPermL((uint8_t)currentSlot, stepsPermL, message);
+    }
+  } else {
+    ok = sfc.setBaseStepsPermL((uint8_t)slot, stepsPermL, message);
+  }
+
+  return {ok, message.length() ? message : (ok ? "base steps_mL updated" : "failed to update base steps_mL")};
+}
+
 // Clear calibration points for the current base.
 ActionResult sfcClearBaseCalPoints(App::SyringeFillController &sfc) {
   String message;
@@ -381,20 +398,6 @@ ActionResult sfcClearToolCalPoints(App::SyringeFillController &sfc) {
   String message;
   bool ok = sfc.clearToolheadCalibrationPoints(message);
   return {ok, message.length() ? message : (ok ? "toolhead calibration points cleared" : "clear failed")};
-}
-
-// Force the current base calibration through zero.
-ActionResult sfcForceBaseCalZero(App::SyringeFillController &sfc) {
-  String message;
-  bool ok = sfc.forceCurrentBaseCalibrationZero(message);
-  return {ok, message.length() ? message : (ok ? "base calibration forced to 0 mL" : "update failed")};
-}
-
-// Force the toolhead calibration through zero.
-ActionResult sfcForceToolCalZero(App::SyringeFillController &sfc) {
-  String message;
-  bool ok = sfc.forceToolheadCalibrationZero(message);
-  return {ok, message.length() ? message : (ok ? "toolhead calibration forced to 0 mL" : "update failed")};
 }
 
 ActionResult sfcTransferFromBase(App::SyringeFillController &sfc, uint8_t slot, float ml) {
