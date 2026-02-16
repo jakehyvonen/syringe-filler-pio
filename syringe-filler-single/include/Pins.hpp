@@ -9,8 +9,8 @@ namespace Pins {
 // Stepper driver (A4988)
 constexpr int STEPPER_STEP = 21;
 constexpr int STEPPER_DIR  = 22;
-// Optional enable pin for the stepper driver (set to -1 if unused)
-constexpr int STEPPER_ENABLE = -1;
+// Stepper driver enable pin
+constexpr int STEPPER_ENABLE = 35;
 
 // Buttons (active LOW, internal pullups)
 constexpr int BUTTON_WITHDRAW = 32;
