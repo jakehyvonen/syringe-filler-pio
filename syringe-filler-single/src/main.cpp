@@ -97,8 +97,8 @@ constexpr uint16_t kStepPulseWidthUs = 10;
 constexpr uint16_t kDebounceMs = 15;
 constexpr bool kWithdrawDirHigh = true;
 
-const uint8_t kEnableLevel = HIGH;
-const uint8_t kDisableLevel = LOW;
+const uint8_t kEnableLevel = LOW;
+const uint8_t kDisableLevel = HIGH;
 
 Shared::WifiManager g_wifi;
 RfidReader g_rfid;
