@@ -81,12 +81,10 @@ class StepperControl {
     m_driver_enabled = enable;
   }
 
-  void setForceEnable(bool force) { m_force_enable = force; }
-
   void setButtonEnable(bool enable) { m_button_enable = enable; }
 
   void update() {
-    bool should_enable = m_force_enable || m_button_enable;
+    bool should_enable = m_button_enable;
     if (!m_moving) {
       motorEnable(should_enable);
       return;
@@ -104,7 +102,6 @@ class StepperControl {
   uint32_t speedSps() const { return m_speed_sps; }
   uint32_t stepIntervalUs() const { return m_step_interval_us; }
   bool driverEnabled() const { return m_driver_enabled; }
-  bool forceEnable() const { return m_force_enable; }
   bool buttonEnable() const { return m_button_enable; }
   int directionLevel() const { return m_dir_level; }
 
@@ -119,7 +116,6 @@ class StepperControl {
   uint32_t m_speed_sps = kDefaultSpeedSps;
   uint32_t m_step_interval_us = 1000000UL / kDefaultSpeedSps;
   bool m_driver_enabled = false;
-  bool m_force_enable = false;
   bool m_button_enable = false;
   bool m_enable_pin_configured = false;
   int m_dir_level = LOW;
@@ -149,8 +145,6 @@ void printStepperState(const char* context) {
   Serial.print(g_stepper.directionLevel());
   Serial.print(" enabled=");
   Serial.print(g_stepper.driverEnabled() ? "1" : "0");
-  Serial.print(" force=");
-  Serial.print(g_stepper.forceEnable() ? "1" : "0");
   Serial.print(" btn_en=");
   Serial.print(g_stepper.buttonEnable() ? "1" : "0");
   Serial.print(" enable_pin=");
@@ -245,14 +239,11 @@ bool handleStepperCommand(const String& line) {
     return true;
   }
   if (line == "on") {
-    g_stepper.setForceEnable(true);
-    g_stepper.motorEnable(true);
-    Serial.println("OK on");
+    Serial.println("OK on (ignored; enable follows buttons only)");
     printStepperState("on");
     return true;
   }
   if (line == "off") {
-    g_stepper.setForceEnable(false);
     g_stepper.motorEnable(false);
     Serial.println("OK off");
     printStepperState("off");
