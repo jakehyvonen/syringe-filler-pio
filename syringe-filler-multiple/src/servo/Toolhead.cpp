@@ -21,7 +21,7 @@ static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 
 static constexpr int RAMP_MS_FAST = 11;
-static constexpr int RAMP_MS_SLOW = 17;
+static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
 
 Servo s_toolheadServo;
 Servo s_couplerServo;
@@ -32,6 +32,7 @@ bool  s_couplerAttached = false;
 int   s_toolheadAngle = 90;
 int   s_couplerAngle  = 90;
 bool  s_isCoupled = false;
+int   s_rampMsSlow = RAMP_MS_SLOW_DEFAULT;
 
 Servo* resolveServo(uint8_t ch) {
   if (ch == TOOLHEAD_SERVO || ch == 0) return &s_toolheadServo;
@@ -186,13 +187,22 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
   Serial.println(boundedTarget);
 }
 
+
+void setSlowRampMs(int delayMs) {
+  s_rampMsSlow = delayMs <= 0 ? 1 : delayMs;
+}
+
+int getSlowRampMs() {
+  return s_rampMsSlow;
+}
+
 void raise() {
   if (!isReady()) {
     Serial.println("ERROR: raise requested before toolhead init.");
     return;
   }
 
-  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
   delay(50);
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
   s_isCoupled = false;
@@ -208,13 +218,13 @@ void couple() {
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
   delay(100);
 
-  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, RAMP_MS_SLOW);
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
   delay(100);
 
   setPulseRaw(TOOLHEAD_SERVO, 0);
   delay(100);
 
-  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, RAMP_MS_SLOW);
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, s_rampMsSlow);
   delay(100);
 
   setPulseRaw(COUPLING_SERVO, 0);
