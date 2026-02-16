@@ -21,5 +21,5 @@ constexpr int PN532_MISO = 19;
 constexpr int PN532_MOSI = 23;
 constexpr int PN532_SCK = 18;
 constexpr int PN532_SS = 17;
-constexpr int PN532_RST = 16;
+constexpr int PN532_RST = 27;
 }  // namespace Pins
