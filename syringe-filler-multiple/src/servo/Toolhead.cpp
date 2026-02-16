@@ -21,7 +21,7 @@ static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 
 static constexpr int RAMP_MS_FAST = 11;
-static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
+static constexpr int RAMP_MS_SLOW_DEFAULT = 41;
 
 Servo s_toolheadServo;
 Servo s_couplerServo;
@@ -202,6 +202,7 @@ void raise() {
     return;
   }
 
+  setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1);//add this so coupling servo doesn't have to do all of the work
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
   delay(50);
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
@@ -243,9 +244,7 @@ bool ensureRaised(uint16_t timeout_ms) {
   }
   if (isRaised()) return true;
 
-  setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
-  delay(100);
-  setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS);
+  raise();
 
   const unsigned long start = millis();
   while (!isRaised() && (millis() - start) < timeout_ms) {
