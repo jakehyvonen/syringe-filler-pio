@@ -10,7 +10,7 @@ namespace Pins {
 constexpr int STEPPER_STEP = 21;
 constexpr int STEPPER_DIR  = 22;
 // Stepper driver enable pin
-constexpr int STEPPER_ENABLE = 35;
+constexpr int STEPPER_ENABLE = 25;
 
 // Buttons (active LOW, internal pullups)
 constexpr int BUTTON_WITHDRAW = 32;
