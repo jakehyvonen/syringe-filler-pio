@@ -97,8 +97,8 @@ constexpr uint16_t kStepPulseWidthUs = 10;
 constexpr uint16_t kDebounceMs = 15;
 constexpr bool kWithdrawDirHigh = true;
 
-const uint8_t kEnableLevel = LOW;
-const uint8_t kDisableLevel = HIGH;
+const uint8_t kEnableLevel = HIGH;
+const uint8_t kDisableLevel = LOW;
 
 Shared::WifiManager g_wifi;
 RfidReader g_rfid;
@@ -154,11 +154,12 @@ class StepperControl {
 
   void setForceEnable(bool force) { m_force_enable = force; }
 
+  void setButtonEnable(bool enable) { m_button_enable = enable; }
+
   void update() {
+    bool should_enable = m_force_enable || m_button_enable;
     if (!m_moving) {
-      if (!m_force_enable) {
-        motorEnable(false);
-      }
+      motorEnable(should_enable);
       return;
     }
 
@@ -175,6 +176,7 @@ class StepperControl {
   uint32_t stepIntervalUs() const { return m_step_interval_us; }
   bool driverEnabled() const { return m_driver_enabled; }
   bool forceEnable() const { return m_force_enable; }
+  bool buttonEnable() const { return m_button_enable; }
   int directionLevel() const { return m_dir_level; }
 
  private:
@@ -189,6 +191,7 @@ class StepperControl {
   uint32_t m_step_interval_us = 1000000UL / kDefaultSpeedSps;
   bool m_driver_enabled = false;
   bool m_force_enable = false;
+  bool m_button_enable = false;
   int m_dir_level = LOW;
 };
 
@@ -218,6 +221,8 @@ void printStepperState(const char* context) {
   Serial.print(g_stepper.driverEnabled() ? "1" : "0");
   Serial.print(" force=");
   Serial.print(g_stepper.forceEnable() ? "1" : "0");
+  Serial.print(" btn_en=");
+  Serial.print(g_stepper.buttonEnable() ? "1" : "0");
   Serial.print(" enable_pin=");
   Serial.println(Pins::STEPPER_ENABLE);
 }
@@ -443,6 +448,9 @@ void loop() {
     Serial.print(" dispense=");
     Serial.println(dispensePressed ? "1" : "0");
   }
+
+  bool buttonPressed = withdrawPressed || dispensePressed;
+  g_stepper.setButtonEnable(buttonPressed);
 
   if (withdrawPressed && !dispensePressed) {
     g_stepper.setDirection(kWithdrawDirHigh);
