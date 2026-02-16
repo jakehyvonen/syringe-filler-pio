@@ -12,6 +12,8 @@ namespace Toolhead {
   void setAngle(uint8_t ch, int angle);
   void setAngleSlow(uint8_t ch, int target, int stepDelay = 23);
   void setPulseRaw(uint8_t ch, int pulse);
+  void setSlowRampMs(int delayMs);
+  int getSlowRampMs();
   void raise();
   void couple();
   bool isCoupled();

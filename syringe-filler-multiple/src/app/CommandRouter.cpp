@@ -15,6 +15,7 @@
 #include "hw/Pins.hpp"
 #include "hw/Pots.hpp"
 #include "util/Storage.hpp"
+#include "servo/Toolhead.hpp"
 
 namespace CommandRouter {
 
@@ -351,6 +352,24 @@ void handleServoSlow(const String &args) {
     angle = rest.toInt();
   }
   printStructured("servoslow", setServoAngleSlow(channel, angle, delayMs));
+}
+
+
+// Handle "servo.ramp.slow" command to set/query slow ramp delay used by raise/couple sequences.
+void handleServoRampSlow(const String &args) {
+  if (args.length() == 0) {
+    printStructured("servo.ramp.slow", {true, ""}, "{\"RAMP_MS_SLOW\":" + String(Toolhead::getSlowRampMs()) + "}");
+    return;
+  }
+
+  int rampMs = args.toInt();
+  if (rampMs <= 0) {
+    printStructured("servo.ramp.slow", {false, "usage: servo.ramp.slow [ms>0]"});
+    return;
+  }
+
+  Toolhead::setSlowRampMs(rampMs);
+  printStructured("servo.ramp.slow", {true, "updated"}, "{\"RAMP_MS_SLOW\":" + String(Toolhead::getSlowRampMs()) + "}");
 }
 
 // Handle "couple" command for toolhead coupling sequence.
@@ -754,6 +773,7 @@ const CommandDescriptor COMMANDS[] = {
     {"servo", "DEPRECATED: use servo.toolhead/servo.coupler", handleServo},
     {"raise", "raise toolhead", handleRaise},
     {"servoslow", "set servo slowly", handleServoSlow},
+    {"servo.ramp.slow", "set/get slow ramp delay used by raise/couple", handleServoRampSlow},
     {"couple", "couple syringes", handleCouple},
     {"move2", "move axis2", handleMove2},
     {"move3", "move axis3", handleMove3},
