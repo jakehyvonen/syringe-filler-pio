@@ -165,6 +165,37 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
   return true;
 }
 
+// Set steps-per-mL for a base syringe slot.
+bool SyringeCalibration::setBaseStepsPermL(uint8_t slot, float stepsPermL, String& message) {
+  if (slot >= m_baseCount) {
+    message = "base slot out of range";
+    return false;
+  }
+  if (stepsPermL <= 0.0f) {
+    message = "steps_mL must be > 0";
+    return false;
+  }
+
+  Syringe& sy = m_bases[slot];
+  if (sy.rfid == 0) {
+    message = "base has no RFID; scan the base first";
+    return false;
+  }
+
+  sy.cal.steps_mL = stepsPermL;
+  Util::BaseMeta meta;
+  App::PotCalibration cal;
+  App::CalibrationPoints savedPoints;
+  if (!Util::loadBase(sy.rfid, meta, cal, savedPoints)) {
+    memset(&meta, 0, sizeof(meta));
+  }
+  (void)cal;
+  (void)savedPoints;
+  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
+  message = ok ? "base steps_mL updated" : "failed to update base steps_mL";
+  return ok;
+}
+
 // Clear calibration points for the current base slot.
 bool SyringeCalibration::clearCurrentBaseCalibrationPoints(String& message) {
   if (m_currentSlot < 0 || m_currentSlot >= (int)m_baseCount) {
@@ -205,55 +236,6 @@ bool SyringeCalibration::clearToolheadCalibrationPoints(String& message) {
   m_toolhead.cal.mlFull = 0.0f;
   bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
   message = ok ? "toolhead calibration points cleared" : "failed to clear toolhead calibration points";
-  return ok;
-}
-
-// Force the current base calibration through zero mL.
-bool SyringeCalibration::forceCurrentBaseCalibrationZero(String& message) {
-  if (m_currentSlot < 0 || m_currentSlot >= (int)m_baseCount) {
-    message = "no current base";
-    return false;
-  }
-
-  Syringe& sy = m_bases[m_currentSlot];
-  if (sy.rfid == 0) {
-    message = "base has no RFID; scan the base first";
-    return false;
-  }
-  if (sy.calPoints.count == 0) {
-    message = "no base calibration points to update";
-    return false;
-  }
-
-  sy.calPoints.points[0].volumeMl = 0.0f;
-  Util::BaseMeta meta;
-  App::PotCalibration cal;
-  App::CalibrationPoints savedPoints;
-  if (!Util::loadBase(sy.rfid, meta, cal, savedPoints)) {
-    memset(&meta, 0, sizeof(meta));
-  }
-  (void)cal;
-  (void)savedPoints;
-  bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
-  message = ok ? "base calibration forced through 0 mL" : "failed to update base calibration";
-  return ok;
-}
-
-// Force the toolhead calibration through zero mL.
-bool SyringeCalibration::forceToolheadCalibrationZero(String& message) {
-  if (m_toolhead.rfid == 0) {
-    message = "no toolhead RFID; scan the toolhead first";
-    return false;
-  }
-  if (m_toolhead.cal.pointCount == 0) {
-    message = "no toolhead calibration points to update";
-    return false;
-  }
-
-  m_toolhead.cal.points[0].volume_ml = 0.0f;
-  syncLegacyFields(m_toolhead.cal);
-  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
-  message = ok ? "toolhead calibration forced through 0 mL" : "failed to update toolhead calibration";
   return ok;
 }
 
