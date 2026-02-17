@@ -20,6 +20,7 @@ public:
   bool initializeToolheadFromTag(uint32_t tag);
 
   bool captureToolheadCalibrationPoint(float ml, String& message);
+  bool setToolheadStepsPermL(float stepsPermL, String& message);
   bool setBaseStepsPermL(uint8_t slot, float stepsPermL, String& message);
   bool clearCurrentBaseCalibrationPoints(String& message);
   bool clearToolheadCalibrationPoints(String& message);

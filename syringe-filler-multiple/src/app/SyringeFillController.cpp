@@ -368,6 +368,11 @@ bool SyringeFillController::clearToolheadCalibrationPoints(String& message) {
   return m_calibration.clearToolheadCalibrationPoints(message);
 }
 
+// Set steps-per-mL for the currently scanned toolhead syringe.
+bool SyringeFillController::setToolheadStepsPermL(float stepsPermL, String& message) {
+  return m_calibration.setToolheadStepsPermL(stepsPermL, message);
+}
+
 // Set steps-per-mL for a base calibration profile.
 bool SyringeFillController::setBaseStepsPermL(uint8_t slot, float stepsPermL, String& message) {
   return m_calibration.setBaseStepsPermL(slot, stepsPermL, message);

@@ -43,6 +43,7 @@ using App::DeviceActions::potMove;
 using App::DeviceActions::raiseToolhead;
 using App::DeviceActions::sfcCaptureBaseCalPoint;
 using App::DeviceActions::sfcCaptureToolCalPoint;
+using App::DeviceActions::sfcSetToolStepsPermL;
 using App::DeviceActions::sfcAutoCalTool;
 using App::DeviceActions::sfcClearBaseCalPoints;
 using App::DeviceActions::sfcClearToolCalPoints;
@@ -502,6 +503,22 @@ void handleSfcCalTPoint(const String &args) {
   printStructured("cal.tool.point", sfcCaptureToolCalPoint(g_sfc, ml));
 }
 
+// Handle "cal.tool.stepsmL" command to set toolhead steps/mL calibration.
+void handleSfcCalToolStepsML(const String &args) {
+  if (args.length() == 0) {
+    printStructured("cal.tool.stepsmL", {false, "usage: cal.tool.stepsmL <steps_mL>"});
+    return;
+  }
+
+  float stepsPermL = args.toFloat();
+  if (stepsPermL <= 0.0f) {
+    printStructured("cal.tool.stepsmL", {false, "steps_mL must be > 0"});
+    return;
+  }
+
+  printStructured("cal.tool.stepsmL", sfcSetToolStepsPermL(g_sfc, stepsPermL));
+}
+
 // Handle "cal.tool.autocal" command to auto-capture evenly spaced toolhead calibration points.
 void handleSfcCalToolAuto(const String &args) {
   int sp = args.indexOf(' ');
@@ -877,6 +894,7 @@ const CommandDescriptor COMMANDS[] = {
     {"scantool", "scan toolhead syringe", handleSfcScanTool},
     {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
+    {"cal.tool.stepsmL", "set toolhead calibration steps_mL <steps_mL>", handleSfcCalToolStepsML},
     {"cal.tool.autocal", "auto tool calibration <ml_increment> <points>", handleSfcCalToolAuto},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
     {"cal.showall", "print calibration for all scanned syringes", handleSfcCalShowAll},

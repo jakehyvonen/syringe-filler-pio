@@ -33,6 +33,7 @@ public:
   }
   bool clearCurrentBaseCalibrationPoints(String& message);
   bool clearToolheadCalibrationPoints(String& message);
+  bool setToolheadStepsPermL(float stepsPermL, String& message);
   bool setBaseStepsPermL(uint8_t slot, float stepsPermL, String& message);
   bool loadRecipeFromFS(uint32_t recipeId);
   bool saveRecipeToFS(uint32_t recipeId);

@@ -320,6 +320,12 @@ ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml) {
   return {ok, message.length() ? message : (ok ? "toolhead syringe point saved" : "toolhead syringe point failed")};
 }
 
+ActionResult sfcSetToolStepsPermL(App::SyringeFillController &sfc, float stepsPermL) {
+  String message;
+  bool ok = sfc.setToolheadStepsPermL(stepsPermL, message);
+  return {ok, message.length() ? message : (ok ? "toolhead steps_mL updated" : "failed to update toolhead steps_mL")};
+}
+
 ActionResult sfcAutoCalTool(App::SyringeFillController &sfc, float incrementMl, uint8_t points) {
   String message;
   bool ok = sfc.autoCalibrateToolhead(incrementMl, points, message);
