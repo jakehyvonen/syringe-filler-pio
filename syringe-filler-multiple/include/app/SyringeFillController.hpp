@@ -47,6 +47,7 @@ public:
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
+  bool printScannedCalibrationInfo(Stream& out, String& message);
   // Return the current toolhead RFID value.
   uint32_t toolheadRfid() const { return m_toolhead.rfid; }
   bool showVolumes(String& data, String& message);

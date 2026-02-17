@@ -57,6 +57,7 @@ using App::DeviceActions::sfcScanTool;
 using App::DeviceActions::sfcTransferFromBase;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
+using App::DeviceActions::sfcShowAllCalibrations;
 using App::DeviceActions::sfcSetBaseStepsPermL;
 using App::DeviceActions::sfcAutoCalBase;
 using App::DeviceActions::showVolumes;
@@ -661,6 +662,12 @@ void handleSfcCalToolClear(const String &args) {
   printStructured("cal.tool.clear", sfcClearToolCalPoints(g_sfc));
 }
 
+// Handle "cal.showall" command to print calibration for all scanned syringes.
+void handleSfcCalShowAll(const String &args) {
+  (void)args;
+  printStructured("cal.showall", sfcShowAllCalibrations(g_sfc));
+}
+
 // ------------------------------------------------------------
 // Potentiometer and low-level diagnostics handlers
 // ------------------------------------------------------------
@@ -872,6 +879,7 @@ const CommandDescriptor COMMANDS[] = {
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
     {"cal.tool.autocal", "auto tool calibration <ml_increment> <points>", handleSfcCalToolAuto},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
+    {"cal.showall", "print calibration for all scanned syringes", handleSfcCalShowAll},
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
     {"showvolumes", "show volumes for scanned syringes", handleShowVolumes},
     {"sfc.recipe.save", "save recipe by recipe ID", handleSfcRecipeSave},

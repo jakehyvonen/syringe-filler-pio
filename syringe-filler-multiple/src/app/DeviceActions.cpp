@@ -332,6 +332,12 @@ ActionResult sfcShowTool(App::SyringeFillController &sfc) {
   return {true, "toolhead info printed"};
 }
 
+ActionResult sfcShowAllCalibrations(App::SyringeFillController &sfc) {
+  String message;
+  bool ok = sfc.printScannedCalibrationInfo(Serial, message);
+  return {ok, message.length() ? message : (ok ? "calibration info printed" : "failed to print calibration info")};
+}
+
 // Build a JSON volume report for scanned syringes.
 ActionResult showVolumes(App::SyringeFillController &sfc, String &data) {
   String message;

@@ -629,6 +629,31 @@ void App::SyringeFillController::printToolheadInfo(Stream& out) {
   m_calibration.printToolheadInfo(out);
 }
 
+bool SyringeFillController::printScannedCalibrationInfo(Stream& out, String& message) {
+  bool anyPrinted = false;
+
+  if (m_toolhead.rfid != 0) {
+    m_calibration.printToolheadInfo(out);
+    anyPrinted = true;
+  }
+
+  for (uint8_t slot = 0; slot < Bases::kCount; ++slot) {
+    if (m_bases[slot].rfid == 0) {
+      continue;
+    }
+    m_calibration.printBaseInfo(slot, out);
+    anyPrinted = true;
+  }
+
+  if (!anyPrinted) {
+    message = "no scanned syringes";
+    return false;
+  }
+
+  message = "calibration info printed";
+  return true;
+}
+
 // Build a JSON volume report for toolhead and bases.
 bool SyringeFillController::showVolumes(String& data, String& message) {
   return m_calibration.buildVolumesReport(data, message);
