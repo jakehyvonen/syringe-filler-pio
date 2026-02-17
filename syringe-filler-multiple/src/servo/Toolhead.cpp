@@ -15,8 +15,9 @@ namespace {
 static constexpr uint8_t TOOLHEAD_SERVO = 3;
 static constexpr uint8_t COUPLING_SERVO = 5;
 
-static constexpr int TOOLHEAD_SERVO_RAISED_POS    = 113;
-static constexpr int TOOLHEAD_SERVO_COUPLING_POS1 = 140;
+static constexpr int TOOLHEAD_SERVO_RAISED_POS    = 105;
+static constexpr int TOOLHEAD_SERVO_COUPLING_POS1 = 147;
+static constexpr int TOOLHEAD_SERVO_COUPLING_POS2 = 151;
 static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 
@@ -61,21 +62,29 @@ int resolvePin(uint8_t ch) {
 bool ensureAttached(uint8_t ch) {
   Servo* servo = resolveServo(ch);
   bool* attached = resolveAttachedSlot(ch);
+  int* angleSlot = resolveAngleSlot(ch);
   const int pin = resolvePin(ch);
-  if (!servo || !attached || pin < 0) return false;
+  if (!servo || !attached || !angleSlot || pin < 0) return false;
 
   if (*attached) return true;
 
   servo->setPeriodHertz(Pins::SERVO_HZ);
-  const int attachResult = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
-  // ESP32Servo::attach returns the allocated LEDC channel (0..N), not the GPIO pin.
-  if (attachResult < 0) {
-    Serial.printf("ERROR: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, attachResult);
+  const int ret = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
+  if (ret < 0) {
+    Serial.printf("ERROR: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, ret);
     *attached = false;
     return false;
   }
 
   *attached = true;
+
+  // IMPORTANT: after attaching, immediately drive it to the last known angle
+  // (unless cache invalid).
+  if (*angleSlot >= 0 && *angleSlot <= 180) {
+    servo->write(*angleSlot);
+    delay(20); // allow at least one PWM frame
+  }
+
   return true;
 }
 
@@ -121,11 +130,13 @@ void setPulseRaw(uint8_t ch, int pulse) {
 
   Servo* servo = resolveServo(ch);
   bool* attached = resolveAttachedSlot(ch);
-  if (!servo || !attached) return;
+  int* angleSlot = resolveAngleSlot(ch);
+  if (!servo || !attached || !angleSlot) return;
 
   if (pulse <= 0) {
     servo->detach();
     *attached = false;
+    *angleSlot = -1; // invalidate cache so next setAngle forces a write
     return;
   }
 
@@ -136,7 +147,6 @@ void setPulseRaw(uint8_t ch, int pulse) {
 
   servo->writeMicroseconds(pulse);
 }
-
 void setAngle(uint8_t ch, int angle) {
   ensureServoInit();
   if (!s_servoReady) return;
@@ -219,16 +229,20 @@ void couple() {
   setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
   delay(100);
 
+  //don't make the servos fight each other
+  setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS2);
+  delay(100);
+
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
   delay(100);
 
-  setPulseRaw(TOOLHEAD_SERVO, 0);
-  delay(100);
+  //setPulseRaw(TOOLHEAD_SERVO, 0);
+  //delay(100);
 
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, s_rampMsSlow);
   delay(100);
 
-  setPulseRaw(COUPLING_SERVO, 0);
+  //setPulseRaw(COUPLING_SERVO, 0);
   s_isCoupled = isRaised();
 }
 
