@@ -43,6 +43,7 @@ using App::DeviceActions::potMove;
 using App::DeviceActions::raiseToolhead;
 using App::DeviceActions::sfcCaptureBaseCalPoint;
 using App::DeviceActions::sfcCaptureToolCalPoint;
+using App::DeviceActions::sfcAutoCalTool;
 using App::DeviceActions::sfcClearBaseCalPoints;
 using App::DeviceActions::sfcClearToolCalPoints;
 using App::DeviceActions::sfcLoadRecipe;
@@ -500,6 +501,30 @@ void handleSfcCalTPoint(const String &args) {
   printStructured("cal.tool.point", sfcCaptureToolCalPoint(g_sfc, ml));
 }
 
+// Handle "cal.tool.autocal" command to auto-capture evenly spaced toolhead calibration points.
+void handleSfcCalToolAuto(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp < 0) {
+    printStructured("cal.tool.autocal", {false, "usage: cal.tool.autocal <ml_increment> <points>"});
+    return;
+  }
+
+  float incrementMl = args.substring(0, sp).toFloat();
+  int points = args.substring(sp + 1).toInt();
+
+  if (incrementMl <= 0.0f) {
+    printStructured("cal.tool.autocal", {false, "ml increment must be > 0"});
+    return;
+  }
+
+  if (points < 2 || points > 255) {
+    printStructured("cal.tool.autocal", {false, "points must be in range [2,255]"});
+    return;
+  }
+
+  printStructured("cal.tool.autocal", sfcAutoCalTool(g_sfc, incrementMl, (uint8_t)points));
+}
+
 // Handle "sfc.tool.show" command to print toolhead info.
 void handleSfcToolShow(const String &args) { printStructured("sfc.tool.show", sfcShowTool(g_sfc)); }
 
@@ -845,6 +870,7 @@ const CommandDescriptor COMMANDS[] = {
     {"scantool", "scan toolhead syringe", handleSfcScanTool},
     {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
+    {"cal.tool.autocal", "auto tool calibration <ml_increment> <points>", handleSfcCalToolAuto},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
     {"showvolumes", "show volumes for scanned syringes", handleShowVolumes},

@@ -320,6 +320,12 @@ ActionResult sfcCaptureToolCalPoint(App::SyringeFillController &sfc, float ml) {
   return {ok, message.length() ? message : (ok ? "toolhead syringe point saved" : "toolhead syringe point failed")};
 }
 
+ActionResult sfcAutoCalTool(App::SyringeFillController &sfc, float incrementMl, uint8_t points) {
+  String message;
+  bool ok = sfc.autoCalibrateToolhead(incrementMl, points, message);
+  return {ok, message.length() ? message : (ok ? "toolhead auto calibration complete" : "toolhead auto calibration failed")};
+}
+
 // Print toolhead calibration info to serial.
 ActionResult sfcShowTool(App::SyringeFillController &sfc) {
   sfc.printToolheadInfo(Serial);

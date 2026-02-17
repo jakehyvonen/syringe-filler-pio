@@ -43,6 +43,7 @@ public:
 
   // calibration for toolhead already here...
   bool captureToolheadCalibrationPoint(float ml, String& message);
+  bool autoCalibrateToolhead(float incrementMl, uint8_t points, String& message);
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
