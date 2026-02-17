@@ -22,7 +22,7 @@ static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 
 static constexpr int RAMP_MS_FAST = 11;
-static constexpr int RAMP_MS_SLOW_DEFAULT = 41;
+static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
 
 Servo s_toolheadServo;
 Servo s_couplerServo;

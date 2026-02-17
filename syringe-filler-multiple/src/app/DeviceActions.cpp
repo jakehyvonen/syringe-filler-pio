@@ -448,14 +448,7 @@ ActionResult readPot(uint8_t idx, uint16_t &counts, uint16_t &scaled) {
 
 // Read the pot mapped to a base slot.
 ActionResult readBasePot(uint8_t base, uint8_t &potIdx, uint16_t &counts, uint16_t &scaled) {
-  if (base >= Pins::NUM_BASES) {
-    potIdx = 0;
-    counts = 0;
-    scaled = 0;
-    return {false, "base index out of range"};
-  }
-
-  potIdx = Pins::BASE_POT_IDX[base];
+   potIdx = Pins::BASE_POT_IDX[base];
   counts = Pots::readCounts(potIdx);
   scaled = Pots::readScaled(potIdx);
   return {true, "base pot read"};
