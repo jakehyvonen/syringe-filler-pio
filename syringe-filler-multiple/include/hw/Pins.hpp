@@ -48,7 +48,6 @@ constexpr uint8_t BASE_EN_MCP[NUM_BASES] = {0, 1, 2, 3, 4};
 // =======================================================
 //these refer to the POT_MAP in Pots.cpp and are list in order starting from Base 0
 constexpr int8_t BASE_POT_IDX[NUM_BASES] = { 3, 4, 5, 0, 1 };
-constexpr uint8_t TOOL_POT_IDX = 2; //ADS0, A3
 
 // =======================================================
 // ==========  LIMIT SWITCHES  ============================

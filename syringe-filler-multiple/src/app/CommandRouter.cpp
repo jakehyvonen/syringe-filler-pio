@@ -73,6 +73,7 @@ using App::DeviceActions::setServoPulseRaw;
 
 // ADC/pot and bus diagnostics.
 using App::DeviceActions::readBasePot;
+using App::DeviceActions::readToolPot;
 using App::DeviceActions::readAllPots;
 using App::DeviceActions::readPot;
 using App::DeviceActions::i2cScanBoth;
@@ -709,6 +710,19 @@ void handleBasePot(const String &args) {
   printStructured("basepot", res, data);
 }
 
+// Handle "toolpot" command to read the toolhead pot value.
+void handleToolPot(const String &args) {
+  (void)args;
+  uint8_t potIdx = 0;
+  uint16_t counts = 0, scaled = 0;
+  ActionResult res = readToolPot(potIdx, counts, scaled);
+  float percent = Pots::ratioFromCounts(counts);
+  float ratio = percent / 100.0f;
+  String data = "{\"potIndex\":" + String(potIdx) + ",\"counts\":" + String(counts) + ",\"scaled\":" + String(scaled);
+  data += ",\"ratio\":" + String(ratio, 5) + ",\"percent\":" + String(percent, 3) + "}";
+  printStructured("toolpot", res, data);
+}
+
 // Handle "pots" command to report all pot values.
 void handlePotReport(const String &args) {
   (void)args;
@@ -911,6 +925,7 @@ const CommandDescriptor COMMANDS[] = {
     // Potentiometer and bus diagnostics.
     {"potraw", "read pot", handlePotRaw},
     {"basepot", "read base pot", handleBasePot},
+    {"toolpot", "read toolhead pot", handleToolPot},
     {"pots", "read all pots", handlePotReport},
     {"potmove", "pot driven move", handlePotMove},
     {"i2cscan", "scan both I2C buses", handleI2cScan},
