@@ -24,6 +24,9 @@ namespace Pots {
   // One-shot ADS native counts
   uint16_t readCounts(uint8_t i);
 
+  // Pot-map index used for the toolhead syringe potentiometer (ADS0 A3).
+  uint8_t toolPotIndex();
+
   // ---- Legacy (for AxisPair, etc.) -----------------------------------------
   // DEPRECATED: returns ratiometric 0..1023 for backward compatibility.
   // Internally uses the same ratio as `percent()`, so it’s stable even if 3.3 V moves.

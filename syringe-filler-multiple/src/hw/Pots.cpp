@@ -18,6 +18,7 @@ static constexpr adsGain_t PGA = GAIN_ONE; // ±4.096 V
 
 static constexpr uint8_t VREF_ADS = 0; // ADS0
 static constexpr uint8_t VREF_CH  = 0; // A0
+static constexpr uint8_t TOOL_POT_IDX = 2; // ADS0, A3
 
 struct Chan { uint8_t ads; uint8_t ch; };
 static constexpr Chan POT_MAP[] = {
@@ -157,6 +158,11 @@ uint16_t countsFromRatio(float ratio) {
 uint16_t readCounts(uint8_t i) {
   if (i >= NUM_POTS) return 0;
   return read_counts(POT_MAP[i].ads, POT_MAP[i].ch);
+}
+
+// Return the mapped pot index for the toolhead syringe channel.
+uint8_t toolPotIndex() {
+  return TOOL_POT_IDX;
 }
 
 // ---- Legacy shim ------------------------------------------------------------
