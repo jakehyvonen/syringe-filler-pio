@@ -34,6 +34,7 @@ static constexpr uint16_t POT_REPORT_HYST_COUNTS = 64;
 static Adafruit_ADS1115 s_ads[2];
 static bool s_ads_present[2] = {false, false};
 static const uint8_t s_addr[2] = { ADS0_ADDR, ADS1_ADDR };
+static uint8_t s_last_ch[2] = {0xFF, 0xFF};
 
 static bool     inited = false;
 static uint16_t pot_raw[NUM_POTS];
@@ -43,6 +44,14 @@ static uint16_t pot_last_reported[NUM_POTS];
 // ---- Helpers ----------------------------------------------------------------
 static inline int16_t read_counts(uint8_t ads_idx, uint8_t ch) {
   if (!s_ads_present[ads_idx]) return 0;
+
+  // ADS1115 is muxed; after switching channels we discard one conversion so
+  // command reads always reflect the selected input, not the prior channel.
+  if (s_last_ch[ads_idx] != ch) {
+    (void)s_ads[ads_idx].readADC_SingleEnded(ch);
+    s_last_ch[ads_idx] = ch;
+  }
+
   int16_t v = s_ads[ads_idx].readADC_SingleEnded(ch);
   if (v < 0) v = 0;
   return v; // 0..32767 at GAIN_ONE
