@@ -385,6 +385,12 @@ ActionResult sfcSetBaseStepsPermL(App::SyringeFillController &sfc, float stepsPe
   return {ok, message.length() ? message : (ok ? "base steps_mL updated" : "failed to update base steps_mL")};
 }
 
+ActionResult sfcAutoCalBase(App::SyringeFillController &sfc, float incrementMl, uint8_t points, int8_t slot) {
+  String message;
+  bool ok = sfc.autoCalibrateBase(incrementMl, points, slot, message);
+  return {ok, message.length() ? message : (ok ? "base auto calibration complete" : "base auto calibration failed")};
+}
+
 // Clear calibration points for the current base.
 ActionResult sfcClearBaseCalPoints(App::SyringeFillController &sfc) {
   String message;

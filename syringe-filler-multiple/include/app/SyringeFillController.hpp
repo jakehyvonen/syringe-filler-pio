@@ -25,6 +25,7 @@ public:
   void   setCurrentSlot(int8_t slot) { m_currentSlot = (slot >= 0 && slot < Bases::kCount) ? slot : -1; }
   void   printBaseInfo(uint8_t slot, Stream& s);
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
+  bool autoCalibrateBase(float incrementMl, uint8_t points, int8_t slot, String& message);
   // Capture a calibration point for the current base slot.
   bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
     const int8_t slot = currentSlot();

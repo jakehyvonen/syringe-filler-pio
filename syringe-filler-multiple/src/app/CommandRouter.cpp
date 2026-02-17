@@ -57,6 +57,7 @@ using App::DeviceActions::sfcTransferFromBase;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
 using App::DeviceActions::sfcSetBaseStepsPermL;
+using App::DeviceActions::sfcAutoCalBase;
 using App::DeviceActions::showVolumes;
 using App::DeviceActions::sfcStatus;
 using App::DeviceActions::selectedBase;
@@ -579,6 +580,52 @@ void handleSfcCalBaseStepsML(const String &args) {
   printStructured("cal.base.stepsmL", sfcSetBaseStepsPermL(g_sfc, stepsPermL, slot));
 }
 
+// Handle "cal.base.autocal" command to auto-capture evenly spaced base calibration points.
+void handleSfcCalBaseAuto(const String &args) {
+  if (args.length() == 0) {
+    printStructured("cal.base.autocal", {false, "usage: cal.base.autocal <ml_increment> [slot] <points>"});
+    return;
+  }
+
+  int sp1 = args.indexOf(' ');
+  if (sp1 < 0) {
+    printStructured("cal.base.autocal", {false, "usage: cal.base.autocal <ml_increment> [slot] <points>"});
+    return;
+  }
+
+  float incrementMl = args.substring(0, sp1).toFloat();
+  String tail = args.substring(sp1 + 1);
+  tail.trim();
+
+  int slot = -1;
+  int points = 0;
+
+  int sp2 = tail.indexOf(' ');
+  if (sp2 < 0) {
+    points = tail.toInt();
+  } else {
+    slot = tail.substring(0, sp2).toInt();
+    points = tail.substring(sp2 + 1).toInt();
+  }
+
+  if (incrementMl <= 0.0f) {
+    printStructured("cal.base.autocal", {false, "ml increment must be > 0"});
+    return;
+  }
+
+  if (slot < -1) {
+    printStructured("cal.base.autocal", {false, "slot must be >= 0"});
+    return;
+  }
+
+  if (points < 2 || points > 255) {
+    printStructured("cal.base.autocal", {false, "points must be in range [2,255]"});
+    return;
+  }
+
+  printStructured("cal.base.autocal", sfcAutoCalBase(g_sfc, incrementMl, (uint8_t)points, (int8_t)slot));
+}
+
 // Handle "cal.base.clear" command to clear base calibration points.
 void handleSfcCalBaseClear(const String &args) {
   printStructured("cal.base.clear", sfcClearBaseCalPoints(g_sfc));
@@ -806,6 +853,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.base.show", "show current base", handleSfcBaseShow},
     {"cal.base.point", "add base calibration point <ml> [slot]", handleSfcCalBasePoint},
     {"cal.base.stepsmL", "set base calibration steps_mL <steps_mL> [slot]", handleSfcCalBaseStepsML},
+    {"cal.base.autocal", "auto calibration <ml_increment> [slot] <points>", handleSfcCalBaseAuto},
     {"cal.base.clear", "clear current base calibration points", handleSfcCalBaseClear},
 
     // Potentiometer and bus diagnostics.

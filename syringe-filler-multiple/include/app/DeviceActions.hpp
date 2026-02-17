@@ -68,6 +68,7 @@ ActionResult sfcRecipeLoad(App::SyringeFillController &sfc, uint32_t recipeId);
 ActionResult sfcShowCurrentBase(App::SyringeFillController &sfc);
 ActionResult sfcCaptureBaseCalPoint(App::SyringeFillController &sfc, float ml, int8_t slot);
 ActionResult sfcSetBaseStepsPermL(App::SyringeFillController &sfc, float stepsPermL, int8_t slot);
+ActionResult sfcAutoCalBase(App::SyringeFillController &sfc, float incrementMl, uint8_t points, int8_t slot);
 ActionResult sfcClearBaseCalPoints(App::SyringeFillController &sfc);
 ActionResult sfcClearToolCalPoints(App::SyringeFillController &sfc);
 ActionResult sfcTransferFromBase(App::SyringeFillController &sfc, uint8_t slot, float ml);
