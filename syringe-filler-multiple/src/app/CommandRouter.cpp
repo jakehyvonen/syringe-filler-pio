@@ -106,8 +106,10 @@ void printStructured(const char *cmd, const ActionResult &res, const String &dat
     Serial.print("\"");
   }
   if (data.length()) {
+    String formattedData = data;
+    formattedData.replace("},{", "},\n{");
     Serial.print(",\"data\":");
-    Serial.print(data);
+    Serial.print(formattedData);
   }
   Serial.println("}");
 }
