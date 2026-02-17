@@ -286,8 +286,10 @@ bool SyringeCalibration::readBasePotRatio(uint8_t slot, float& ratio, String& me
     return false;
   }
 
-  Pots::poll();
-  float percent = Pots::percent((uint8_t)potIdx);
+  // Use a fresh one-shot ADC sample for calibration capture so the recorded
+  // value matches `basepot` and does not depend on EMA filter history.
+  uint16_t counts = Pots::readCounts((uint8_t)potIdx);
+  float percent = Pots::ratioFromCounts(counts);
   ratio = percent / 100.0f;
   if (ratio < 0.0f) ratio = 0.0f;
   if (ratio > 1.0f) ratio = 1.0f;
