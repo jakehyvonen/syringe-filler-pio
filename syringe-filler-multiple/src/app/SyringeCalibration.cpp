@@ -14,7 +14,10 @@ namespace App {
 
 namespace {
   constexpr bool CAL_DBG = true;
-  constexpr uint8_t TOOLHEAD_POT_IDX = 0;  // toolhead pot index
+
+  uint8_t toolheadPotIndex() {
+    return Pots::toolPotIndex();
+  }
 
   // Sync legacy ADC fields from the current calibration points.
   void syncLegacyFields(PotCalibration& cal) {
@@ -104,10 +107,11 @@ int8_t SyringeCalibration::getBasePotIndex(uint8_t baseSlot) const {
 // Read the current toolhead pot ratio.
 float SyringeCalibration::readToolheadRatio() {
   Pots::poll();
-  float ratio = Pots::percent(TOOLHEAD_POT_IDX);
+  const uint8_t potIdx = toolheadPotIndex();
+  float ratio = Pots::percent(potIdx);
   if (CAL_DBG) {
     Serial.print("[SFC] readToolheadRatio(): pot=");
-    Serial.print(TOOLHEAD_POT_IDX);
+    Serial.print(potIdx);
     Serial.print(" ratio=");
     Serial.println(ratio, 3);
   }
@@ -127,13 +131,14 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
 
   float ratio = readToolheadRatio();
   if (CAL_DBG) {
-    uint16_t counts = Pots::readCounts(TOOLHEAD_POT_IDX);
+    const uint8_t potIdx = toolheadPotIndex();
+    uint16_t counts = Pots::readCounts(potIdx);
     float percent = Pots::ratioFromCounts(counts);
     float normalized = percent / 100.0f;
     Serial.print("[SFC] cal.tool.point: toolhead RFID=0x");
     Serial.print(m_toolhead.rfid, HEX);
     Serial.print(" pot=");
-    Serial.print(TOOLHEAD_POT_IDX);
+    Serial.print(potIdx);
     Serial.print(" counts=");
     Serial.print(counts);
     Serial.print(" ratioUsed=");
@@ -513,8 +518,9 @@ void SyringeCalibration::printToolheadInfo(Stream& out) {
     out.print(F("  cal.steps_mL     : ")); out.println(m_toolCal.steps_mL, 3);
   }
 
-  float ratio = Pots::percent(TOOLHEAD_POT_IDX);
-  uint16_t scaled = Pots::readScaled(TOOLHEAD_POT_IDX);
+  const uint8_t potIdx = toolheadPotIndex();
+  float ratio = Pots::percent(potIdx);
+  uint16_t scaled = Pots::readScaled(potIdx);
 
   out.print(F("  pot.ratio: ")); out.println(ratio, 3);
   out.print(F("  pot.scaled: ")); out.println(scaled);
