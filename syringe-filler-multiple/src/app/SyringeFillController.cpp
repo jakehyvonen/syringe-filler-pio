@@ -314,10 +314,6 @@ bool SyringeFillController::autoCalibrateToolhead(float incrementMl, uint8_t poi
     return false;
   }
 
-  if (!Toolhead::isCoupled()) {
-    Toolhead::couple();
-  }
-
   if (DEBUG_FLAG) {
     Serial.print("[SFC] autoCalibrateToolhead(incrementMl=");
     Serial.print(incrementMl, 3);
