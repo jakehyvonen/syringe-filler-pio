@@ -165,6 +165,23 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
   return true;
 }
 
+// Set steps-per-mL for the currently scanned toolhead syringe.
+bool SyringeCalibration::setToolheadStepsPermL(float stepsPermL, String& message) {
+  if (stepsPermL <= 0.0f) {
+    message = "steps_mL must be > 0";
+    return false;
+  }
+  if (m_toolhead.rfid == 0) {
+    message = "no toolhead RFID; scan the toolhead first";
+    return false;
+  }
+
+  m_toolhead.cal.steps_mL = stepsPermL;
+  bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
+  message = ok ? "toolhead steps_mL updated" : "failed to update toolhead steps_mL";
+  return ok;
+}
+
 // Set steps-per-mL for a base syringe slot.
 bool SyringeCalibration::setBaseStepsPermL(uint8_t slot, float stepsPermL, String& message) {
   if (slot >= m_baseCount) {
