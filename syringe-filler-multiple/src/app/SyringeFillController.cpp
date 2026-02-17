@@ -297,6 +297,66 @@ bool SyringeFillController::captureToolheadCalibrationPoint(float ml, String& me
   return m_calibration.captureToolheadCalibrationPoint(ml, message);
 }
 
+// Run an automatic multi-point calibration sequence for the toolhead syringe.
+bool SyringeFillController::autoCalibrateToolhead(float incrementMl, uint8_t points, String& message) {
+  if (!isfinite(incrementMl) || incrementMl <= 0.0f) {
+    message = "increment mL must be > 0";
+    return false;
+  }
+
+  if (points < 2) {
+    message = "number of points must be >= 2";
+    return false;
+  }
+
+  if (m_toolhead.rfid == 0) {
+    message = "no toolhead RFID; scan the toolhead first";
+    return false;
+  }
+
+  if (!Toolhead::isCoupled()) {
+    Toolhead::couple();
+  }
+
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] autoCalibrateToolhead(incrementMl=");
+    Serial.print(incrementMl, 3);
+    Serial.print(", points=");
+    Serial.print(points);
+    Serial.println(") start");
+  }
+
+  for (uint8_t i = 0; i < points; ++i) {
+    const float targetMl = incrementMl * static_cast<float>(i);
+    if (!m_calibration.captureToolheadCalibrationPoint(targetMl, message)) {
+      return false;
+    }
+
+    if (i + 1 >= points) {
+      break;
+    }
+
+    const long withdrawSteps = -toolStepsForMl(incrementMl);
+    if (withdrawSteps == 0) {
+      message = "increment too small; computed 0 steps";
+      return false;
+    }
+
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] autoCalibrateToolhead(): withdraw ");
+      Serial.print(incrementMl, 3);
+      Serial.print(" mL -> ");
+      Serial.print(withdrawSteps);
+      Serial.println(" steps");
+    }
+
+    AxisPair::move2(withdrawSteps);
+  }
+
+  message = "toolhead auto calibration complete";
+  return true;
+}
+
 // Clear calibration points for the current base.
 bool SyringeFillController::clearCurrentBaseCalibrationPoints(String& message) {
   setCurrentSlot(currentSlot());
@@ -316,6 +376,81 @@ bool SyringeFillController::setBaseStepsPermL(uint8_t slot, float stepsPermL, St
 // Capture a base calibration point for a slot.
 bool SyringeFillController::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
   return m_calibration.captureBaseCalibrationPoint(slot, ml, message);
+}
+
+// Run an automatic multi-point calibration sequence for a base syringe.
+bool SyringeFillController::autoCalibrateBase(float incrementMl, uint8_t points, int8_t slot, String& message) {
+  if (!isfinite(incrementMl) || incrementMl <= 0.0f) {
+    message = "increment mL must be > 0";
+    return false;
+  }
+
+  if (points < 2) {
+    message = "number of points must be >= 2";
+    return false;
+  }
+
+  const int8_t activeSlot = (slot >= 0) ? slot : currentSlot();
+  if (activeSlot < 0 || activeSlot >= Bases::kCount) {
+    message = "no current base";
+    return false;
+  }
+
+  const uint8_t baseSlot = (uint8_t)activeSlot;
+  if (m_bases[baseSlot].rfid == 0) {
+    message = "base has no RFID; scan the base first";
+    return false;
+  }
+
+  if (currentSlot() != activeSlot && !goToBase(baseSlot)) {
+    message = "failed to move to base";
+    return false;
+  }
+
+  if (Bases::selected() != activeSlot && !Bases::select(baseSlot)) {
+    message = "failed to select base";
+    return false;
+  }
+
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] autoCalibrateBase(slot=");
+    Serial.print(baseSlot);
+    Serial.print(", incrementMl=");
+    Serial.print(incrementMl, 3);
+    Serial.print(", points=");
+    Serial.print(points);
+    Serial.println(") start");
+  }
+
+  for (uint8_t i = 0; i < points; ++i) {
+    const float targetMl = incrementMl * static_cast<float>(i);
+    if (!m_calibration.captureBaseCalibrationPoint(baseSlot, targetMl, message)) {
+      return false;
+    }
+
+    if (i + 1 >= points) {
+      break;
+    }
+
+    const long withdrawSteps = baseStepsForMl(incrementMl);
+    if (withdrawSteps == 0) {
+      message = "increment too small; computed 0 steps";
+      return false;
+    }
+
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] autoCalibrateBase(): withdraw ");
+      Serial.print(incrementMl, 3);
+      Serial.print(" mL -> ");
+      Serial.print(withdrawSteps);
+      Serial.println(" steps");
+    }
+
+    AxisPair::move3(withdrawSteps);
+  }
+
+  message = "base auto calibration complete";
+  return true;
 }
 
 // Print base calibration info for a slot.

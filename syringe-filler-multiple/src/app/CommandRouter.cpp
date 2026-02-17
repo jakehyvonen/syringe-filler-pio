@@ -43,6 +43,7 @@ using App::DeviceActions::potMove;
 using App::DeviceActions::raiseToolhead;
 using App::DeviceActions::sfcCaptureBaseCalPoint;
 using App::DeviceActions::sfcCaptureToolCalPoint;
+using App::DeviceActions::sfcAutoCalTool;
 using App::DeviceActions::sfcClearBaseCalPoints;
 using App::DeviceActions::sfcClearToolCalPoints;
 using App::DeviceActions::sfcLoadRecipe;
@@ -57,6 +58,7 @@ using App::DeviceActions::sfcTransferFromBase;
 using App::DeviceActions::sfcShowCurrentBase;
 using App::DeviceActions::sfcShowTool;
 using App::DeviceActions::sfcSetBaseStepsPermL;
+using App::DeviceActions::sfcAutoCalBase;
 using App::DeviceActions::showVolumes;
 using App::DeviceActions::sfcStatus;
 using App::DeviceActions::selectedBase;
@@ -499,6 +501,30 @@ void handleSfcCalTPoint(const String &args) {
   printStructured("cal.tool.point", sfcCaptureToolCalPoint(g_sfc, ml));
 }
 
+// Handle "cal.tool.autocal" command to auto-capture evenly spaced toolhead calibration points.
+void handleSfcCalToolAuto(const String &args) {
+  int sp = args.indexOf(' ');
+  if (sp < 0) {
+    printStructured("cal.tool.autocal", {false, "usage: cal.tool.autocal <ml_increment> <points>"});
+    return;
+  }
+
+  float incrementMl = args.substring(0, sp).toFloat();
+  int points = args.substring(sp + 1).toInt();
+
+  if (incrementMl <= 0.0f) {
+    printStructured("cal.tool.autocal", {false, "ml increment must be > 0"});
+    return;
+  }
+
+  if (points < 2 || points > 255) {
+    printStructured("cal.tool.autocal", {false, "points must be in range [2,255]"});
+    return;
+  }
+
+  printStructured("cal.tool.autocal", sfcAutoCalTool(g_sfc, incrementMl, (uint8_t)points));
+}
+
 // Handle "sfc.tool.show" command to print toolhead info.
 void handleSfcToolShow(const String &args) { printStructured("sfc.tool.show", sfcShowTool(g_sfc)); }
 
@@ -577,6 +603,52 @@ void handleSfcCalBaseStepsML(const String &args) {
   }
 
   printStructured("cal.base.stepsmL", sfcSetBaseStepsPermL(g_sfc, stepsPermL, slot));
+}
+
+// Handle "cal.base.autocal" command to auto-capture evenly spaced base calibration points.
+void handleSfcCalBaseAuto(const String &args) {
+  if (args.length() == 0) {
+    printStructured("cal.base.autocal", {false, "usage: cal.base.autocal <ml_increment> [slot] <points>"});
+    return;
+  }
+
+  int sp1 = args.indexOf(' ');
+  if (sp1 < 0) {
+    printStructured("cal.base.autocal", {false, "usage: cal.base.autocal <ml_increment> [slot] <points>"});
+    return;
+  }
+
+  float incrementMl = args.substring(0, sp1).toFloat();
+  String tail = args.substring(sp1 + 1);
+  tail.trim();
+
+  int slot = -1;
+  int points = 0;
+
+  int sp2 = tail.indexOf(' ');
+  if (sp2 < 0) {
+    points = tail.toInt();
+  } else {
+    slot = tail.substring(0, sp2).toInt();
+    points = tail.substring(sp2 + 1).toInt();
+  }
+
+  if (incrementMl <= 0.0f) {
+    printStructured("cal.base.autocal", {false, "ml increment must be > 0"});
+    return;
+  }
+
+  if (slot < -1) {
+    printStructured("cal.base.autocal", {false, "slot must be >= 0"});
+    return;
+  }
+
+  if (points < 2 || points > 255) {
+    printStructured("cal.base.autocal", {false, "points must be in range [2,255]"});
+    return;
+  }
+
+  printStructured("cal.base.autocal", sfcAutoCalBase(g_sfc, incrementMl, (uint8_t)points, (int8_t)slot));
 }
 
 // Handle "cal.base.clear" command to clear base calibration points.
@@ -798,6 +870,7 @@ const CommandDescriptor COMMANDS[] = {
     {"scantool", "scan toolhead syringe", handleSfcScanTool},
     {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
     {"cal.tool.point", "add toolhead syringe calibration point <ml>", handleSfcCalTPoint},
+    {"cal.tool.autocal", "auto tool calibration <ml_increment> <points>", handleSfcCalToolAuto},
     {"cal.tool.clear", "clear toolhead syringe calibration points", handleSfcCalToolClear},
     {"sfc.tool.show", "print toolhead info", handleSfcToolShow},
     {"showvolumes", "show volumes for scanned syringes", handleShowVolumes},
@@ -806,6 +879,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.base.show", "show current base", handleSfcBaseShow},
     {"cal.base.point", "add base calibration point <ml> [slot]", handleSfcCalBasePoint},
     {"cal.base.stepsmL", "set base calibration steps_mL <steps_mL> [slot]", handleSfcCalBaseStepsML},
+    {"cal.base.autocal", "auto calibration <ml_increment> [slot] <points>", handleSfcCalBaseAuto},
     {"cal.base.clear", "clear current base calibration points", handleSfcCalBaseClear},
 
     // Potentiometer and bus diagnostics.
