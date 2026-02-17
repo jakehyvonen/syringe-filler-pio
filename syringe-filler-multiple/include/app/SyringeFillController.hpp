@@ -21,12 +21,14 @@ public:
 
   // Base selection helpers.
   // Return the currently selected base slot (or -1 if none).
-  int8_t currentSlot() const { return m_currentSlot; }
+  int8_t currentSlot() const;
+  void   setCurrentSlot(int8_t slot) { m_currentSlot = (slot >= 0 && slot < Bases::kCount) ? slot : -1; }
   void   printBaseInfo(uint8_t slot, Stream& s);
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
   // Capture a calibration point for the current base slot.
   bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
-    return (m_currentSlot >= 0) ? captureBaseCalibrationPoint((uint8_t)m_currentSlot, ml, message) : false;
+    const int8_t slot = currentSlot();
+    return (slot >= 0) ? captureBaseCalibrationPoint((uint8_t)slot, ml, message) : false;
   }
   bool clearCurrentBaseCalibrationPoints(String& message);
   bool clearToolheadCalibrationPoints(String& message);

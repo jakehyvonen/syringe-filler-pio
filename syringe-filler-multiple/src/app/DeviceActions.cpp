@@ -86,7 +86,7 @@ ActionResult moveGantryToMm(float targetMm) { return moveGantryToSteps(mmToSteps
 // Bases
 // Select a base by 0-based index.
 ActionResult selectBase(uint8_t idx0) {
-  if (idx0 >= Pins::NUM_BASES || !Bases::select(static_cast<uint8_t>(idx0 + 1))) {
+  if (idx0 >= Pins::NUM_BASES || !Bases::select(idx0)) {
     return {false, "invalid base index"};
   }
   return {true, "base selected"};
@@ -94,8 +94,7 @@ ActionResult selectBase(uint8_t idx0) {
 
 // Return the currently selected base index (0-based, -1 if none).
 int8_t selectedBase() {
-  const uint8_t selected = Bases::selected();
-  return selected == 0 ? -1 : static_cast<int8_t>(selected - 1);
+  return Bases::selected();
 }
 
 // Move the gantry to the stored position for a base index.
@@ -205,7 +204,7 @@ ActionResult setAxis23Speed(long sps) {
 
 // Move axes 2 and 3 synchronously with an optional base requirement.
 ActionResult moveAxisSync(long steps2, long steps3, bool requireBaseSelected) {
-  if (requireBaseSelected && steps3 != 0 && Bases::selected() == 0) {
+  if (requireBaseSelected && steps3 != 0 && Bases::selected() < 0) {
     return {false, "base required for axis3"};
   }
   AxisPair::moveSync(steps2, steps3);
