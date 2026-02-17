@@ -20,8 +20,8 @@ static long basePos[Pins::NUM_BASES] = {
   19400
 };
 
-// 0 = none selected; else 1..NUM_BASES
-static uint8_t s_selected = 0;
+// -1 = none selected; else 0..NUM_BASES-1
+static int8_t s_selected = -1;
 
 // Cached logical states for MCP pins (used for debug and fallback).
 static uint8_t s_baseEnableState[Pins::NUM_BASES] = {
@@ -34,8 +34,8 @@ static uint8_t s_baseEnableState[Pins::NUM_BASES] = {
 
 // Return the MCP pin for the currently selected base.
 static inline uint8_t selectedEnPin() {
-  if (s_selected == 0) return 255;
-  return Pins::BASE_EN_MCP[s_selected - 1];
+  if (s_selected < 0 || s_selected >= Pins::NUM_BASES) return 255;
+  return Pins::BASE_EN_MCP[static_cast<uint8_t>(s_selected)];
 }
 
 static inline void setEnablePinMode(uint8_t pin, uint8_t mode) {
@@ -73,7 +73,7 @@ static inline int readEnablePin(uint8_t pin) {
 // Print current base enable pin states to serial.
 static void debugDumpEN(const char* label) {
   Serial.print("[Bases] "); Serial.print(label);
-  Serial.print("  sel=");  Serial.print(s_selected);
+  Serial.print("  sel0=");  Serial.print(s_selected);
   Serial.print("  EN MCP pins: ");
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
     const uint8_t pin = Pins::BASE_EN_MCP[i];
@@ -94,7 +94,7 @@ void init() {
     setEnablePinMode(pin, OUTPUT);
     writeEnablePin(pin, Pins::DISABLE_LEVEL);
   }
-  s_selected = 0;
+  s_selected = -1;
 
   // try to load positions from NVS; if found, overwrite defaults
   for (uint8_t i = 0; i < Pins::NUM_BASES; ++i) {
@@ -116,28 +116,27 @@ void disableAll() {
   }
 }
 
-// Return the currently selected base (1-based, 0 for none).
-uint8_t selected() {
+// Return the currently selected base (0-based, -1 for none).
+int8_t selected() {
   return s_selected;
 }
 
-// Select a base by 1-based index; 0 disables all bases.
-bool select(uint8_t idx1) {
-  // idx1: 0 = none, 1..NUM_BASES valid
-  if (idx1 == 0) {
-    disableAll();
-    s_selected = 0;
-    Serial.println("[Bases] Base: none");
-    debugDumpEN("after select(0)");
-    return true;
-  }
+// Clear base selection and disable all base drivers.
+void clearSelection() {
+  disableAll();
+  s_selected = -1;
+  Serial.println("[Bases] Base: none");
+  debugDumpEN("after clearSelection");
+}
 
-  if (idx1 > Pins::NUM_BASES) {
+// Select a base by 0-based index.
+bool select(uint8_t idx0) {
+  if (idx0 >= Pins::NUM_BASES) {
     Serial.println("[Bases] ERROR: base index out of range");
     return false;
   }
 
-  s_selected = idx1;
+  s_selected = static_cast<int8_t>(idx0);
   disableAll();
 
   // Base enable outputs are active-low. Selecting a base should immediately
@@ -148,14 +147,14 @@ bool select(uint8_t idx1) {
     writeEnablePin(enPin, Pins::ENABLE_LEVEL);
   }
 
-  Serial.print("[Bases] Base selected: "); Serial.println(idx1);
-  debugDumpEN("after select(n)");
+  Serial.print("[Bases] Base selected: "); Serial.println(static_cast<int>(idx0));
+  debugDumpEN("after select");
   return true;
 }
 
 // Enable or disable the currently selected base.
 void hold(bool on) {
-  if (s_selected == 0) {
+  if (s_selected < 0) {
     Serial.println("[Bases] hold() called with no selection; ignoring");
     return;
   }
@@ -167,32 +166,32 @@ void hold(bool on) {
 
   Serial.print("[Bases] hold(");
   Serial.print(on ? "ON" : "OFF");
-  Serial.print(") -> sel="); Serial.print(s_selected);
+  Serial.print(") -> sel0="); Serial.print(s_selected);
   Serial.print(" enPin="); Serial.println(enPin);
 
   debugDumpEN("after hold");
 }
 
 // Get the stored position for a base index.
-long getPos(uint8_t idx1) {
-  if (idx1 == 0 || idx1 > Pins::NUM_BASES) return -1;
-  return basePos[idx1 - 1];
+long getPos(uint8_t idx0) {
+  if (idx0 >= Pins::NUM_BASES) return -1;
+  return basePos[idx0];
 }
 
 // Set and persist the stored position for a base index.
-bool setPos(uint8_t idx1, long steps) {
-  if (idx1 == 0 || idx1 > Pins::NUM_BASES) return false;
-  basePos[idx1 - 1] = steps;
+bool setPos(uint8_t idx0, long steps) {
+  if (idx0 >= Pins::NUM_BASES) return false;
+  basePos[idx0] = steps;
   // persist new value
-  Util::saveBasePos(idx1 - 1, steps);
+  Util::saveBasePos(idx0, steps);
   return true;
 }
 
 // Store the current axis position as the base position.
-bool setHere(uint8_t idx1, long current) {
-  if (idx1 == 0 || idx1 > Pins::NUM_BASES) return false;
-  basePos[idx1 - 1] = current;
-  Util::saveBasePos(idx1 - 1, current);
+bool setHere(uint8_t idx0, long current) {
+  if (idx0 >= Pins::NUM_BASES) return false;
+  basePos[idx0] = current;
+  Util::saveBasePos(idx0, current);
   return true;
 }
 

@@ -180,6 +180,10 @@ SyringeFillController::SyringeFillController()
   m_baseToPot[4] = 1;
 }
 
+int8_t SyringeFillController::currentSlot() const {
+  return Bases::selected();
+}
+
 #pragma region Base Syringes
 // ------------------------------------------------------------
 // Base scanning and initialization
@@ -295,6 +299,7 @@ bool SyringeFillController::captureToolheadCalibrationPoint(float ml, String& me
 
 // Clear calibration points for the current base.
 bool SyringeFillController::clearCurrentBaseCalibrationPoints(String& message) {
+  setCurrentSlot(currentSlot());
   return m_calibration.clearCurrentBaseCalibrationPoints(message);
 }
 
@@ -627,7 +632,7 @@ void SyringeFillController::runRecipe() {
     Serial.print(" toolheadRFID=0x");
     Serial.print(m_toolhead.rfid, HEX);
     Serial.print(" currentSlot=");
-    Serial.println(m_currentSlot);
+    Serial.println(currentSlot());
   }
   if (m_recipe.count == 0) {
     if (DEBUG_FLAG) {
@@ -713,7 +718,7 @@ bool SyringeFillController::goToBase(uint8_t slot, Axis::MoveHook hook, void* co
     Toolhead::raise();
   }
   Axis::moveToWithHook(target, hook, context);
-  m_currentSlot = slot;
+  setCurrentSlot(slot);
   if (DEBUG_FLAG) {
     Serial.println("[SFC] goToBase: finished successfully");
   }
@@ -806,7 +811,7 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     return false;
   }
 
-  if (m_currentSlot != static_cast<int8_t>(slot)) {
+  if (currentSlot() != static_cast<int8_t>(slot)) {
     if (!goToBase(slot)) {
       if (DEBUG_FLAG) {
         Serial.print("[SFC] transferFromBase(): failed to goToBase(");
@@ -817,8 +822,8 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     }
   }
 
-  if (Bases::selected() != static_cast<uint8_t>(slot + 1)) {
-    if (!Bases::select(static_cast<uint8_t>(slot + 1))) {
+  if (Bases::selected() != static_cast<int8_t>(slot)) {
+    if (!Bases::select(slot)) {
       if (DEBUG_FLAG) {
         Serial.print("[SFC] transferFromBase(): failed to select base ");
         Serial.println(slot);
@@ -893,10 +898,11 @@ bool SyringeFillController::buildStatusJson(String& data) const {
   out += ",\"calPoints\":" + String(m_toolhead.cal.pointCount);
   out += "}";
 
+  const int8_t slot = currentSlot();
   out += ",\"currentBase\":{";
-  out += "\"slot\":" + String(m_currentSlot);
-  if (m_currentSlot >= 0 && m_currentSlot < Bases::kCount) {
-    out += ",\"rfid\":\"0x" + String(m_bases[m_currentSlot].rfid, HEX) + "\"";
+  out += "\"slot\":" + String(slot);
+  if (slot >= 0 && slot < Bases::kCount) {
+    out += ",\"rfid\":\"0x" + String(m_bases[slot].rfid, HEX) + "\"";
   }
   out += "}";
 
