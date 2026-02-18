@@ -6,9 +6,13 @@
 
 namespace Pins {
 
+// Shared STEP/DIR bus for both stepper drivers (A4988)
+constexpr int STEPPER_SHARED_STEP = 21;
+constexpr int STEPPER_SHARED_DIR  = 22;
+
 // Stepper driver #1 (A4988)
-constexpr int STEPPER1_STEP = 21;
-constexpr int STEPPER1_DIR  = 22;
+constexpr int STEPPER1_STEP = STEPPER_SHARED_STEP;
+constexpr int STEPPER1_DIR  = STEPPER_SHARED_DIR;
 constexpr int STEPPER1_ENABLE = 25;
 
 // Buttons for stepper #1 (active LOW, internal pullups)
@@ -17,10 +21,10 @@ constexpr int BUTTON1_DISPENSE = 33;
 
 // Stepper driver #2 (A4988)
 // NOTE: Pin choices avoid ESP32-WROOM strapping pins and use full digital I/O pins.
-constexpr int STEPPER2_STEP = 26;
-constexpr int STEPPER2_DIR  = 14;
-// Shared enable line with stepper #1 to keep pin assignment on safe GPIOs.
-constexpr int STEPPER2_ENABLE = STEPPER1_ENABLE;
+constexpr int STEPPER2_STEP = STEPPER_SHARED_STEP;
+constexpr int STEPPER2_DIR  = STEPPER_SHARED_DIR;
+// Dedicated enable for stepper #2 on a safe output-capable GPIO.
+constexpr int STEPPER2_ENABLE = 26;
 
 // Buttons for stepper #2 (active LOW, internal pullups)
 constexpr int BUTTON2_WITHDRAW = 13;
