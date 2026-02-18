@@ -229,15 +229,28 @@ void handleWifiAp() {
 
 void handleWifiScan() { printStructured("wifi.scan", true, "", g_wifi.buildScanJson()); }
 
+uint32_t getFillSpeedSps() { return g_stepper1.speedSps(); }
+
+uint32_t setFillSpeedSps(uint32_t sps) {
+  g_stepper1.applySpeed(sps);
+  g_stepper2.applySpeed(sps);
+  printStepperState("speed", "1", g_stepper1);
+  printStepperState("speed", "2", g_stepper2);
+  return g_stepper1.speedSps();
+}
+
 bool handleStepperCommand(const String& line) {
   if (line.startsWith("speed ")) {
     uint32_t sps = static_cast<uint32_t>(line.substring(6).toInt());
-    g_stepper1.applySpeed(sps);
-    g_stepper2.applySpeed(sps);
+    uint32_t applied = setFillSpeedSps(sps);
     Serial.print("OK speed ");
-    Serial.println(g_stepper1.speedSps());
-    printStepperState("speed", "1", g_stepper1);
-    printStepperState("speed", "2", g_stepper2);
+    Serial.println(applied);
+    return true;
+  }
+  if (line.startsWith("single.speed ")) {
+    uint32_t sps = static_cast<uint32_t>(line.substring(13).toInt());
+    uint32_t applied = setFillSpeedSps(sps);
+    printStructured("single.speed", true, "", String("{\"speed_sps\":") + String(applied) + "}");
     return true;
   }
   if (line.startsWith("dir ")) {
@@ -341,7 +354,7 @@ void setup() {
   delay(200);
   Serial.println("\n[Single] Booting...");
   Serial.println("[Single] Stepper debug enabled.");
-  Serial.println("[Single] Stepper commands: speed <sps>, dir <0|1>, dir2 <0|1>, on, off, state");
+  Serial.println("[Single] Stepper commands: speed <sps>, single.speed <sps>, dir <0|1>, dir2 <0|1>, on, off, state");
 
   pinMode(Pins::BUTTON1_WITHDRAW, INPUT_PULLUP);
   pinMode(Pins::BUTTON1_DISPENSE, INPUT_PULLUP);
@@ -375,6 +388,7 @@ void setup() {
   g_rfid.begin();
 
   startWiFi();
+  WebUI::setFillSpeedHooks(getFillSpeedSps, setFillSpeedSps);
   WebUI::begin();
 }
 
@@ -475,5 +489,5 @@ void loop() {
     printStepperState("heartbeat", "1", g_stepper1);
     printStepperState("heartbeat", "2", g_stepper2);
   }
-  //WebUI::handle();
+  WebUI::handle();
 }

@@ -8,8 +8,12 @@
 
 namespace WebUI {
 
+using FillSpeedGetter = uint32_t (*)();
+using FillSpeedSetter = uint32_t (*)(uint32_t);
+
 void begin();
 void handle();
 void setCurrentRfid(uint32_t rfid);
+void setFillSpeedHooks(FillSpeedGetter getter, FillSpeedSetter setter);
 
 }  // namespace WebUI

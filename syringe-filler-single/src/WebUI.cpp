@@ -13,6 +13,8 @@ namespace {
 
 WebServer server(80);
 uint32_t g_currentRfid = 0;
+WebUI::FillSpeedGetter g_fillSpeedGetter = nullptr;
+WebUI::FillSpeedSetter g_fillSpeedSetter = nullptr;
 
 constexpr size_t kMaxBaseList = 64;
 
@@ -22,7 +24,7 @@ const char kIndexHtml[] PROGMEM = R"HTML(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Syringe Base Metadata</title>
+  <title>Syringe Filler Control</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 24px; background: #f7f7f7; }
     h1 { margin: 0 0 12px; }
@@ -41,8 +43,16 @@ const char kIndexHtml[] PROGMEM = R"HTML(
   </style>
 </head>
 <body>
-  <h1>Single Syringe Base Metadata</h1>
+  <h1>Single Syringe Filler Control</h1>
   <div class="row">
+    <div class="col panel">
+      <h3>Fill Speed</h3>
+      <div class="muted">Adjust shared fill speed for manual syringe movement.</div>
+      <label>Speed (steps/second)</label>
+      <input id="fillSpeed" type="text" placeholder="e.g. 800" />
+      <button id="loadSpeed">Load Speed</button>
+      <button id="saveSpeed">Apply Speed</button>
+    </div>
     <div class="col panel">
       <h3>Known Bases</h3>
       <button id="refresh">Refresh</button>
@@ -76,6 +86,7 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     const notesEl = document.getElementById('notes');
     const statusEl = document.getElementById('status');
     const currentTagEl = document.getElementById('currentTag');
+    const fillSpeedEl = document.getElementById('fillSpeed');
 
     function setStatus(msg, ok = true) {
       statusEl.textContent = msg;
@@ -156,6 +167,39 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       }
     }
 
+
+    async function loadFillSpeed() {
+      const resp = await fetch('/api/fill-speed');
+      if (!resp.ok) {
+        setStatus('Failed to load fill speed.', false);
+        return;
+      }
+      const data = await resp.json();
+      fillSpeedEl.value = data.speed_sps ?? '';
+      setStatus(`Loaded fill speed: ${data.speed_sps} sps.`);
+    }
+
+    async function saveFillSpeed() {
+      const speed = parseInt(fillSpeedEl.value.trim(), 10);
+      if (!Number.isFinite(speed) || speed <= 0) {
+        setStatus('Fill speed must be a positive integer.', false);
+        return;
+      }
+      const resp = await fetch('/api/fill-speed', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ speed_sps: speed })
+      });
+      if (!resp.ok) {
+        const msg = await resp.text();
+        setStatus(`Failed to set fill speed: ${msg}`, false);
+        return;
+      }
+      const data = await resp.json();
+      fillSpeedEl.value = data.speed_sps ?? speed;
+      setStatus(`Applied fill speed: ${data.speed_sps} sps.`);
+    }
+
     async function refreshCurrentTag() {
       const resp = await fetch('/api/rfid');
       if (!resp.ok) return;
@@ -166,6 +210,8 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     document.getElementById('refresh').onclick = refreshList;
     document.getElementById('save').onclick = saveBase;
     document.getElementById('del').onclick = deleteBase;
+    document.getElementById('loadSpeed').onclick = loadFillSpeed;
+    document.getElementById('saveSpeed').onclick = saveFillSpeed;
     document.getElementById('useCurrent').onclick = () => {
       const tag = currentTagEl.textContent;
       if (tag && tag !== '--') {
@@ -176,6 +222,7 @@ const char kIndexHtml[] PROGMEM = R"HTML(
 
     refreshList();
     refreshCurrentTag();
+    loadFillSpeed();
     setInterval(refreshCurrentTag, 2000);
   </script>
 </body>
@@ -309,6 +356,53 @@ void handleRfid() {
   sendJson(doc);
 }
 
+void handleFillSpeedGet() {
+  if (!g_fillSpeedGetter) {
+    server.send(503, "text/plain", "Fill speed control unavailable");
+    return;
+  }
+  JsonDocument doc;
+  doc["speed_sps"] = g_fillSpeedGetter();
+  sendJson(doc);
+}
+
+void handleFillSpeedPut() {
+  if (!g_fillSpeedSetter) {
+    server.send(503, "text/plain", "Fill speed control unavailable");
+    return;
+  }
+  if (!server.hasArg("plain")) {
+    server.send(400, "text/plain", "Missing body");
+    return;
+  }
+
+  JsonDocument req;
+  DeserializationError err = deserializeJson(req, server.arg("plain"));
+  if (err || req["speed_sps"].isNull()) {
+    server.send(400, "text/plain", "Invalid JSON");
+    return;
+  }
+
+  uint32_t requested = req["speed_sps"].as<uint32_t>();
+  uint32_t applied = g_fillSpeedSetter(requested);
+
+  JsonDocument doc;
+  doc["speed_sps"] = applied;
+  sendJson(doc);
+}
+
+void handleFillSpeed() {
+  if (server.method() == HTTP_GET) {
+    handleFillSpeedGet();
+    return;
+  }
+  if (server.method() == HTTP_PUT) {
+    handleFillSpeedPut();
+    return;
+  }
+  server.send(405, "text/plain", "Method not allowed");
+}
+
 }  // namespace
 
 namespace WebUI {
@@ -322,6 +416,7 @@ void begin() {
   });
   server.on("/api/bases", HTTP_ANY, handleApiBases);
   server.on("/api/rfid", HTTP_GET, handleRfid);
+  server.on("/api/fill-speed", HTTP_ANY, handleFillSpeed);
   server.onNotFound(handleApiBaseItem);
 
   server.begin();
@@ -334,6 +429,11 @@ void handle() {
 
 void setCurrentRfid(uint32_t rfid) {
   g_currentRfid = rfid;
+}
+
+void setFillSpeedHooks(FillSpeedGetter getter, FillSpeedSetter setter) {
+  g_fillSpeedGetter = getter;
+  g_fillSpeedSetter = setter;
 }
 
 }  // namespace WebUI
