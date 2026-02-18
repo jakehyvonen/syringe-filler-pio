@@ -322,6 +322,7 @@ bool SyringeFillController::autoCalibrateToolhead(float incrementMl, uint8_t poi
     Serial.println(") start");
   }
 
+  long netWithdrawSteps = 0;
   for (uint8_t i = 0; i < points; ++i) {
     const float targetMl = incrementMl * static_cast<float>(i);
     if (!m_calibration.captureToolheadCalibrationPoint(targetMl, message)) {
@@ -347,6 +348,17 @@ bool SyringeFillController::autoCalibrateToolhead(float incrementMl, uint8_t poi
     }
 
     AxisPair::move2(withdrawSteps);
+    netWithdrawSteps += withdrawSteps;
+  }
+
+  if (netWithdrawSteps != 0) {
+    const long returnSteps = -netWithdrawSteps;
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] autoCalibrateToolhead(): return to start -> ");
+      Serial.print(returnSteps);
+      Serial.println(" steps");
+    }
+    AxisPair::move2(returnSteps);
   }
 
   message = "toolhead auto calibration complete";
@@ -423,6 +435,7 @@ bool SyringeFillController::autoCalibrateBase(float incrementMl, uint8_t points,
     Serial.println(") start");
   }
 
+  long netWithdrawSteps = 0;
   for (uint8_t i = 0; i < points; ++i) {
     const float targetMl = incrementMl * static_cast<float>(i);
     if (!m_calibration.captureBaseCalibrationPoint(baseSlot, targetMl, message)) {
@@ -448,6 +461,17 @@ bool SyringeFillController::autoCalibrateBase(float incrementMl, uint8_t points,
     }
 
     AxisPair::move3(withdrawSteps);
+    netWithdrawSteps += withdrawSteps;
+  }
+
+  if (netWithdrawSteps != 0) {
+    const long returnSteps = -netWithdrawSteps;
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] autoCalibrateBase(): return to start -> ");
+      Serial.print(returnSteps);
+      Serial.println(" steps");
+    }
+    AxisPair::move3(returnSteps);
   }
 
   message = "base auto calibration complete";
