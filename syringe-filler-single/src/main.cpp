@@ -1,9 +1,8 @@
-
 /**
  * @file main.cpp
- * @brief Single-syringe firmware: stepper + buttons + PN532 + web UI.
+ * @brief Single-syringe firmware: dual steppers + buttons + PN532 + web UI.
  */
- #include <Arduino.h>
+#include <Arduino.h>
 
 #include <WifiCredentials.hpp>
 #include <WifiManager.hpp>
@@ -46,19 +45,20 @@ struct DebouncedButton {
 
 class StepperControl {
  public:
+  StepperControl(int step_pin, int dir_pin, int enable_pin)
+      : m_step_pin(step_pin), m_dir_pin(dir_pin), m_enable_pin(enable_pin) {}
+
   bool enablePinConfigured() const { return m_enable_pin_configured; }
 
   void begin() {
-    pinMode(Pins::STEPPER_STEP, OUTPUT);
-    pinMode(Pins::STEPPER_DIR, OUTPUT);
-    digitalWrite(Pins::STEPPER_STEP, LOW);
-    digitalWrite(Pins::STEPPER_DIR, LOW);
-    if (Pins::STEPPER_ENABLE >= 0) {
-      if (digitalPinCanOutput(Pins::STEPPER_ENABLE)) {
-        pinMode(Pins::STEPPER_ENABLE, OUTPUT);
-        digitalWrite(Pins::STEPPER_ENABLE, kDisableLevel);
-        m_enable_pin_configured = true;
-      }
+    pinMode(m_step_pin, OUTPUT);
+    pinMode(m_dir_pin, OUTPUT);
+    digitalWrite(m_step_pin, LOW);
+    digitalWrite(m_dir_pin, LOW);
+    if (m_enable_pin >= 0 && digitalPinCanOutput(m_enable_pin)) {
+      pinMode(m_enable_pin, OUTPUT);
+      digitalWrite(m_enable_pin, kDisableLevel);
+      m_enable_pin_configured = true;
     }
     applySpeed(kDefaultSpeedSps);
   }
@@ -76,7 +76,7 @@ class StepperControl {
 
   void motorEnable(bool enable) {
     if (m_enable_pin_configured) {
-      digitalWrite(Pins::STEPPER_ENABLE, enable ? kEnableLevel : kDisableLevel);
+      digitalWrite(m_enable_pin, enable ? kEnableLevel : kDisableLevel);
     }
     m_driver_enabled = enable;
   }
@@ -94,9 +94,9 @@ class StepperControl {
     uint32_t now = micros();
     if ((uint32_t)(now - m_lastStepUs) < m_step_interval_us) return;
     m_lastStepUs = now;
-    digitalWrite(Pins::STEPPER_STEP, HIGH);
+    digitalWrite(m_step_pin, HIGH);
     delayMicroseconds(kStepPulseWidthUs);
-    digitalWrite(Pins::STEPPER_STEP, LOW);
+    digitalWrite(m_step_pin, LOW);
   }
 
   uint32_t speedSps() const { return m_speed_sps; }
@@ -104,13 +104,17 @@ class StepperControl {
   bool driverEnabled() const { return m_driver_enabled; }
   bool buttonEnable() const { return m_button_enable; }
   int directionLevel() const { return m_dir_level; }
+  int enablePin() const { return m_enable_pin; }
 
  private:
   void setDirectionLevel(int level) {
-    digitalWrite(Pins::STEPPER_DIR, level);
+    digitalWrite(m_dir_pin, level);
     m_dir_level = level;
   }
 
+  int m_step_pin;
+  int m_dir_pin;
+  int m_enable_pin;
   bool m_moving = false;
   uint32_t m_lastStepUs = 0;
   uint32_t m_speed_sps = kDefaultSpeedSps;
@@ -121,34 +125,42 @@ class StepperControl {
   int m_dir_level = LOW;
 };
 
-StepperControl g_stepper;
+StepperControl g_stepper1(Pins::STEPPER1_STEP, Pins::STEPPER1_DIR, Pins::STEPPER1_ENABLE);
+StepperControl g_stepper2(Pins::STEPPER2_STEP, Pins::STEPPER2_DIR, Pins::STEPPER2_ENABLE);
 
 String g_input;
 
-DebouncedButton g_withdraw_button;
-DebouncedButton g_dispense_button;
+DebouncedButton g_withdraw_button1;
+DebouncedButton g_dispense_button1;
+DebouncedButton g_withdraw_button2;
+DebouncedButton g_dispense_button2;
 
-bool g_last_withdraw_pressed = false;
-bool g_last_dispense_pressed = false;
-bool g_last_moving = false;
+bool g_last_withdraw_pressed1 = false;
+bool g_last_dispense_pressed1 = false;
+bool g_last_withdraw_pressed2 = false;
+bool g_last_dispense_pressed2 = false;
+bool g_last_moving1 = false;
+bool g_last_moving2 = false;
 uint32_t g_last_status_ms = 0;
 uint32_t g_last_button_report_ms = 0;
 
-void printStepperState(const char* context) {
-  Serial.print("[Stepper] ");
+void printStepperState(const char* context, const char* name, const StepperControl& stepper) {
+  Serial.print("[Stepper-");
+  Serial.print(name);
+  Serial.print("] ");
   Serial.print(context);
   Serial.print(" speed_sps=");
-  Serial.print(g_stepper.speedSps());
+  Serial.print(stepper.speedSps());
   Serial.print(" interval_us=");
-  Serial.print(g_stepper.stepIntervalUs());
+  Serial.print(stepper.stepIntervalUs());
   Serial.print(" dir=");
-  Serial.print(g_stepper.directionLevel());
+  Serial.print(stepper.directionLevel());
   Serial.print(" enabled=");
-  Serial.print(g_stepper.driverEnabled() ? "1" : "0");
+  Serial.print(stepper.driverEnabled() ? "1" : "0");
   Serial.print(" btn_en=");
-  Serial.print(g_stepper.buttonEnable() ? "1" : "0");
+  Serial.print(stepper.buttonEnable() ? "1" : "0");
   Serial.print(" enable_pin=");
-  Serial.println(Pins::STEPPER_ENABLE);
+  Serial.println(stepper.enablePin());
 }
 
 void printStructured(const char* cmd, bool ok, const String& message = "", const String& data = "") {
@@ -169,9 +181,7 @@ void printStructured(const char* cmd, bool ok, const String& message = "", const
   Serial.println("}");
 }
 
-void handleWifiStatus() {
-  printStructured("wifi.status", true, "", g_wifi.buildStatusJson());
-}
+void handleWifiStatus() { printStructured("wifi.status", true, "", g_wifi.buildStatusJson()); }
 
 void handleWifiSet(const String& args) {
   int sp = args.indexOf(' ');
@@ -217,40 +227,52 @@ void handleWifiAp() {
   printStructured("wifi.ap", true, "ap started");
 }
 
-void handleWifiScan() {
-  printStructured("wifi.scan", true, "", g_wifi.buildScanJson());
-}
+void handleWifiScan() { printStructured("wifi.scan", true, "", g_wifi.buildScanJson()); }
 
 bool handleStepperCommand(const String& line) {
   if (line.startsWith("speed ")) {
     uint32_t sps = static_cast<uint32_t>(line.substring(6).toInt());
-    g_stepper.applySpeed(sps);
+    g_stepper1.applySpeed(sps);
+    g_stepper2.applySpeed(sps);
     Serial.print("OK speed ");
-    Serial.println(g_stepper.speedSps());
-    printStepperState("speed");
+    Serial.println(g_stepper1.speedSps());
+    printStepperState("speed", "1", g_stepper1);
+    printStepperState("speed", "2", g_stepper2);
     return true;
   }
   if (line.startsWith("dir ")) {
     int dir_level = line.substring(4).toInt() ? HIGH : LOW;
-    g_stepper.setDirection(dir_level == HIGH);
+    g_stepper1.setDirection(dir_level == HIGH);
     Serial.print("OK dir ");
     Serial.println(dir_level == HIGH ? 1 : 0);
-    printStepperState("dir");
+    printStepperState("dir", "1", g_stepper1);
+    return true;
+  }
+  if (line.startsWith("dir2 ")) {
+    int dir_level = line.substring(5).toInt() ? HIGH : LOW;
+    g_stepper2.setDirection(dir_level == HIGH);
+    Serial.print("OK dir2 ");
+    Serial.println(dir_level == HIGH ? 1 : 0);
+    printStepperState("dir2", "2", g_stepper2);
     return true;
   }
   if (line == "on") {
     Serial.println("OK on (ignored; enable follows buttons only)");
-    printStepperState("on");
+    printStepperState("on", "1", g_stepper1);
+    printStepperState("on", "2", g_stepper2);
     return true;
   }
   if (line == "off") {
-    g_stepper.motorEnable(false);
+    g_stepper1.motorEnable(false);
+    g_stepper2.motorEnable(false);
     Serial.println("OK off");
-    printStepperState("off");
+    printStepperState("off", "1", g_stepper1);
+    printStepperState("off", "2", g_stepper2);
     return true;
   }
   if (line == "state") {
-    printStepperState("state");
+    printStepperState("state", "1", g_stepper1);
+    printStepperState("state", "2", g_stepper2);
     return true;
   }
   return false;
@@ -319,17 +341,30 @@ void setup() {
   delay(200);
   Serial.println("\n[Single] Booting...");
   Serial.println("[Single] Stepper debug enabled.");
-  Serial.println("[Single] Stepper commands: speed <sps>, dir <0|1>, on, off, state");
+  Serial.println("[Single] Stepper commands: speed <sps>, dir <0|1>, dir2 <0|1>, on, off, state");
 
-  pinMode(Pins::BUTTON_WITHDRAW, INPUT_PULLUP);
-  pinMode(Pins::BUTTON_DISPENSE, INPUT_PULLUP);
-  g_stepper.begin();
-  printStepperState("init");
-  if (Pins::STEPPER_ENABLE < 0) {
-    Serial.println("[Stepper] Warning: STEPPER_ENABLE is -1 (driver always enabled or wired differently).");
-  } else if (!g_stepper.enablePinConfigured()) {
-    Serial.print("[Stepper] Warning: STEPPER_ENABLE pin ");
-    Serial.print(Pins::STEPPER_ENABLE);
+  pinMode(Pins::BUTTON1_WITHDRAW, INPUT_PULLUP);
+  pinMode(Pins::BUTTON1_DISPENSE, INPUT_PULLUP);
+  pinMode(Pins::BUTTON2_WITHDRAW, INPUT_PULLUP);
+  pinMode(Pins::BUTTON2_DISPENSE, INPUT_PULLUP);
+
+  g_stepper1.begin();
+  g_stepper2.begin();
+
+  printStepperState("init", "1", g_stepper1);
+  printStepperState("init", "2", g_stepper2);
+
+  if (Pins::STEPPER1_ENABLE < 0 || Pins::STEPPER2_ENABLE < 0) {
+    Serial.println("[Stepper] Warning: at least one STEPPER_ENABLE is -1 (driver always enabled or wired differently).");
+  }
+  if (!g_stepper1.enablePinConfigured()) {
+    Serial.print("[Stepper-1] Warning: STEPPER_ENABLE pin ");
+    Serial.print(Pins::STEPPER1_ENABLE);
+    Serial.println(" does not support output on esp32dev; EN will not be driven.");
+  }
+  if (!g_stepper2.enablePinConfigured()) {
+    Serial.print("[Stepper-2] Warning: STEPPER_ENABLE pin ");
+    Serial.print(Pins::STEPPER2_ENABLE);
     Serial.println(" does not support output on esp32dev; EN will not be driven.");
   }
 
@@ -354,52 +389,91 @@ void loop() {
     WebUI::setCurrentRfid(g_rfid.currentTag());
   }
 
-  bool withdrawPressed = g_withdraw_button.update(digitalRead(Pins::BUTTON_WITHDRAW), nowMs);
-  bool dispensePressed = g_dispense_button.update(digitalRead(Pins::BUTTON_DISPENSE), nowMs);
+  bool withdrawPressed1 = g_withdraw_button1.update(digitalRead(Pins::BUTTON1_WITHDRAW), nowMs);
+  bool dispensePressed1 = g_dispense_button1.update(digitalRead(Pins::BUTTON1_DISPENSE), nowMs);
+  bool withdrawPressed2 = g_withdraw_button2.update(digitalRead(Pins::BUTTON2_WITHDRAW), nowMs);
+  bool dispensePressed2 = g_dispense_button2.update(digitalRead(Pins::BUTTON2_DISPENSE), nowMs);
 
-  if (withdrawPressed != g_last_withdraw_pressed || dispensePressed != g_last_dispense_pressed) {
-    Serial.print("[Buttons] withdraw=");
-    Serial.print(withdrawPressed ? "pressed" : "released");
+  if (withdrawPressed1 != g_last_withdraw_pressed1 || dispensePressed1 != g_last_dispense_pressed1) {
+    Serial.print("[Buttons-1] withdraw=");
+    Serial.print(withdrawPressed1 ? "pressed" : "released");
     Serial.print(" dispense=");
-    Serial.println(dispensePressed ? "pressed" : "released");
-    g_last_withdraw_pressed = withdrawPressed;
-    g_last_dispense_pressed = dispensePressed;
+    Serial.println(dispensePressed1 ? "pressed" : "released");
+    g_last_withdraw_pressed1 = withdrawPressed1;
+    g_last_dispense_pressed1 = dispensePressed1;
+  }
+
+  if (withdrawPressed2 != g_last_withdraw_pressed2 || dispensePressed2 != g_last_dispense_pressed2) {
+    Serial.print("[Buttons-2] withdraw=");
+    Serial.print(withdrawPressed2 ? "pressed" : "released");
+    Serial.print(" dispense=");
+    Serial.println(dispensePressed2 ? "pressed" : "released");
+    g_last_withdraw_pressed2 = withdrawPressed2;
+    g_last_dispense_pressed2 = dispensePressed2;
   }
 
   if (nowMs - g_last_button_report_ms >= 2000) {
     g_last_button_report_ms = nowMs;
-    Serial.print("[Buttons] poll withdraw=");
-    Serial.print(withdrawPressed ? "1" : "0");
+    Serial.print("[Buttons-1] poll withdraw=");
+    Serial.print(withdrawPressed1 ? "1" : "0");
     Serial.print(" dispense=");
-    Serial.println(dispensePressed ? "1" : "0");
+    Serial.println(dispensePressed1 ? "1" : "0");
+
+    Serial.print("[Buttons-2] poll withdraw=");
+    Serial.print(withdrawPressed2 ? "1" : "0");
+    Serial.print(" dispense=");
+    Serial.println(dispensePressed2 ? "1" : "0");
   }
 
-  bool buttonPressed = withdrawPressed || dispensePressed;
-  g_stepper.setButtonEnable(buttonPressed);
+  bool buttonPressed1 = withdrawPressed1 || dispensePressed1;
+  g_stepper1.setButtonEnable(buttonPressed1);
 
-  if (withdrawPressed && !dispensePressed) {
-    g_stepper.setDirection(kWithdrawDirHigh);
-    g_stepper.setMoving(true);
-  } else if (dispensePressed && !withdrawPressed) {
-    g_stepper.setDirection(!kWithdrawDirHigh);
-    g_stepper.setMoving(true);
+  if (withdrawPressed1 && !dispensePressed1) {
+    g_stepper1.setDirection(kWithdrawDirHigh);
+    g_stepper1.setMoving(true);
+  } else if (dispensePressed1 && !withdrawPressed1) {
+    g_stepper1.setDirection(!kWithdrawDirHigh);
+    g_stepper1.setMoving(true);
   } else {
-    g_stepper.setMoving(false);
-    g_stepper.motorEnable(false);
+    g_stepper1.setMoving(false);
+    g_stepper1.motorEnable(false);
   }
 
-  bool moving = withdrawPressed != dispensePressed;
-  if (moving != g_last_moving) {
-    g_last_moving = moving;
-    Serial.println(moving ? "[Stepper] motion start" : "[Stepper] motion stop");
-    printStepperState("motion");
+  bool buttonPressed2 = withdrawPressed2 || dispensePressed2;
+  g_stepper2.setButtonEnable(buttonPressed2);
+
+  if (withdrawPressed2 && !dispensePressed2) {
+    g_stepper2.setDirection(kWithdrawDirHigh);
+    g_stepper2.setMoving(true);
+  } else if (dispensePressed2 && !withdrawPressed2) {
+    g_stepper2.setDirection(!kWithdrawDirHigh);
+    g_stepper2.setMoving(true);
+  } else {
+    g_stepper2.setMoving(false);
+    g_stepper2.motorEnable(false);
   }
 
-  g_stepper.update();
+  bool moving1 = withdrawPressed1 != dispensePressed1;
+  if (moving1 != g_last_moving1) {
+    g_last_moving1 = moving1;
+    Serial.println(moving1 ? "[Stepper-1] motion start" : "[Stepper-1] motion stop");
+    printStepperState("motion", "1", g_stepper1);
+  }
+
+  bool moving2 = withdrawPressed2 != dispensePressed2;
+  if (moving2 != g_last_moving2) {
+    g_last_moving2 = moving2;
+    Serial.println(moving2 ? "[Stepper-2] motion start" : "[Stepper-2] motion stop");
+    printStepperState("motion", "2", g_stepper2);
+  }
+
+  g_stepper1.update();
+  g_stepper2.update();
 
   if (nowMs - g_last_status_ms >= 5000) {
     g_last_status_ms = nowMs;
-    printStepperState("heartbeat");
+    printStepperState("heartbeat", "1", g_stepper1);
+    printStepperState("heartbeat", "2", g_stepper2);
   }
   //WebUI::handle();
 }
