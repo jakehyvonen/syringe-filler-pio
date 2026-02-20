@@ -26,7 +26,7 @@ struct PotCalibration {
     float ratio     = 0.0f; // V_channel / V_ref (0..1)
   };
 
-  static constexpr uint8_t kMaxPoints = 8;
+  static constexpr uint8_t kMaxPoints = 17;
 
   // Single-span fields (kept for compatibility / convenience)
   uint16_t adcEmpty = 0;     // raw ADC at 0 mL
@@ -66,27 +66,66 @@ struct PotCalibration {
     return true;
   }
 
-  // Convert a ratio to milliliters via interpolation.
+  // Convert a ratio to milliliters using a least-squares quadratic fit.
+  // Falls back to a line fit when only two points are available.
   float ratioToMl(float ratio) const {
     if (pointCount == 0) return 0.0f;
     if (pointCount == 1) return points[0].volume_ml;
 
-    if (ratio <= points[0].ratio) return points[0].volume_ml;
+    double s1 = 0.0;
+    double sx = 0.0;
+    double sx2 = 0.0;
+    double sx3 = 0.0;
+    double sx4 = 0.0;
+    double sy = 0.0;
+    double sxy = 0.0;
+    double sx2y = 0.0;
 
-    for (uint8_t i = 1; i < pointCount; ++i) {
-      if (ratio <= points[i].ratio) {
-        const float r0 = points[i - 1].ratio;
-        const float r1 = points[i].ratio;
-        const float v0 = points[i - 1].volume_ml;
-        const float v1 = points[i].volume_ml;
-
-        if (fabsf(r1 - r0) <= 1e-6f) return v0;
-        const float t = (ratio - r0) / (r1 - r0);
-        return v0 + (v1 - v0) * t;
-      }
+    for (uint8_t i = 0; i < pointCount; ++i) {
+      const double x = points[i].ratio;
+      const double y = points[i].volume_ml;
+      const double x2 = x * x;
+      s1 += 1.0;
+      sx += x;
+      sx2 += x2;
+      sx3 += x2 * x;
+      sx4 += x2 * x2;
+      sy += y;
+      sxy += x * y;
+      sx2y += x2 * y;
     }
 
-    return points[pointCount - 1].volume_ml;
+    const double det =
+      s1 * (sx2 * sx4 - sx3 * sx3) -
+      sx * (sx * sx4 - sx3 * sx2) +
+      sx2 * (sx * sx3 - sx2 * sx2);
+
+    constexpr double kDetEps = 1e-10;
+    if (fabs(det) <= kDetEps) {
+      const double denom = (s1 * sx2) - (sx * sx);
+      if (fabs(denom) <= kDetEps) return points[0].volume_ml;
+      const double b = ((s1 * sxy) - (sx * sy)) / denom;
+      const double c = (sy - b * sx) / s1;
+      return (float)(b * ratio + c);
+    }
+
+    const double detA =
+      sy * (sx2 * sx4 - sx3 * sx3) -
+      sx * (sxy * sx4 - sx3 * sx2y) +
+      sx2 * (sxy * sx3 - sx2 * sx2y);
+    const double detB =
+      s1 * (sxy * sx4 - sx3 * sx2y) -
+      sy * (sx * sx4 - sx3 * sx2) +
+      sx2 * (sx * sx2y - sxy * sx2);
+    const double detC =
+      s1 * (sx2 * sx2y - sxy * sx3) -
+      sx * (sx * sx2y - sxy * sx2) +
+      sy * (sx * sx3 - sx2 * sx2);
+
+    const double a = detA / det;
+    const double b = detB / det;
+    const double c = detC / det;
+    return (float)(a * ratio * ratio + b * ratio + c);
   }
 };
 
@@ -96,7 +135,7 @@ struct CalibrationPoint {
 };
 
 struct CalibrationPoints {
-  static constexpr uint8_t kMaxPoints = 8;
+  static constexpr uint8_t kMaxPoints = 17;
   CalibrationPoint points[kMaxPoints];
   uint8_t count = 0;
 };
