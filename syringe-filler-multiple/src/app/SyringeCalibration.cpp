@@ -163,7 +163,7 @@ bool SyringeCalibration::captureToolheadCalibrationPoint(float ml, String& messa
     return false;
   }
   if (m_toolhead.cal.pointCount < 2) {
-    message = "toolhead syringe point saved; add at least 2 points to enable interpolation";
+    message = "toolhead syringe point saved; add at least 2 points to enable curve fit";
   } else {
     message = "toolhead syringe point saved";
   }
@@ -318,32 +318,67 @@ bool SyringeCalibration::readBasePotRatio(uint8_t slot, float& ratio, String& me
   return true;
 }
 
-// Interpolate volume from calibration points using a ratio.
-float SyringeCalibration::interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok) {
+// Compute fitted volume from calibration points using a least-squares quadratic fit.
+float SyringeCalibration::fittedVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok) {
   ok = false;
   if (points.count < 2) return NAN;
 
-  if (ratio <= points.points[0].ratio) {
-    ok = true;
-    return points.points[0].volumeMl;
-  }
-  if (ratio >= points.points[points.count - 1].ratio) {
-    ok = true;
-    return points.points[points.count - 1].volumeMl;
+  double s1 = 0.0;
+  double sx = 0.0;
+  double sx2 = 0.0;
+  double sx3 = 0.0;
+  double sx4 = 0.0;
+  double sy = 0.0;
+  double sxy = 0.0;
+  double sx2y = 0.0;
+
+  for (uint8_t i = 0; i < points.count; ++i) {
+    const double x = points.points[i].ratio;
+    const double y = points.points[i].volumeMl;
+    const double x2 = x * x;
+    s1 += 1.0;
+    sx += x;
+    sx2 += x2;
+    sx3 += x2 * x;
+    sx4 += x2 * x2;
+    sy += y;
+    sxy += x * y;
+    sx2y += x2 * y;
   }
 
-  for (uint8_t i = 0; i + 1 < points.count; ++i) {
-    const CalibrationPoint& a = points.points[i];
-    const CalibrationPoint& b = points.points[i + 1];
-    if (ratio >= a.ratio && ratio <= b.ratio) {
-      float denom = b.ratio - a.ratio;
-      if (denom <= 0.0f) return NAN;
-      float t = (ratio - a.ratio) / denom;
-      ok = true;
-      return a.volumeMl + t * (b.volumeMl - a.volumeMl);
-    }
+  const double det =
+    s1 * (sx2 * sx4 - sx3 * sx3) -
+    sx * (sx * sx4 - sx3 * sx2) +
+    sx2 * (sx * sx3 - sx2 * sx2);
+
+  constexpr double kDetEps = 1e-10;
+  if (fabs(det) <= kDetEps) {
+    const double denom = (s1 * sx2) - (sx * sx);
+    if (fabs(denom) <= kDetEps) return NAN;
+    const double b = ((s1 * sxy) - (sx * sy)) / denom;
+    const double c = (sy - b * sx) / s1;
+    ok = true;
+    return (float)(b * ratio + c);
   }
-  return NAN;
+
+  const double detA =
+    sy * (sx2 * sx4 - sx3 * sx3) -
+    sx * (sxy * sx4 - sx3 * sx2y) +
+    sx2 * (sxy * sx3 - sx2 * sx2y);
+  const double detB =
+    s1 * (sxy * sx4 - sx3 * sx2y) -
+    sy * (sx * sx4 - sx3 * sx2) +
+    sx2 * (sx * sx2y - sxy * sx2);
+  const double detC =
+    s1 * (sx2 * sx2y - sxy * sx3) -
+    sx * (sx * sx2y - sxy * sx2) +
+    sy * (sx * sx3 - sx2 * sx2);
+
+  const double a = detA / det;
+  const double b = detB / det;
+  const double c = detC / det;
+  ok = true;
+  return (float)(a * ratio * ratio + b * ratio + c);
 }
 
 // Capture a base calibration point for a slot.
@@ -437,7 +472,7 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
   }
 
   if (points.count < 2) {
-    message = "point saved; add at least 2 points to enable interpolation";
+    message = "point saved; add at least 2 points to enable curve fit";
   } else {
     message = "point saved";
   }
@@ -559,7 +594,7 @@ float SyringeCalibration::readBaseVolumeMl(uint8_t slot) {
   bool ratioOk = readBasePotRatio(slot, ratio, ratioMessage);
   if (ratioOk && m_bases[slot].calPoints.count >= 2) {
     bool ok = false;
-    float ml = interpolateVolumeFromPoints(m_bases[slot].calPoints, ratio, ok);
+    float ml = fittedVolumeFromPoints(m_bases[slot].calPoints, ratio, ok);
     if (ok) {
       if (CAL_DBG) {
         Serial.print("[SFC] readBaseVolumeMl(slot=");
@@ -574,7 +609,7 @@ float SyringeCalibration::readBaseVolumeMl(uint8_t slot) {
   } else if (CAL_DBG && ratioOk) {
     Serial.print("[SFC] readBaseVolumeMl(slot=");
     Serial.print(slot);
-    Serial.println("): insufficient calibration points for interpolation");
+    Serial.println("): insufficient calibration points for curve fit");
     return 0.0f;
   }
 

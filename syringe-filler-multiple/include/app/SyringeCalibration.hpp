@@ -38,7 +38,7 @@ private:
   float readToolheadRatio();
   float readBaseRatio(uint8_t slot);
   bool readBasePotRatio(uint8_t slot, float& ratio, String& message) const;
-  static float interpolateVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok);
+  static float fittedVolumeFromPoints(const App::CalibrationPoints& points, float ratio, bool& ok);
   static float mlFromRatio_(const App::PotCalibration& cal, float ratio);
 
   Syringe& m_toolhead;
