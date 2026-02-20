@@ -1032,7 +1032,7 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
   const float baseStepsPerMl = resolveStepsPerMl(m_bases[slot].cal.steps_mL, kBaseStepsPerMl);
   const long toolSteps = -stepsForMl(ml, toolStepsPerMl);
-  const long baseSteps = stepsForMl(ml, baseStepsPerMl);
+  const long baseSteps = -stepsForMl(ml, baseStepsPerMl);
 
   if (DEBUG_FLAG) {
     Serial.print("[SFC] transferFromBase(slot=");
