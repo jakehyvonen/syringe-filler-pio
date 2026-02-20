@@ -1,6 +1,6 @@
 /**
  * @file BaseRFID.hpp
- * @brief RFID interface for base tags (secondary I2C bus).
+ * @brief RFID interface for base tags (primary I2C bus).
  */
 #pragma once
 #include <Arduino.h>

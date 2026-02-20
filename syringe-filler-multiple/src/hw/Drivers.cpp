@@ -12,41 +12,25 @@
 #include <Adafruit_ADS1X15.h>
 #include <Adafruit_MCP23X17.h>
 
-// ----------------------------------------------------------
-// Global hardware objects
-// ----------------------------------------------------------
-Adafruit_MCP23X17    Drivers::MCP;              // MCP23017 on primary I2C bus
-Adafruit_ADS1115       Drivers::ADS;              // ADS1115 on secondary I2C bus
-Adafruit_MCP23X17      Drivers::BASE_EN_EXPANDER; // MCP23X17 for base-enable outputs
+Adafruit_MCP23X17 Drivers::MCP;
+Adafruit_ADS1115 Drivers::ADS;
+Adafruit_MCP23X17 Drivers::BASE_EN_EXPANDER;
 
-// ----------------------------------------------------------
-// Internal state
-// ----------------------------------------------------------
 namespace {
-  bool     g_i2cInit  = false;
-  uint32_t g_i2cFreq  = 0;
-
-  bool     g_i2c2Init = false;
-  uint32_t g_i2c2Freq = 0;
+  bool g_i2cInit = false;
+  uint32_t g_i2cFreq = 0;
 
   bool g_hasMCP = false;
   uint8_t g_mcpAddr = 0;
   bool g_hasADS = false;
   bool g_hasBaseEnableExpander = false;
-
-  uint8_t g_adsAddr = 0;  // 0 if none; otherwise 0x48 or 0x49
+  uint8_t g_adsAddr = 0;
 
   inline bool i2cPresentQuick(uint8_t addr) {
     Wire.beginTransmission(addr);
     return (Wire.endTransmission(true) == 0);
   }
 
-  inline bool i2c2PresentQuick(uint8_t addr) {
-    Wire1.beginTransmission(addr);
-    return (Wire1.endTransmission(true) == 0);
-  }
-
-  // Simple helper for I2C bus scanning
   void scanBus(TwoWire &bus, const char *name) {
     Serial.printf("[%s] scanning…\n", name);
     uint8_t found = 0;
@@ -64,18 +48,10 @@ namespace {
   }
 } // namespace
 
-// ----------------------------------------------------------
-// Public API
-// ----------------------------------------------------------
-
-// Default overload
-// Initialize the primary I2C bus with default pins.
 bool Drivers::initI2C() {
   return Drivers::initI2C(Pins::I2C_SDA, Pins::I2C_SCL, Pins::I2C_FREQ);
 }
 
-// Primary bus init
-// Initialize the primary I2C bus with explicit pins/frequency.
 bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
   if (!g_i2cInit) {
     Wire.begin(sda, scl);
@@ -90,7 +66,6 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Serial.printf("[I2C] clock updated to %lu Hz\n", (unsigned long)freq);
   }
 
-  // ---- MCP23017 detection ----
   g_hasMCP = false;
   g_mcpAddr = 0;
   for (uint8_t addr = 0x20; addr <= 0x27; ++addr) {
@@ -111,14 +86,21 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Serial.println("WARN: MCP23017 not found on I2C0 (checked 0x20-0x27). Base expander offline.");
   }
 
+  g_hasBaseEnableExpander = Drivers::BASE_EN_EXPANDER.begin_I2C(Pins::BASE_EN_MCP_ADDR, &Wire);
+  if (g_hasBaseEnableExpander) {
+    Serial.printf("MCP23X17 base enable expander detected @0x%02X on I2C0\n", Pins::BASE_EN_MCP_ADDR);
+  } else {
+    Serial.printf("WARN: MCP23X17 base enable expander not found @0x%02X on I2C0.\n", Pins::BASE_EN_MCP_ADDR);
+  }
 
-  // ---- ADS1115 detection ----
   g_hasADS = false;
   g_adsAddr = 0;
-  if (i2cPresentQuick(0x48) && Drivers::ADS.begin(0x48)) {
-    g_hasADS = true; g_adsAddr = 0x48;
-  } else if (i2cPresentQuick(0x49) && Drivers::ADS.begin(0x49)) {
-    g_hasADS = true; g_adsAddr = 0x49;
+  if (i2cPresentQuick(0x48) && Drivers::ADS.begin(0x48, &Wire)) {
+    g_hasADS = true;
+    g_adsAddr = 0x48;
+  } else if (i2cPresentQuick(0x49) && Drivers::ADS.begin(0x49, &Wire)) {
+    g_hasADS = true;
+    g_adsAddr = 0x49;
   }
 
   if (g_hasADS) {
@@ -128,69 +110,22 @@ bool Drivers::initI2C(int sda, int scl, uint32_t freq) {
     Serial.println("WARN: ADS1115 not found on I2C; pot readings disabled.");
   }
 
-  // ---- PN532 detection (I2C0) ----
   if (i2cPresentQuick(0x24)) {
-    Serial.println("INFO: PN532 ACK at 0x24 (Wire0)");
-    RFID::init();
+    Serial.println("INFO: Base PN532 ACK at 0x24 (Wire0)");
+    BaseRFID::init();
   } else {
-    Serial.println("INFO: PN532 not ACKing at 0x24 (mode/address mismatch?)");
+    Serial.println("INFO: Base PN532 not ACKing at 0x24 (mode/address mismatch?)");
   }
 
+  RFID::init();
   return true;
 }
 
-// Return true if a device acknowledges on the primary I2C bus.
 bool Drivers::i2cPresent(uint8_t addr) {
   Wire.beginTransmission(addr);
   return (Wire.endTransmission(true) == 0);
 }
 
-// Secondary I2C (Wire1)
-// Initialize the secondary I2C bus with default pins.
-bool Drivers::initI2C2() {
-  if (!g_i2c2Init) {
-    Wire1.begin(Pins::I2C2_SDA, Pins::I2C2_SCL);
-    Wire1.setClock(Pins::I2C2_FREQ);
-    Wire1.setTimeOut(3000);
-    g_i2c2Init = true;
-    g_i2c2Freq = Pins::I2C2_FREQ;
-    Serial.printf("[I2C2] started SDA=%d SCL=%d @%lu Hz\n",
-                  Pins::I2C2_SDA, Pins::I2C2_SCL, (unsigned long)Pins::I2C2_FREQ);
-  } else if (g_i2c2Freq != Pins::I2C2_FREQ) {
-    Wire1.setClock(Pins::I2C2_FREQ);
-    g_i2c2Freq = Pins::I2C2_FREQ;
-    Serial.printf("[I2C2] clock updated to %lu Hz\n", (unsigned long)Pins::I2C2_FREQ);
-  }
-
-  // ---- MCP23X17 detection (I2C1) ----
-  g_hasBaseEnableExpander = Drivers::BASE_EN_EXPANDER.begin_I2C(Pins::BASE_EN_MCP_ADDR, &Wire1);
-  if (g_hasBaseEnableExpander) {
-    Serial.printf("MCP23X17 base enable expander detected @0x%02X on I2C2\n",
-                  Pins::BASE_EN_MCP_ADDR);
-  } else {
-    Serial.printf("WARN: MCP23X17 base enable expander not found @0x%02X on I2C2.\n",
-                  Pins::BASE_EN_MCP_ADDR);
-  }
-
-  // ---- PN532 detection (I2C1) ----
-  if (i2c2PresentQuick(0x24)) {
-    Serial.println("INFO: PN532 ACK at 0x24 (Wire1)");
-    BaseRFID::init();
-  } else {
-    Serial.println("INFO: PN532 not ACKing at 0x24 on Wire1 (mode/address mismatch?)");
-  }
-
-  return true;
-}
-
-// Return true if a device acknowledges on the secondary I2C bus.
-bool Drivers::i2c2Present(uint8_t addr) {
-  Wire1.beginTransmission(addr);
-  return (Wire1.endTransmission(true) == 0);
-}
-
-// ---- I2C scanning (both buses) ----
-// Scan both I2C buses and print detected addresses.
 void Drivers::i2cScanBoth() {
   if (!g_i2cInit) {
     Wire.begin(Pins::I2C_SDA, Pins::I2C_SCL);
@@ -198,19 +133,9 @@ void Drivers::i2cScanBoth() {
     Wire.setTimeOut(3000);
     g_i2cInit = true;
   }
-  if (!g_i2c2Init) {
-    Wire1.begin(Pins::I2C2_SDA, Pins::I2C2_SCL);
-    Wire1.setClock(Pins::I2C2_FREQ);
-    Wire1.setTimeOut(3000);
-    g_i2c2Init = true;
-  }
-  scanBus(Wire,  "I2C0");
-  scanBus(Wire1, "I2C1");
+  scanBus(Wire, "I2C0");
 }
 
-// ---- Status getters ----
-// Return true if the MCP23017 base expander was detected.
 bool Drivers::hasMCP() { return g_hasMCP; }
-// Return true if the ADS1115 was detected.
 bool Drivers::hasADS() { return g_hasADS; }
 bool Drivers::hasBaseEnableExpander() { return g_hasBaseEnableExpander; }

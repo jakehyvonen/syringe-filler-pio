@@ -1,6 +1,6 @@
 /**
  * @file BaseRFID.cpp
- * @brief Base RFID reader implementation on the secondary I2C bus.
+ * @brief Base RFID reader implementation on the primary I2C bus.
  */
 #include "hw/BaseRFID.hpp"
 #include "hw/Pins.hpp"
@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <utility>
 
-static Adafruit_PN532 nfc(27, 14, &Wire1);
+static Adafruit_PN532 nfc(Pins::PN532_IRQ, -1, &Wire);
 
 // ---- State ----
 static bool    s_enabled   = false;
@@ -48,15 +48,13 @@ void setListener(TagListener cb, void* user) {
   s_listenerUser = user;
 }
 
-// Initialize the PN532 on the secondary I2C bus.
+// Initialize the PN532 on the primary I2C bus.
 void init() {
-  Wire1.begin(Pins::I2C2_SDA, Pins::I2C2_SCL);
-
   nfc.begin();
 
   uint32_t verdata = nfc.getFirmwareVersion();
   if (!verdata) {
-    Serial.println(F("[BaseRFID] Didn't find PN532 on Wire1. Check DIP (I2C=ON/OFF) & wiring."));
+    Serial.println(F("[BaseRFID] Didn't find PN532 on Wire. Check DIP (I2C=ON/OFF) & wiring."));
     return;
   }
   Serial.print(F("[BaseRFID] PN532 found. IC: 0x"));

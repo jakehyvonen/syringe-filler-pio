@@ -40,7 +40,6 @@ void setup() {
 
   // I2C + EEPROM + subsystems
   Drivers::initI2C();
-  Drivers::initI2C2();
   //Drivers::i2cScanBoth();
   Util::initStorage();
   WebUI::begin();

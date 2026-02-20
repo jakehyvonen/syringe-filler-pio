@@ -8,7 +8,7 @@
 namespace Pins {
 
 // =======================================================
-// ==========  I2C BUS (for first PN532 + ADS)  ===========
+// ==========  I2C BUS (ADS + BaseRFID PN532 + expanders) =
 // =======================================================
 constexpr int      I2C_SDA  = 21;
 constexpr int      I2C_SCL  = 22;
@@ -91,14 +91,16 @@ constexpr uint8_t STEP_PULSE_US = 11;
 // ==========  PN532 READERS  =============================
 // =======================================================
 
-// PN532 #1  → I2C  (uses SDA=21, SCL=22; no extra pins needed)
+// Base PN532 uses the primary I2C bus (SDA/SCL above).
 constexpr int PN532_I2C_SDA = I2C_SDA;
 constexpr int PN532_I2C_SCL = I2C_SCL;
 
-// ---------- Secondary I2C bus (Wire1) for BaseRFID ----------
-constexpr int      I2C2_SDA  = 18;   // choose free GPIOs
-constexpr int      I2C2_SCL  = 19;
-constexpr uint32_t I2C2_FREQ = 50000; // keep same 50 kHz for stability
+// Toolhead PN532 uses SPI on safe ESP32 GPIOs.
+constexpr int PN532_SPI_SCK  = 18;
+constexpr int PN532_SPI_MISO = 19;
+constexpr int PN532_SPI_MOSI = 32;
+constexpr int PN532_SPI_SS   = 33;
+constexpr int PN532_SPI_RST  = 27;
 
 // =======================================================
 // ==========  LINEAR ENCODER (A/B/Index)  =================
@@ -117,6 +119,6 @@ constexpr uint8_t ENC_Z = 39; // index / reference mark (input-only)
 // =======================================================
 
 constexpr int PN532_IRQ = -1;
-constexpr int PN532_RST = -1;
+constexpr int PN532_RST = PN532_SPI_RST;
 
 } // namespace Pins
