@@ -149,10 +149,16 @@ namespace {
     }
   }
 
-  // Convert mL transfer values into toolhead axis steps.
-  long toolStepsForMl(float ml) { return lroundf(ml * kToolStepsPerMl); }
-  // Convert mL transfer values into base axis steps.
-  long baseStepsForMl(float ml) { return lroundf(ml * kBaseStepsPerMl); }
+  float resolveStepsPerMl(float calibratedStepsPerMl, float fallbackStepsPerMl) {
+    if (isfinite(calibratedStepsPerMl) && calibratedStepsPerMl > 0.0f) {
+      return calibratedStepsPerMl;
+    }
+    return fallbackStepsPerMl;
+  }
+
+  long stepsForMl(float ml, float stepsPerMl) {
+    return lroundf(ml * stepsPerMl);
+  }
 
 }
 
@@ -332,7 +338,8 @@ bool SyringeFillController::autoCalibrateToolhead(float incrementMl, uint8_t poi
       break;
     }
 
-    const long withdrawSteps = -toolStepsForMl(incrementMl);
+    const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
+    const long withdrawSteps = -stepsForMl(incrementMl, toolStepsPerMl);
     if (withdrawSteps == 0) {
       message = "increment too small; computed 0 steps";
       return false;
@@ -433,7 +440,8 @@ bool SyringeFillController::autoCalibrateBase(float incrementMl, uint8_t points,
       break;
     }
 
-    const long withdrawSteps = baseStepsForMl(incrementMl);
+    const float baseStepsPerMl = resolveStepsPerMl(m_bases[baseSlot].cal.steps_mL, kBaseStepsPerMl);
+    const long withdrawSteps = stepsForMl(incrementMl, baseStepsPerMl);
     if (withdrawSteps == 0) {
       message = "increment too small; computed 0 steps";
       return false;
@@ -997,8 +1005,10 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     Toolhead::couple();
   }
 
-  const long toolSteps = -toolStepsForMl(ml);
-  const long baseSteps = baseStepsForMl(ml);
+  const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
+  const float baseStepsPerMl = resolveStepsPerMl(m_bases[slot].cal.steps_mL, kBaseStepsPerMl);
+  const long toolSteps = -stepsForMl(ml, toolStepsPerMl);
+  const long baseSteps = stepsForMl(ml, baseStepsPerMl);
 
   if (DEBUG_FLAG) {
     Serial.print("[SFC] transferFromBase(slot=");
@@ -1034,7 +1044,8 @@ bool SyringeFillController::retractToolhead(float ml) {
     Toolhead::couple();
   }
 
-  const long retractSteps = -toolStepsForMl(ml);
+  const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
+  const long retractSteps = -stepsForMl(ml, toolStepsPerMl);
   if (retractSteps == 0) {
     return true;
   }
