@@ -165,12 +165,13 @@ void setAngle(uint8_t ch, int angle) {
 
   servo->write(bounded);
   *angleSlot = bounded;
-
+/*
   Serial.print("Servo ");
   Serial.print(ch);
   Serial.print(" -> ");
   Serial.print(bounded);
   Serial.println(" deg");
+  */
 }
 
 void setAngleSlow(uint8_t ch, int target, int stepDelay) {

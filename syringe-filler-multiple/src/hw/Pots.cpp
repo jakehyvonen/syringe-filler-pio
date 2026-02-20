@@ -74,7 +74,7 @@ void init() {
   // If Drivers/Wire aren’t already up elsewhere, ensure I2C is started there.
 
   for (int i = 0; i < 2; ++i) {
-    s_ads_present[i] = s_ads[i].begin(s_addr[i], &Wire1);
+    s_ads_present[i] = s_ads[i].begin(s_addr[i]);
     if (s_ads_present[i]) {
       s_ads[i].setGain(PGA);
       // Optional: s_ads[i].setDataRate(RATE_ADS1115_250SPS);
