@@ -32,6 +32,7 @@ namespace {
   constexpr float kToolMmPerMl = 3.45f;
   constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
   constexpr float kRetractionMl = 0.17f;
+  constexpr float kBaseTransferMinRemainingMl = 0.7f;
 
   #pragma region RFID
   // ------------------------------------------------------------
@@ -1027,6 +1028,21 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
 
   if (!Toolhead::isCoupled()) {
     Toolhead::couple();
+  }
+
+  const float baseRemainingMl = m_calibration.readBaseVolumeMl(slot);
+  m_bases[slot].currentMl = baseRemainingMl;
+  if (!isfinite(baseRemainingMl) || baseRemainingMl < kBaseTransferMinRemainingMl) {
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] transferFromBase(): base ");
+      Serial.print(slot);
+      Serial.print(" volume ");
+      Serial.print(baseRemainingMl, 3);
+      Serial.print(" mL below minimum threshold ");
+      Serial.print(kBaseTransferMinRemainingMl, 3);
+      Serial.println(" mL");
+    }
+    return false;
   }
 
   const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
