@@ -21,17 +21,20 @@ constexpr uint32_t I2C_FREQ = 100000; // Hz (slow and safe for long bus)
 
 constexpr uint8_t STEP1 = 4;
 constexpr uint8_t DIR1  = 16;
-constexpr uint8_t EN1   = 17;  // keep as-is
 
 // ---------- Stepper #2 (plunger) ----------
 constexpr uint8_t STEP2 = 15;
 constexpr uint8_t DIR2  = 2;
-constexpr uint8_t EN2   = 5;   // keep as-is
 
-// ---------- Stepper #3 (toolhead syringe / base drive) ----------
+// ---------- Stepper #3 (base drive) ----------
 constexpr uint8_t STEP3 = 12;
 constexpr uint8_t DIR3  = 14;
 // constexpr uint8_t EN3 = ...; // optional enable pin for a third driver
+
+// ---------- Stepper #4 (toolhead Z/lift) ----------
+// STEP4 and DIR4 intentionally share STEP/DIR pins with Stepper #1.
+constexpr uint8_t STEP4 = STEP1;
+constexpr uint8_t DIR4  = DIR1;
 
 
 // =======================================================
@@ -41,6 +44,10 @@ constexpr uint8_t DIR3  = 14;
 constexpr uint8_t NUM_BASES = 5;
 constexpr uint8_t BASE_EN_MCP_ADDR = 0x27;
 constexpr uint8_t BASE_EN_MCP[NUM_BASES] = {0, 1, 2, 3, 4};
+
+constexpr uint8_t EN1_MCP = 5; // PA5
+constexpr uint8_t EN2_MCP = 6; // PA6
+constexpr uint8_t EN4_MCP = 7; // PA7
 
 
 // =======================================================
@@ -60,7 +67,6 @@ constexpr uint8_t RAISED = 35; // input-only
 // ==========  DIRECT SERVO OUTPUTS (ESP32 LEDC)  =========
 // =======================================================
 // Keep these separate from STEP/DIR/EN, encoder, and I2C pins.
-constexpr uint8_t SERVO_PIN_TOOLHEAD = 25;
 constexpr uint8_t SERVO_PIN_COUPLER  = 26;
 
 constexpr uint16_t SERVO_MIN_US = 500;

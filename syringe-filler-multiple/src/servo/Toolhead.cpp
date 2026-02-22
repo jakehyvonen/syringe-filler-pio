@@ -1,9 +1,10 @@
 /**
  * @file Toolhead.cpp
- * @brief Direct ESP32 servo control for toolhead lift and coupling.
+ * @brief Toolhead lift stepper and coupler servo control.
  */
 #include "servo/Toolhead.hpp"
 
+#include "hw/Drivers.hpp"
 #include "hw/Pins.hpp"
 
 #include <Arduino.h>
@@ -11,109 +12,85 @@
 
 namespace Toolhead {
 namespace {
-// Keep legacy caller mapping support from older PCA9685 channels.
-static constexpr uint8_t TOOLHEAD_SERVO = 3;
-static constexpr uint8_t COUPLING_SERVO = 5;
-
-static constexpr int TOOLHEAD_SERVO_RAISED_POS    = 105;
-static constexpr int TOOLHEAD_SERVO_COUPLING_POS1 = 147;
-static constexpr int TOOLHEAD_SERVO_COUPLING_POS2 = 151;
+static constexpr uint8_t COUPLING_SERVO = 1;
 static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
-
-static constexpr int RAMP_MS_FAST = 11;
 static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
 
-Servo s_toolheadServo;
 Servo s_couplerServo;
 bool  s_servoReady = false;
-bool  s_toolheadAttached = false;
 bool  s_couplerAttached = false;
-
-int   s_toolheadAngle = 90;
 int   s_couplerAngle  = 90;
 bool  s_isCoupled = false;
 int   s_rampMsSlow = RAMP_MS_SLOW_DEFAULT;
 
-Servo* resolveServo(uint8_t ch) {
-  if (ch == TOOLHEAD_SERVO || ch == 0) return &s_toolheadServo;
-  if (ch == COUPLING_SERVO || ch == 1) return &s_couplerServo;
-  return nullptr;
-}
+volatile long s_pos4 = 0;
+long s_speedSPS = 400;
+unsigned long s_stepPeriodUs = 2500;
 
-int* resolveAngleSlot(uint8_t ch) {
-  if (ch == TOOLHEAD_SERVO || ch == 0) return &s_toolheadAngle;
-  if (ch == COUPLING_SERVO || ch == 1) return &s_couplerAngle;
-  return nullptr;
-}
+bool ensureCouplerAttached() {
+  if (s_couplerAttached) return true;
 
-bool* resolveAttachedSlot(uint8_t ch) {
-  if (ch == TOOLHEAD_SERVO || ch == 0) return &s_toolheadAttached;
-  if (ch == COUPLING_SERVO || ch == 1) return &s_couplerAttached;
-  return nullptr;
-}
-
-int resolvePin(uint8_t ch) {
-  if (ch == TOOLHEAD_SERVO || ch == 0) return Pins::SERVO_PIN_TOOLHEAD;
-  if (ch == COUPLING_SERVO || ch == 1) return Pins::SERVO_PIN_COUPLER;
-  return -1;
-}
-
-bool ensureAttached(uint8_t ch) {
-  Servo* servo = resolveServo(ch);
-  bool* attached = resolveAttachedSlot(ch);
-  int* angleSlot = resolveAngleSlot(ch);
-  const int pin = resolvePin(ch);
-  if (!servo || !attached || !angleSlot || pin < 0) return false;
-
-  if (*attached) return true;
-
-  servo->setPeriodHertz(Pins::SERVO_HZ);
-  const int ret = servo->attach(pin, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
+  s_couplerServo.setPeriodHertz(Pins::SERVO_HZ);
+  const int ret = s_couplerServo.attach(Pins::SERVO_PIN_COUPLER, Pins::SERVO_MIN_US, Pins::SERVO_MAX_US);
   if (ret < 0) {
-    Serial.printf("ERROR: servo attach failed (ch=%u pin=%d ret=%d)\n", ch, pin, ret);
-    *attached = false;
+    Serial.printf("ERROR: coupler servo attach failed (pin=%u ret=%d)\n", Pins::SERVO_PIN_COUPLER, ret);
+    s_couplerAttached = false;
     return false;
   }
 
-  *attached = true;
-
-  // IMPORTANT: after attaching, immediately drive it to the last known angle
-  // (unless cache invalid).
-  if (*angleSlot >= 0 && *angleSlot <= 180) {
-    servo->write(*angleSlot);
-    delay(20); // allow at least one PWM frame
+  s_couplerAttached = true;
+  if (s_couplerAngle >= 0 && s_couplerAngle <= 180) {
+    s_couplerServo.write(s_couplerAngle);
+    delay(20);
   }
-
   return true;
 }
 
-void ensureServoInit() {
+void ensureInit() {
   if (s_servoReady) return;
 
-  // ESP32Servo requires timer allocation before attach.
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
   ESP32PWM::allocateTimer(3);
 
-  s_toolheadServo.setPeriodHertz(Pins::SERVO_HZ);
-  s_couplerServo.setPeriodHertz(Pins::SERVO_HZ);
-
-  const bool toolheadOk = ensureAttached(TOOLHEAD_SERVO);
-  const bool couplerOk = ensureAttached(COUPLING_SERVO);
-
-  s_servoReady = toolheadOk && couplerOk && s_toolheadAttached && s_couplerAttached;
+  s_servoReady = ensureCouplerAttached();
   if (s_servoReady) {
-    Serial.printf("Toolhead servos ready on GPIO %u/%u\n",
-                  Pins::SERVO_PIN_TOOLHEAD,
-                  Pins::SERVO_PIN_COUPLER);
+    Serial.printf("Toolhead ready (coupler servo GPIO %u, toolhead stepper via EN4 MCP pin %u)\n",
+                  Pins::SERVO_PIN_COUPLER,
+                  Pins::EN4_MCP);
   }
+}
+
+void writeEnableMcp(uint8_t pin, uint8_t level) {
+  if (!Drivers::hasBaseEnableExpander()) return;
+  Drivers::BASE_EN_EXPANDER.pinMode(pin, OUTPUT);
+  Drivers::BASE_EN_EXPANDER.digitalWrite(pin, level);
+}
+
+void enable4(bool on) {
+  writeEnableMcp(Pins::EN4_MCP, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
+}
+
+void enable1(bool on) {
+  writeEnableMcp(Pins::EN1_MCP, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
+}
+
+void step4Blocking() {
+  digitalWrite(Pins::STEP4, HIGH);
+  delayMicroseconds(Pins::STEP_PULSE_US);
+  digitalWrite(Pins::STEP4, LOW);
 }
 } // namespace
 
 void init() {
-  ensureServoInit();
+  pinMode(Pins::STEP4, OUTPUT);
+  pinMode(Pins::DIR4, OUTPUT);
+  digitalWrite(Pins::STEP4, LOW);
+  enable4(false);
+  ensureInit();
+  setSpeedSPS(s_speedSPS);
 }
 
 bool isReady() {
@@ -125,64 +102,51 @@ bool isRaised() {
 }
 
 void setPulseRaw(uint8_t ch, int pulse) {
-  ensureServoInit();
+  ensureInit();
   if (!s_servoReady) return;
-
-  Servo* servo = resolveServo(ch);
-  bool* attached = resolveAttachedSlot(ch);
-  int* angleSlot = resolveAngleSlot(ch);
-  if (!servo || !attached || !angleSlot) return;
+  if (ch != COUPLING_SERVO) {
+    Serial.println("WARN: toolhead servo removed; only coupler channel is supported.");
+    return;
+  }
 
   if (pulse <= 0) {
-    servo->detach();
-    *attached = false;
-    *angleSlot = -1; // invalidate cache so next setAngle forces a write
+    s_couplerServo.detach();
+    s_couplerAttached = false;
+    s_couplerAngle = -1;
     return;
   }
 
-  if (!ensureAttached(ch)) {
-    Serial.printf("ERROR: setPulseRaw failed; servo ch %u unavailable.\n", ch);
-    return;
-  }
-
-  servo->writeMicroseconds(pulse);
+  if (!ensureCouplerAttached()) return;
+  s_couplerServo.writeMicroseconds(pulse);
 }
-void setAngle(uint8_t ch, int angle) {
-  ensureServoInit();
-  if (!s_servoReady) return;
 
-  Servo* servo = resolveServo(ch);
-  int* angleSlot = resolveAngleSlot(ch);
-  if (!servo || !angleSlot) return;
+void setAngle(uint8_t ch, int angle) {
+  ensureInit();
+  if (!s_servoReady) return;
+  if (ch != COUPLING_SERVO) {
+    Serial.println("WARN: toolhead servo removed; use move4/home4 for toolhead motion.");
+    return;
+  }
 
   const int bounded = constrain(angle, 0, 180);
-  if (*angleSlot == bounded) return;
+  if (s_couplerAngle == bounded) return;
 
-  if (!ensureAttached(ch)) {
-    Serial.printf("ERROR: setAngle failed; servo ch %u unavailable.\n", ch);
-    return;
-  }
+  if (!ensureCouplerAttached()) return;
 
-  servo->write(bounded);
-  *angleSlot = bounded;
-/*
-  Serial.print("Servo ");
-  Serial.print(ch);
-  Serial.print(" -> ");
-  Serial.print(bounded);
-  Serial.println(" deg");
-  */
+  s_couplerServo.write(bounded);
+  s_couplerAngle = bounded;
 }
 
 void setAngleSlow(uint8_t ch, int target, int stepDelay) {
-  ensureServoInit();
+  ensureInit();
   if (!s_servoReady) return;
-
-  int* angleSlot = resolveAngleSlot(ch);
-  if (!angleSlot) return;
+  if (ch != COUPLING_SERVO) {
+    Serial.println("WARN: toolhead servo removed; only coupler channel supports servoslow.");
+    return;
+  }
 
   const int boundedTarget = constrain(target, 0, 180);
-  const int start = *angleSlot;
+  const int start = s_couplerAngle;
   if (start == boundedTarget) return;
 
   const int step = (boundedTarget > start) ? 1 : -1;
@@ -191,13 +155,7 @@ void setAngleSlow(uint8_t ch, int target, int stepDelay) {
     delay(stepDelay <= 0 ? 1 : stepDelay);
   }
   setAngle(ch, boundedTarget);
-
-  Serial.print("Servo ");
-  Serial.print(ch);
-  Serial.print(" slowly moved to ");
-  Serial.println(boundedTarget);
 }
-
 
 void setSlowRampMs(int delayMs) {
   s_rampMsSlow = delayMs <= 0 ? 1 : delayMs;
@@ -207,44 +165,95 @@ int getSlowRampMs() {
   return s_rampMsSlow;
 }
 
-void raise() {
-  if (!isReady()) {
-    Serial.println("ERROR: raise requested before toolhead init.");
-    return;
+void setSpeedSPS(long sps) {
+  if (sps < 1) sps = 1;
+  if (sps > 4000) sps = 4000;
+  s_speedSPS = sps;
+  s_stepPeriodUs = (unsigned long)(1000000.0 / (double)s_speedSPS);
+}
+
+void moveSteps(long steps) {
+  if (steps == 0) return;
+
+  const bool dirHigh = (steps > 0);
+  const long todo = labs(steps);
+
+  // Shared STEP/DIR with axis 1: keep gantry disabled while axis 4 moves.
+  enable1(false);
+  enable4(true);
+  delayMicroseconds(500);
+
+  digitalWrite(Pins::DIR4, dirHigh ? HIGH : LOW);
+  delayMicroseconds(10);
+
+  for (long i = 0; i < todo; ++i) {
+    step4Blocking();
+    if (s_stepPeriodUs > Pins::STEP_PULSE_US) {
+      delayMicroseconds(s_stepPeriodUs - Pins::STEP_PULSE_US);
+    }
+    s_pos4 += dirHigh ? 1 : -1;
   }
 
-  setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1);//add this so coupling servo doesn't have to do all of the work
-  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
-  delay(50);
-  setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS, RAMP_MS_FAST);
+  enable4(false);
+}
+
+long current() { return s_pos4; }
+void setCurrent(long steps) { s_pos4 = steps; }
+
+bool homeRaised(uint16_t timeout_ms) {
+  if (isRaised()) {
+    setCurrent(0);
+    return true;
+  }
+
+  setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
+
+  const unsigned long start = millis();
+  enable1(false);
+  enable4(true);
+  delayMicroseconds(300);
+  digitalWrite(Pins::DIR4, LOW);
+  delayMicroseconds(10);
+
+  while (!isRaised() && (millis() - start) < timeout_ms) {
+    step4Blocking();
+    delayMicroseconds(1800);
+  }
+
+  enable4(false);
+
+  if (!isRaised()) {
+    Serial.println("ERROR: toolhead home4 timeout waiting for RAISED switch.");
+    return false;
+  }
+
+  setCurrent(0);
+  return true;
+}
+
+void raise() {
+  (void)homeRaised();
   s_isCoupled = false;
 }
 
 void couple() {
-  if (!isReady()) {
+  ensureInit();
+  if (!s_servoReady) {
     Serial.println("ERROR: couple requested before toolhead init.");
     return;
   }
 
-  s_isCoupled = false;
-  setAngleSlow(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS1, RAMP_MS_FAST);
-  delay(100);
-
-  //don't make the servos fight each other
-  setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_COUPLING_POS2);
-  delay(100);
+  if (!ensureRaised()) {
+    Serial.println("ERROR: couple aborted; toolhead not raised.");
+    return;
+  }
 
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
   delay(100);
-
-  //setPulseRaw(TOOLHEAD_SERVO, 0);
-  //delay(100);
-
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, s_rampMsSlow);
   delay(100);
 
-  //setPulseRaw(COUPLING_SERVO, 0);
-  s_isCoupled = isRaised();
+  s_isCoupled = true;
 }
 
 bool isCoupled() {
@@ -252,28 +261,8 @@ bool isCoupled() {
 }
 
 bool ensureRaised(uint16_t timeout_ms) {
-  ensureServoInit();
-  if (!s_servoReady) {
-    Serial.println("ERROR: ensureRaised aborted; toolhead servos are uninitialized.");
-    return false;
-  }
   if (isRaised()) return true;
-
-  raise();
-
-  const unsigned long start = millis();
-  while (!isRaised() && (millis() - start) < timeout_ms) {
-    setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
-    delay(100);
-    setAngle(TOOLHEAD_SERVO, TOOLHEAD_SERVO_RAISED_POS);
-    delay(100);
-  }
-
-  if (!isRaised()) {
-    Serial.println("ERROR: Toolhead not raised (timeout).");
-    return false;
-  }
-  return true;
+  return homeRaised(timeout_ms);
 }
 
 } // namespace Toolhead
