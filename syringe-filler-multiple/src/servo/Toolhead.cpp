@@ -73,10 +73,6 @@ void enable4(bool on) {
   writeEnableMcp(Pins::EN4_MCP, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
 }
 
-void enable1(bool on) {
-  writeEnableMcp(Pins::EN1_MCP, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
-}
-
 void step4Blocking() {
   digitalWrite(Pins::STEP4, HIGH);
   delayMicroseconds(Pins::STEP_PULSE_US);
@@ -178,8 +174,7 @@ void moveSteps(long steps) {
   const bool dirHigh = (steps > 0);
   const long todo = labs(steps);
 
-  // Shared STEP/DIR with axis 1: keep gantry disabled while axis 4 moves.
-  enable1(false);
+  // Axis 4 has dedicated STEP/DIR lines; only its own driver is toggled here.
   enable4(true);
   delayMicroseconds(500);
 
@@ -209,7 +204,6 @@ bool homeRaised(uint16_t timeout_ms) {
   setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
 
   const unsigned long start = millis();
-  enable1(false);
   enable4(true);
   delayMicroseconds(300);
   digitalWrite(Pins::DIR4, LOW);
