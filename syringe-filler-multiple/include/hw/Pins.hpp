@@ -32,9 +32,9 @@ constexpr uint8_t DIR3  = 14;
 // constexpr uint8_t EN3 = ...; // optional enable pin for a third driver
 
 // ---------- Stepper #4 (toolhead Z/lift) ----------
-// STEP4 and DIR4 intentionally share STEP/DIR pins with Stepper #1.
-constexpr uint8_t STEP4 = STEP1;
-constexpr uint8_t DIR4  = DIR1;
+// Dedicated STEP/DIR on the GPIOs previously used for EN1/EN2.
+constexpr uint8_t STEP4 = 5;
+constexpr uint8_t DIR4  = 17;
 
 
 // =======================================================
