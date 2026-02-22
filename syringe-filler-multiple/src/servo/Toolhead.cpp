@@ -209,9 +209,15 @@ bool homeRaised(uint16_t timeout_ms) {
   digitalWrite(Pins::DIR4, LOW);
   delayMicroseconds(10);
 
+  const unsigned long homingPeriodUs = (unsigned long)(2000000.0 / (double)s_speedSPS);
+  const unsigned long homingDelayUs =
+      (homingPeriodUs > Pins::STEP_PULSE_US) ? (homingPeriodUs - Pins::STEP_PULSE_US) : 0;
+
   while (!isRaised() && (millis() - start) < timeout_ms) {
     step4Blocking();
-    delayMicroseconds(1800);
+    if (homingDelayUs > 0) {
+      delayMicroseconds(homingDelayUs);
+    }
   }
 
   enable4(false);
