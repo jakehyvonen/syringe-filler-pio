@@ -22,10 +22,10 @@ namespace Toolhead {
   void moveSteps(long steps);
   long current();
   void setCurrent(long steps);
-  bool homeRaised(uint16_t timeout_ms = 2500);
+  bool homeRaised(uint16_t timeout_ms = 11000);
 
   void raise();
   void couple();
   bool isCoupled();
-  bool ensureRaised(uint16_t timeout_ms = 2500);
+  bool ensureRaised(uint16_t timeout_ms = 11000);
 }

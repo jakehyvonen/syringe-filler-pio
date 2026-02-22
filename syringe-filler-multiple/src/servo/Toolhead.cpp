@@ -209,9 +209,16 @@ bool homeRaised(uint16_t timeout_ms) {
   digitalWrite(Pins::DIR4, LOW);
   delayMicroseconds(10);
 
-  while (!isRaised() && (millis() - start) < timeout_ms) {
+  uint16_t n = 0;
+  while ((millis() - start) < timeout_ms) {
     step4Blocking();
-    delayMicroseconds(1800);
+    if (s_stepPeriodUs > Pins::STEP_PULSE_US) delayMicroseconds(s_stepPeriodUs - Pins::STEP_PULSE_US);
+
+    if ((++n & 0x0F) == 0) { // every 16 steps
+      if (isRaised()) break;
+    } else {
+      // fast path: skip digitalRead this iteration
+    }
   }
 
   enable4(false);
