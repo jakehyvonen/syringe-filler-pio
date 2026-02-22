@@ -26,16 +26,14 @@ void setup() {
   delay(200);
 
   // Pin modes
-  pinMode(Pins::STEP1, OUTPUT); pinMode(Pins::DIR1, OUTPUT); pinMode(Pins::EN1, OUTPUT);
-  pinMode(Pins::STEP2, OUTPUT); pinMode(Pins::DIR2, OUTPUT); pinMode(Pins::EN2, OUTPUT);
+  pinMode(Pins::STEP1, OUTPUT); pinMode(Pins::DIR1, OUTPUT);
+  pinMode(Pins::STEP2, OUTPUT); pinMode(Pins::DIR2, OUTPUT);
 //  pinMode(Pins::STEP3, OUTPUT); pinMode(Pins::DIR3, OUTPUT); pinMode(Pins::EN3, OUTPUT);
   pinMode(Pins::LIMIT, INPUT);
   pinMode(Pins::RAISED, INPUT);
 
   // Defaults
-  digitalWrite(Pins::EN2, Pins::DISABLE_LEVEL);
   //digitalWrite(Pins::EN3, Pins::DISABLE_LEVEL);
-  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
   digitalWrite(Pins::DIR1, HIGH);
 
   // I2C + EEPROM + subsystems
@@ -66,7 +64,7 @@ void setup() {
 
   Toolhead::init();
   if (!Toolhead::isReady()) {
-    Serial.println("WARN: toolhead servos unavailable; raise check skipped.");
+    Serial.println("WARN: coupler servo unavailable; toolhead raise check skipped.");
   } else if (!Toolhead::ensureRaised()) {
     Serial.println("ERROR: toolhead not raised.");
     //while (true) delay(1000);

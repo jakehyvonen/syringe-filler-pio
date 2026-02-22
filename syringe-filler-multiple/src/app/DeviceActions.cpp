@@ -23,11 +23,6 @@ namespace {
 inline long mmToSteps(float mm) { return (long)lround(mm * Pins::STEPS_PER_MM); }
 
 bool normalizeServoChannel(int inputChannel, uint8_t &channelOut, const char *&nameOut) {
-  if (inputChannel == 0 || inputChannel == 3) {
-    channelOut = 0;
-    nameOut = "toolhead";
-    return true;
-  }
   if (inputChannel == 1 || inputChannel == 5) {
     channelOut = 1;
     nameOut = "coupler";
@@ -122,7 +117,7 @@ ActionResult setServoPulseRaw(int channel, int us) {
   uint8_t normalizedChannel = 0;
   const char *servoName = nullptr;
   if (!normalizeServoChannel(channel, normalizedChannel, servoName)) {
-    return {false, "servo must be toolhead(0/3) or coupler(1/5)"};
+    return {false, "servo must be coupler(1/5)"};
   }
   if (us < 0 || us > Pins::SERVO_MAX_US) {
     return {false, "pulse must be 0.." + String(Pins::SERVO_MAX_US) + " us"};
@@ -143,7 +138,7 @@ ActionResult setServoAngle(int channel, int angle) {
   uint8_t normalizedChannel = 0;
   const char *servoName = nullptr;
   if (!normalizeServoChannel(channel, normalizedChannel, servoName)) {
-    return {false, "servo must be toolhead(0/3) or coupler(1/5)"};
+    return {false, "servo must be coupler(1/5)"};
   }
   if (angle < 0 || angle > 180) {
     return {false, "angle must be 0..180"};
@@ -158,7 +153,7 @@ ActionResult setServoAngleSlow(int channel, int angle, int delayMs) {
   uint8_t normalizedChannel = 0;
   const char *servoName = nullptr;
   if (!normalizeServoChannel(channel, normalizedChannel, servoName)) {
-    return {false, "servo must be toolhead(0/3) or coupler(1/5)"};
+    return {false, "servo must be coupler(1/5)"};
   }
   if (angle < 0 || angle > 180) {
     return {false, "angle must be 0..180"};
@@ -173,8 +168,8 @@ ActionResult setServoAngleSlow(int channel, int angle, int delayMs) {
 
 // Raise the toolhead to the safe position.
 ActionResult raiseToolhead() {
-  Toolhead::raise();
-  return {true, "toolhead raised"};
+  bool ok = Toolhead::ensureRaised();
+  return {ok, ok ? "toolhead raised" : "toolhead raise failed"};
 }
 
 // Execute the coupling sequence for the syringes.
@@ -194,6 +189,16 @@ ActionResult moveAxis2(long steps) {
 ActionResult moveAxis3(long steps) {
   AxisPair::move3(steps);
   return {true, "axis3 moved"};
+}
+
+ActionResult moveAxis4(long steps) {
+  Toolhead::moveSteps(steps);
+  return {true, "axis4 moved"};
+}
+
+ActionResult homeToolhead() {
+  bool ok = Toolhead::homeRaised();
+  return {ok, ok ? "toolhead homed" : "toolhead homing failed"};
 }
 
 // Set the shared speed for axes 2 and 3.

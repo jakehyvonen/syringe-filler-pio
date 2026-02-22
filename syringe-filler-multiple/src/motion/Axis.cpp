@@ -5,10 +5,20 @@
 #include "motion/Axis.hpp"
 #include "servo/Toolhead.hpp"
 #include "hw/Pins.hpp"
+#include "hw/Drivers.hpp"
 #include "hw/Encoder.hpp"
 #include <Arduino.h>
 
 namespace Axis {
+
+namespace {
+inline void writeEnable1(uint8_t level) {
+  if (Drivers::hasBaseEnableExpander()) {
+    Drivers::BASE_EN_EXPANDER.pinMode(Pins::EN1_MCP, OUTPUT);
+    Drivers::BASE_EN_EXPANDER.digitalWrite(Pins::EN1_MCP, level);
+  }
+}
+}
 
 // -----------------------------
 // Public position readback
@@ -91,9 +101,6 @@ static void waitForIdle(MoveHook hook, void* context, long targetSteps) {
 void init() {
   pinMode(Pins::STEP1, OUTPUT);
   pinMode(Pins::DIR1,  OUTPUT);
-  pinMode(Pins::EN1,    OUTPUT);
-
-  digitalWrite(Pins::EN1, Pins::DISABLE_LEVEL);
   digitalWrite(Pins::DIR1, HIGH);
 
   s_timer = timerBegin(1, 80, true);
@@ -131,7 +138,7 @@ void setSpeedSPS(long sps) {
 // -----------------------------
 // Enable or disable the stepper driver.
 void enable(bool on) {
-  digitalWrite(Pins::EN1, on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
+  writeEnable1(on ? Pins::ENABLE_LEVEL : Pins::DISABLE_LEVEL);
 }
 
 // Optional helpers

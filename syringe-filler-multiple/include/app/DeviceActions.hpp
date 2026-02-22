@@ -43,6 +43,8 @@ ActionResult coupleSyringes();
 // Secondary axes
 ActionResult moveAxis2(long steps);
 ActionResult moveAxis3(long steps);
+ActionResult moveAxis4(long steps);
+ActionResult homeToolhead();
 ActionResult setAxis23Speed(long sps);
 ActionResult moveAxisSync(long steps2, long steps3, bool requireBaseSelected);
 PositionResult axis2Position();
