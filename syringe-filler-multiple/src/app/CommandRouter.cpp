@@ -35,12 +35,14 @@ using App::DeviceActions::handleRfidCommand;
 using App::DeviceActions::homeGantry;
 using App::DeviceActions::moveAxis2;
 using App::DeviceActions::moveAxis3;
+using App::DeviceActions::moveAxis4;
 using App::DeviceActions::moveAxisSync;
 using App::DeviceActions::moveGantryToMm;
 using App::DeviceActions::moveGantryToSteps;
 using App::DeviceActions::moveToBase;
 using App::DeviceActions::potMove;
 using App::DeviceActions::raiseToolhead;
+using App::DeviceActions::homeToolhead;
 using App::DeviceActions::sfcCaptureBaseCalPoint;
 using App::DeviceActions::sfcCaptureToolCalPoint;
 using App::DeviceActions::sfcSetToolStepsPermL;
@@ -254,20 +256,17 @@ void handleGoBase(const String &args) {
 
 namespace {
 int parseServoNameToChannel(const String &name) {
-  if (name == "toolhead") return 0;
   if (name == "coupler") return 1;
   return -1;
 }
 
 int parseLegacyServoChannel(const String &raw) {
   int ch = raw.toInt();
-  if (ch == 0 || ch == 3) return 0;
   if (ch == 1 || ch == 5) return 1;
   return -1;
 }
 
 const char *servoVerbForChannel(int channel) {
-  if (channel == 0) return "servo.toolhead";
   if (channel == 1) return "servo.coupler";
   return "servo";
 }
@@ -277,14 +276,14 @@ const char *servoVerbForChannel(int channel) {
 void handleServoRaw(const String &args) {
   int sp = args.indexOf(' ');
   if (sp <= 0) {
-    printStructured("servo.raw", {false, "usage: servo.raw <toolhead|coupler> <us>"});
+    printStructured("servo.raw", {false, "usage: servo.raw <coupler> <us>"});
     return;
   }
   String which = args.substring(0, sp);
   which.trim();
   int channel = parseServoNameToChannel(which);
   if (channel < 0) {
-    printStructured("servo.raw", {false, "servo must be toolhead or coupler"});
+    printStructured("servo.raw", {false, "servo must be coupler"});
     return;
   }
   int us = args.substring(sp + 1).toInt();
@@ -293,11 +292,8 @@ void handleServoRaw(const String &args) {
 
 // Handle "servo.toolhead" command.
 void handleServoToolhead(const String &args) {
-  if (args.length() == 0) {
-    printStructured("servo.toolhead", {false, "usage: servo.toolhead <angle>"});
-    return;
-  }
-  printStructured("servo.toolhead", setServoAngle(0, args.toInt()));
+  (void)args;
+  printStructured("servo.toolhead", {false, "toolhead servo removed; use move4/home4"});
 }
 
 // Handle "servo.coupler" command.
@@ -313,13 +309,13 @@ void handleServoCoupler(const String &args) {
 void handleServo(const String &args) {
   int sp = args.indexOf(' ');
   if (sp <= 0) {
-    printStructured("servo", {false, "deprecated: use servo.toolhead <angle> or servo.coupler <angle>"});
+    printStructured("servo", {false, "deprecated: use servo.coupler <angle>"});
     return;
   }
 
   int channel = parseLegacyServoChannel(args.substring(0, sp));
   if (channel < 0) {
-    printStructured("servo", {false, "deprecated: channel must map to toolhead(0/3) or coupler(1/5)"});
+    printStructured("servo", {false, "deprecated: channel must map to coupler(1/5)"});
     return;
   }
 
@@ -344,7 +340,7 @@ void handleServoSlow(const String &args) {
 
   int channel = parseLegacyServoChannel(args.substring(0, sp));
   if (channel < 0) {
-    printStructured("servoslow", {false, "channel must map to toolhead(0/3) or coupler(1/5)"});
+    printStructured("servoslow", {false, "channel must map to coupler(1/5)"});
     return;
   }
 
@@ -392,6 +388,13 @@ void handleMove3(const String &args) {
     return;
   }
   printStructured("move3", moveAxis3(args.toInt()));
+}
+
+void handleMove4(const String &args) { printStructured("move4", moveAxis4(args.toInt())); }
+
+void handleHome4(const String &args) {
+  (void)args;
+  printStructured("home4", homeToolhead());
 }
 
 // Handle "speed23" command for axis 2/3 speed changes.
@@ -879,16 +882,18 @@ const CommandDescriptor COMMANDS[] = {
     {"base", "select base", handleBase},
     {"whichbase", "report selected base", handleWhichBase},
     {"gobase", "move to base", handleGoBase},
-    {"servo.toolhead", "set toolhead servo angle", handleServoToolhead},
+    {"servo.toolhead", "DEPRECATED: toolhead servo removed", handleServoToolhead},
     {"servo.coupler", "set coupler servo angle", handleServoCoupler},
-    {"servo.raw", "set raw servo pulse (toolhead|coupler)", handleServoRaw},
-    {"servo", "DEPRECATED: use servo.toolhead/servo.coupler", handleServo},
+    {"servo.raw", "set raw servo pulse (coupler)", handleServoRaw},
+    {"servo", "DEPRECATED: use servo.coupler", handleServo},
     {"raise", "raise toolhead", handleRaise},
     {"servoslow", "set servo slowly", handleServoSlow},
     {"servo.ramp.slow", "set/get slow ramp delay used by raise/couple", handleServoRampSlow},
     {"couple", "couple syringes", handleCouple},
     {"move2", "move axis2", handleMove2},
     {"move3", "move axis3", handleMove3},
+    {"move4", "move axis4 (toolhead stepper)", handleMove4},
+    {"home4", "home axis4 to RAISED switch", handleHome4},
     {"speed23", "set axis2/3 speed", handleSpeed23},
     {"m23", "move axis2 and 3", handleM23},
     {"pos2", "report axis2 position", handlePos2},
