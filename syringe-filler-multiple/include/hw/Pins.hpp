@@ -62,6 +62,7 @@ constexpr int8_t BASE_POT_IDX[NUM_BASES] = { 3, 4, 5, 0, 1 };
 
 constexpr uint8_t LIMIT  = 34; // input-only
 constexpr uint8_t RAISED = 35; // input-only
+constexpr uint8_t COUPLED = 36; // input-only
 
 // =======================================================
 // ==========  DIRECT SERVO OUTPUTS (ESP32 LEDC)  =========

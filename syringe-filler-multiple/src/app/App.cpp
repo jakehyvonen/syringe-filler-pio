@@ -31,6 +31,7 @@ void setup() {
 //  pinMode(Pins::STEP3, OUTPUT); pinMode(Pins::DIR3, OUTPUT); pinMode(Pins::EN3, OUTPUT);
   pinMode(Pins::LIMIT, INPUT);
   pinMode(Pins::RAISED, INPUT);
+  pinMode(Pins::COUPLED, INPUT);
 
   // Defaults
   //digitalWrite(Pins::EN3, Pins::DISABLE_LEVEL);
