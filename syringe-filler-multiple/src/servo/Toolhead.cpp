@@ -16,6 +16,9 @@ static constexpr uint8_t COUPLING_SERVO = 1;
 static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
+static constexpr long COUPLE_STAGE1_STEPS = 1661;
+static constexpr long COUPLE_STAGE2_MAX_TOTAL_STEPS = 2002;
+static constexpr uint16_t COUPLE_STAGE1_SETTLE_MS = 300;
 
 Servo s_couplerServo;
 bool  s_servoReady = false;
@@ -95,6 +98,10 @@ bool isReady() {
 
 bool isRaised() {
   return (digitalRead(Pins::RAISED) == LOW);
+}
+
+bool isCoupledLimitHit() {
+  return (digitalRead(Pins::COUPLED) == LOW);
 }
 
 void setPulseRaw(uint8_t ch, int pulse) {
@@ -249,11 +256,54 @@ void couple() {
     return;
   }
 
-  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, s_rampMsSlow);
-  delay(100);
-  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_COUPLED_POS, s_rampMsSlow);
-  delay(100);
+  s_isCoupled = false;
+  setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
 
+  // Stage 1: move to the pre-couple position, then allow a short settle period.
+  moveSteps(COUPLE_STAGE1_STEPS);
+  delay(COUPLE_STAGE1_SETTLE_MS);
+
+  // Stage 2: continue motion while linearly blending coupler servo angle toward coupled.
+  const long stage2MaxSteps = COUPLE_STAGE2_MAX_TOTAL_STEPS - COUPLE_STAGE1_STEPS;
+  if (stage2MaxSteps <= 0) {
+    Serial.println("ERROR: invalid coupling stage limits.");
+    return;
+  }
+
+  const int startAngle = constrain(COUPLING_SERVO_DECOUPLED_POS, 0, 180);
+  const int endAngle = constrain(COUPLING_SERVO_COUPLED_POS, 0, 180);
+
+  enable4(true);
+  delayMicroseconds(500);
+  digitalWrite(Pins::DIR4, HIGH);
+  delayMicroseconds(10);
+
+  bool coupledLimitReached = false;
+  for (long i = 0; i < stage2MaxSteps; ++i) {
+    step4Blocking();
+    if (s_stepPeriodUs > Pins::STEP_PULSE_US) {
+      delayMicroseconds(s_stepPeriodUs - Pins::STEP_PULSE_US);
+    }
+    s_pos4 += 1;
+
+    const long progressed = i + 1;
+    const int targetAngle = startAngle + (int)(((long)(endAngle - startAngle) * progressed) / stage2MaxSteps);
+    setAngle(COUPLING_SERVO, targetAngle);
+
+    if (isCoupledLimitHit()) {
+      coupledLimitReached = true;
+      break;
+    }
+  }
+
+  enable4(false);
+
+  if (!coupledLimitReached) {
+    Serial.println("ERROR: couple timeout; COUPLED switch not reached before stage-2 limit.");
+    return;
+  }
+
+  setAngle(COUPLING_SERVO, endAngle);
   s_isCoupled = true;
 }
 
