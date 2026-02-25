@@ -17,7 +17,7 @@ static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
 static constexpr long COUPLE_STAGE1_STEPS = 1661;
-static constexpr long COUPLE_STAGE2_MAX_TOTAL_STEPS = 2002;
+static constexpr long COUPLE_STAGE2_MAX_TOTAL_STEPS = 2032;
 static constexpr uint16_t COUPLE_STAGE1_SETTLE_MS = 300;
 
 Servo s_couplerServo;
@@ -299,12 +299,22 @@ void couple() {
   enable4(false);
 
   if (!coupledLimitReached) {
-    Serial.println("ERROR: couple timeout; COUPLED switch not reached before stage-2 limit.");
-    return;
+    Serial.println("ERROR: couple timeout; COUPLED switch not reached, but will try settling first.");
   }
 
+  
+
   setAngle(COUPLING_SERVO, endAngle);
+
+  delay(1221);
+
+  if (!coupledLimitReached) {
+  Serial.println("ERROR: couple timeout; COUPLED switch not reached before stage-2 limit.");
+  return;} 
+
   s_isCoupled = true;
+  Serial.println("s_coupled = true");
+
 }
 
 bool isCoupled() {
