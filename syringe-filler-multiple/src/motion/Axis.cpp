@@ -92,6 +92,7 @@ static void waitForIdle(MoveHook hook, void* context, long targetSteps) {
     delay(1);
   }
   if (s_timer) timerAlarmDisable(s_timer);
+  enable(false);
 }
 
 // -----------------------------
@@ -102,6 +103,7 @@ void init() {
   pinMode(Pins::STEP1, OUTPUT);
   pinMode(Pins::DIR1,  OUTPUT);
   digitalWrite(Pins::DIR1, HIGH);
+  enable(false);
 
   s_timer = timerBegin(1, 80, true);
   timerAttachInterrupt(s_timer, &onStepTimer, true);

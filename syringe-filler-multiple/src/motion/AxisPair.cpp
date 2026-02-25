@@ -163,6 +163,7 @@ void init() {
   // TOOLHEAD (Axis 2)
   pinMode(Pins::STEP2, OUTPUT);
   pinMode(Pins::DIR2,  OUTPUT);
+  writeEnable1(Pins::DISABLE_LEVEL);
   writeEnable2(Pins::DISABLE_LEVEL);
   digitalWrite(Pins::STEP2, LOW);
 
@@ -222,6 +223,8 @@ static void waitForIdle() {
     delay(1);
   }
   timerAlarmDisable(s_timer);
+  writeEnable1(Pins::DISABLE_LEVEL);
+  writeEnable2(Pins::DISABLE_LEVEL);
 }
 
 // ============================================================
@@ -237,7 +240,6 @@ void move2(long steps) {
   Serial.print("[AxisPair] move2 steps="); Serial.println(steps);
 
   writeEnable1(Pins::DISABLE_LEVEL); // keep gantry disabled during axis 2 moves
-
   writeEnable2(Pins::ENABLE_LEVEL);
   delayMicroseconds(500);
   digitalWrite(Pins::DIR2, dirHigh ? HIGH : LOW);
@@ -252,6 +254,7 @@ void move2(long steps) {
 
   waitForIdle();
   writeEnable2(Pins::DISABLE_LEVEL);
+  writeEnable1(Pins::DISABLE_LEVEL);
 }
 
 // ============================================================
@@ -296,6 +299,7 @@ void moveSync(long steps2, long steps3) {
   Serial.print("[AxisPair] moveSync s2="); Serial.print(steps2);
   Serial.print(" s3="); Serial.println(steps3);
 
+  writeEnable1(Pins::DISABLE_LEVEL);
   writeEnable2(Pins::ENABLE_LEVEL);
   Bases::hold(true);
   delayMicroseconds(500);
@@ -325,6 +329,7 @@ void moveSync(long steps2, long steps3) {
   waitForIdle();
 
   writeEnable2(Pins::DISABLE_LEVEL);
+  writeEnable1(Pins::DISABLE_LEVEL);
   Bases::hold(false);
 }
 
@@ -353,6 +358,7 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   uint16_t pot = Pots::readScaled(0);
   bool dirHigh = (target_adc > pot);
 
+  writeEnable1(Pins::DISABLE_LEVEL);
   writeEnable2(Pins::ENABLE_LEVEL);
   delayMicroseconds(500);
   digitalWrite(Pins::DIR2, dirHigh ? HIGH : LOW);
@@ -364,6 +370,7 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   while (true) {
     if (timeout_ms && (millis() - startMs) > timeout_ms) {
       writeEnable2(Pins::DISABLE_LEVEL);
+      writeEnable1(Pins::DISABLE_LEVEL);
       Serial.println("[AxisPair] move2UntilPot: TIMEOUT");
       return false;
     }
@@ -388,6 +395,7 @@ bool move2UntilPotSimple(uint16_t target_adc, long sps) {
   }
 
   writeEnable2(Pins::DISABLE_LEVEL);
+  writeEnable1(Pins::DISABLE_LEVEL);
   Serial.print("[AxisPair] final pot[0]="); Serial.println(pot);
   return true;
 }
