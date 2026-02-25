@@ -347,8 +347,18 @@ bool SyringeFillController::autoCalibrateToolheadDefault(String& message) {
 
     const int maxIterations = 512;
     int iterations = 0;
-    while (((direction > 0.0f) && (positionMl < endMl - 0.0005f)) ||
-           ((direction < 0.0f) && (positionMl > endMl + 0.0005f))) {
+    while (true) {
+      bool shouldContinue = false;
+      if (direction > 0.0f) {
+        shouldContinue = (positionMl + 0.0005f) < endMl;
+      } else {
+        shouldContinue = (positionMl - 0.0005f) > endMl;
+      }
+
+      if (!shouldContinue) {
+        break;
+      }
+
       if (++iterations > maxIterations) {
         message = "default calibration sequence exceeded iteration limit";
         return false;
