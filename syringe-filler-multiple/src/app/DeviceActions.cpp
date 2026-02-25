@@ -337,6 +337,12 @@ ActionResult sfcAutoCalTool(App::SyringeFillController &sfc, float incrementMl, 
   return {ok, message.length() ? message : (ok ? "toolhead auto calibration complete" : "toolhead auto calibration failed")};
 }
 
+ActionResult sfcAutoCalToolDefault(App::SyringeFillController &sfc) {
+  String message;
+  bool ok = sfc.autoCalibrateToolheadDefault(message);
+  return {ok, message.length() ? message : (ok ? "toolhead default auto calibration complete" : "toolhead default auto calibration failed")};
+}
+
 // Print toolhead calibration info to serial.
 ActionResult sfcShowTool(App::SyringeFillController &sfc) {
   sfc.printToolheadInfo(Serial);
@@ -412,6 +418,12 @@ ActionResult sfcAutoCalBase(App::SyringeFillController &sfc, float incrementMl, 
   String message;
   bool ok = sfc.autoCalibrateBase(incrementMl, points, slot, message);
   return {ok, message.length() ? message : (ok ? "base auto calibration complete" : "base auto calibration failed")};
+}
+
+ActionResult sfcAutoCalBaseDefault(App::SyringeFillController &sfc, int8_t slot) {
+  String message;
+  bool ok = sfc.autoCalibrateBaseDefault(slot, message);
+  return {ok, message.length() ? message : (ok ? "base default auto calibration complete" : "base default auto calibration failed")};
 }
 
 // Clear calibration points for the current base.

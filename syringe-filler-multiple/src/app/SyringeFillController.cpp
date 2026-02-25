@@ -304,6 +304,96 @@ bool SyringeFillController::captureToolheadCalibrationPoint(float ml, String& me
   return m_calibration.captureToolheadCalibrationPoint(ml, message);
 }
 
+bool SyringeFillController::autoCalibrateToolheadDefault(String& message) {
+  if (m_toolhead.rfid == 0) {
+    message = "no toolhead RFID; scan the toolhead first";
+    return false;
+  }
+
+  auto captureAtMl = [&](float targetMl) -> bool {
+    return m_calibration.captureToolheadCalibrationPoint(targetMl, message);
+  };
+
+  auto moveByMl = [&](float deltaMl) -> bool {
+    if (fabsf(deltaMl) < 0.0005f) {
+      return true;
+    }
+    const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
+    const long steps = -stepsForMl(deltaMl, toolStepsPerMl);
+    if (steps == 0) {
+      message = "volume step too small; computed 0 steps";
+      return false;
+    }
+    AxisPair::move2(steps);
+    return true;
+  };
+
+  auto runSegment = [&](float startMl, float endMl, float stepMl) -> bool {
+    if (!isfinite(startMl) || !isfinite(endMl) || !isfinite(stepMl) || stepMl <= 0.0f) {
+      message = "invalid default calibration segment";
+      return false;
+    }
+
+    const float delta = endMl - startMl;
+    if (fabsf(delta) < 0.0005f) {
+      return captureAtMl(startMl);
+    }
+
+    const float direction = (delta > 0.0f) ? 1.0f : -1.0f;
+    float positionMl = startMl;
+    if (!captureAtMl(positionMl)) {
+      return false;
+    }
+
+    const int maxIterations = 512;
+    int iterations = 0;
+    while (((direction > 0.0f) && (positionMl < endMl - 0.0005f)) ||
+           ((direction < 0.0f) && (positionMl > endMl + 0.0005f))) {
+      if (++iterations > maxIterations) {
+        message = "default calibration sequence exceeded iteration limit";
+        return false;
+      }
+
+      float nextMl = positionMl + direction * stepMl;
+      if (direction > 0.0f && nextMl > endMl) {
+        nextMl = endMl;
+      } else if (direction < 0.0f && nextMl < endMl) {
+        nextMl = endMl;
+      }
+
+      if (!moveByMl(nextMl - positionMl)) {
+        return false;
+      }
+      positionMl = nextMl;
+      if (!captureAtMl(positionMl)) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  if (DEBUG_FLAG) {
+    Serial.println("[SFC] autoCalibrateToolheadDefault() start");
+  }
+
+  // Stage 1: withdraw in 5 mL steps from 0 mL to 20 mL.
+  if (!runSegment(0.0f, 20.0f, 5.0f)) {
+    return false;
+  }
+
+  // Stage 2: return/dispense to 0 mL, capturing at 5 mL then every 1 mL.
+  if (!runSegment(20.0f, 5.0f, 5.0f)) {
+    return false;
+  }
+  if (!runSegment(5.0f, 0.0f, 1.0f)) {
+    return false;
+  }
+
+  message = "toolhead default auto calibration complete";
+  return true;
+}
+
 // Run an automatic multi-point calibration sequence for the toolhead syringe.
 bool SyringeFillController::autoCalibrateToolhead(float incrementMl, uint8_t points, String& message) {
   if (!isfinite(incrementMl) || incrementMl <= 0.0f) {
@@ -397,6 +487,117 @@ bool SyringeFillController::setBaseStepsPermL(uint8_t slot, float stepsPermL, St
 // Capture a base calibration point for a slot.
 bool SyringeFillController::captureBaseCalibrationPoint(uint8_t slot, float ml, String& message) {
   return m_calibration.captureBaseCalibrationPoint(slot, ml, message);
+}
+
+bool SyringeFillController::autoCalibrateBaseDefault(int8_t slot, String& message) {
+  const int8_t activeSlot = (slot >= 0) ? slot : currentSlot();
+  if (activeSlot < 0 || activeSlot >= Bases::kCount) {
+    message = "no current base";
+    return false;
+  }
+
+  const uint8_t baseSlot = (uint8_t)activeSlot;
+  if (m_bases[baseSlot].rfid == 0) {
+    message = "base has no RFID; scan the base first";
+    return false;
+  }
+
+  if (currentSlot() != activeSlot && !goToBase(baseSlot)) {
+    message = "failed to move to base";
+    return false;
+  }
+
+  if (Bases::selected() != activeSlot && !Bases::select(baseSlot)) {
+    message = "failed to select base";
+    return false;
+  }
+
+  auto captureAtMl = [&](float targetMl) -> bool {
+    return m_calibration.captureBaseCalibrationPoint(baseSlot, targetMl, message);
+  };
+
+  auto moveByMl = [&](float deltaMl) -> bool {
+    if (fabsf(deltaMl) < 0.0005f) {
+      return true;
+    }
+    const float baseStepsPerMl = resolveStepsPerMl(m_bases[baseSlot].cal.steps_mL, kBaseStepsPerMl);
+    const long steps = stepsForMl(deltaMl, baseStepsPerMl);
+    if (steps == 0) {
+      message = "volume step too small; computed 0 steps";
+      return false;
+    }
+    AxisPair::move3(steps);
+    return true;
+  };
+
+  auto runSegment = [&](float startMl, float endMl, float stepMl) -> bool {
+    if (!isfinite(startMl) || !isfinite(endMl) || !isfinite(stepMl) || stepMl <= 0.0f) {
+      message = "invalid default calibration segment";
+      return false;
+    }
+
+    const float delta = endMl - startMl;
+    if (fabsf(delta) < 0.0005f) {
+      return captureAtMl(startMl);
+    }
+
+    const float direction = (delta > 0.0f) ? 1.0f : -1.0f;
+    float positionMl = startMl;
+    if (!captureAtMl(positionMl)) {
+      return false;
+    }
+
+    const int maxIterations = 1024;
+    int iterations = 0;
+    while (((direction > 0.0f) && (positionMl < endMl - 0.0005f)) ||
+           ((direction < 0.0f) && (positionMl > endMl + 0.0005f))) {
+      if (++iterations > maxIterations) {
+        message = "default calibration sequence exceeded iteration limit";
+        return false;
+      }
+
+      float nextMl = positionMl + direction * stepMl;
+      if (direction > 0.0f && nextMl > endMl) {
+        nextMl = endMl;
+      } else if (direction < 0.0f && nextMl < endMl) {
+        nextMl = endMl;
+      }
+
+      if (!moveByMl(nextMl - positionMl)) {
+        return false;
+      }
+      positionMl = nextMl;
+      if (!captureAtMl(positionMl)) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] autoCalibrateBaseDefault(slot=");
+    Serial.print(baseSlot);
+    Serial.println(") start");
+  }
+
+  // Stage 1: withdraw in 10 mL steps from 0 mL to 50 mL.
+  if (!runSegment(0.0f, 50.0f, 10.0f)) {
+    return false;
+  }
+
+  // Stage 2: return/dispense to 10 mL in 5 mL steps.
+  if (!runSegment(50.0f, 10.0f, 5.0f)) {
+    return false;
+  }
+
+  // Stage 3: return/dispense to 0 mL in 2 mL steps.
+  if (!runSegment(10.0f, 0.0f, 2.0f)) {
+    return false;
+  }
+
+  message = "base default auto calibration complete";
+  return true;
 }
 
 // Run an automatic multi-point calibration sequence for a base syringe.
