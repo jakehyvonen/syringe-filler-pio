@@ -26,6 +26,7 @@ public:
   void   printBaseInfo(uint8_t slot, Stream& s);
   bool captureBaseCalibrationPoint(uint8_t slot, float ml, String& message);
   bool autoCalibrateBase(float incrementMl, uint8_t points, int8_t slot, String& message);
+  bool autoCalibrateBaseDefault(int8_t slot, String& message);
   // Capture a calibration point for the current base slot.
   bool captureCurrentBaseCalibrationPoint(float ml, String& message) {
     const int8_t slot = currentSlot();
@@ -45,6 +46,7 @@ public:
   // calibration for toolhead already here...
   bool captureToolheadCalibrationPoint(float ml, String& message);
   bool autoCalibrateToolhead(float incrementMl, uint8_t points, String& message);
+  bool autoCalibrateToolheadDefault(String& message);
   bool printCurrentBaseInfo(Stream& s = Serial);
   bool scanToolheadBlocking();
   void printToolheadInfo(Stream& out);
