@@ -1094,7 +1094,6 @@ void SyringeFillController::runRecipe() {
     }
     return;
   }
-  bool anyTransfer = false;
   for (uint8_t i = 0; i < m_recipe.count; ++i) {
     auto& step = m_recipe.steps[i];
     if (DEBUG_FLAG) {
@@ -1112,32 +1111,13 @@ void SyringeFillController::runRecipe() {
       }
       continue;
     }
-    anyTransfer = true;
     serialBreakpoint(String("runRecipe step ") + String(i) + " complete");
-    if (i + 1 < m_recipe.count) {
-      if (DEBUG_FLAG) {
-        Serial.println("[SFC] runRecipe(): retracting between steps");
-      }
-      if (!retractPair(step.baseSlot, kRetractionMl) && DEBUG_FLAG) {
-        Serial.println("[SFC] WARN: retraction failed between steps");
-      }
-    }
-  }
-  if (anyTransfer) {
-    if (DEBUG_FLAG) {
-      Serial.println("[SFC] runRecipe(): retracting after recipe");
-    }
-    const auto& lastStep = m_recipe.steps[m_recipe.count - 1];
-    if (!retractPair(lastStep.baseSlot, kRetractionMl) && DEBUG_FLAG) {
-      Serial.println("[SFC] WARN: retraction failed after recipe");
-    }
   }
   m_toolhead.currentMl = m_calibration.readToolheadVolumeMl();
   if (DEBUG_FLAG) {
     Serial.print("[SFC] runRecipe(): toolhead current mL=");
     Serial.println(m_toolhead.currentMl, 3);
   }
-  Toolhead::raise();
   dbg("runRecipe() done");
 }
 
@@ -1332,6 +1312,16 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   }
 
   AxisPair::moveSync(toolSteps, baseSteps);
+
+  if (!retractPair(slot, kRetractionMl)) {
+    if (DEBUG_FLAG) {
+      Serial.println("[SFC] transferFromBase(): post-transfer retraction failed");
+    }
+    Toolhead::raise();
+    return false;
+  }
+
+  Toolhead::raise();
   return true;
 }
 
