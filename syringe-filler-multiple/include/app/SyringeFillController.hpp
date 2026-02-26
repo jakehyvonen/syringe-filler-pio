@@ -63,6 +63,7 @@ private:
   bool     goToBase(uint8_t slot, Axis::MoveHook hook = nullptr, void* context = nullptr);
   bool     retractPair(uint8_t slot, float ml);
   bool     unretractForTransfer(uint8_t slot);
+  bool     promptContinueOnLowBaseVolume(uint8_t slot, float requestedMl, float remainingMl);
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);

@@ -985,6 +985,54 @@ void SyringeFillController::setBreakpointsEnabled(bool enabled) {
 bool SyringeFillController::breakpointsEnabled() const { return m_breakpointsEnabled; }
 
 // Block at serial breakpoints between recipe steps when enabled.
+
+
+bool SyringeFillController::promptContinueOnLowBaseVolume(uint8_t slot, float requestedMl, float remainingMl) {
+  Serial.println("[SFC] WARNING: base volume reading is below the transfer threshold.");
+  Serial.print("[SFC] slot=");
+  Serial.print(slot);
+  Serial.print(" requested=");
+  Serial.print(requestedMl, 3);
+  Serial.print(" mL remaining=");
+  Serial.print(remainingMl, 3);
+  Serial.print(" mL threshold=");
+  Serial.print(kBaseTransferMinRemainingMl, 3);
+  Serial.println(" mL");
+  Serial.println("[SFC] This can happen when calibration points are missing or ADC readings are noisy.");
+  Serial.println("[SFC] Continue anyway? Send 'y' to continue, 'n' to abort.");
+
+  String input;
+  while (true) {
+    while (Serial.available()) {
+      char c = Serial.read();
+      if (c == '\r') {
+        continue;
+      }
+      if (c == '\n') {
+        input.trim();
+        input.toLowerCase();
+        if (input == "y" || input == "yes") {
+          Serial.println("[SFC] continuing transfer despite low base volume reading");
+          return true;
+        }
+        if (input == "n" || input == "no") {
+          Serial.println("[SFC] transfer aborted by operator due to low base volume reading");
+          return false;
+        }
+        if (input.length()) {
+          Serial.print("[SFC] Unknown response: ");
+          Serial.println(input);
+        }
+        Serial.println("[SFC] Please reply with 'y' or 'n'.");
+        input = "";
+      } else {
+        input += c;
+      }
+    }
+    delay(5);
+  }
+}
+
 bool SyringeFillController::serialBreakpoint(const String &label) {
   if (!m_breakpointsEnabled) {
     return true;
@@ -1253,7 +1301,9 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
       Serial.print(kBaseTransferMinRemainingMl, 3);
       Serial.println(" mL");
     }
-    return false;
+    if (!promptContinueOnLowBaseVolume(slot, ml, baseRemainingMl)) {
+      return false;
+    }
   }
 
   Toolhead::couple();
