@@ -423,6 +423,14 @@ bool SyringeCalibration::captureBaseCalibrationPoint(uint8_t slot, float ml, Str
   }
 
   CalibrationPoints& points = sy.calPoints;
+  const float kVolumeEpsilonMl = 0.0005f;
+  for (uint8_t i = 0; i < points.count; ++i) {
+    if (fabsf(points.points[i].volumeMl - ml) <= kVolumeEpsilonMl) {
+      message = "skipped calibration point; volume already exists";
+      return true;
+    }
+  }
+
   const float kRatioEpsilon = 0.0025f;
   for (uint8_t i = 0; i < points.count; ++i) {
     if (fabsf(points.points[i].ratio - ratio) <= kRatioEpsilon) {
