@@ -1088,6 +1088,7 @@ void SyringeFillController::runRecipe() {
     Serial.print("[SFC] runRecipe(): toolhead current mL=");
     Serial.println(m_toolhead.currentMl, 3);
   }
+  Toolhead::raise();
   dbg("runRecipe() done");
 }
 
@@ -1237,9 +1238,7 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     }
   }
 
-  if (!Toolhead::isCoupled()) {
-    Toolhead::couple();
-  }
+  
 
   const float baseRemainingMl = m_calibration.readBaseVolumeMl(slot);
   m_bases[slot].currentMl = baseRemainingMl;
@@ -1255,6 +1254,8 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
     }
     return false;
   }
+
+  Toolhead::couple();
 
   const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
   const float baseStepsPerMl = resolveStepsPerMl(m_bases[slot].cal.steps_mL, kBaseStepsPerMl);

@@ -13,7 +13,7 @@
 namespace Toolhead {
 namespace {
 static constexpr uint8_t COUPLING_SERVO = 1;
-static constexpr int COUPLING_SERVO_COUPLED_POS   = 31;
+static constexpr int COUPLING_SERVO_COUPLED_POS   = 51;
 static constexpr int COUPLING_SERVO_DECOUPLED_POS = 147;
 static constexpr int RAMP_MS_SLOW_DEFAULT = 17;
 static constexpr long COUPLE_STAGE1_STEPS = 1661;
@@ -211,7 +211,7 @@ bool homeRaised(uint16_t timeout_ms) {
 
   setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, 3);
   delay(150);
-  
+
   const unsigned long start = millis();
   enable4(true);
   delayMicroseconds(300);
@@ -301,7 +301,7 @@ void couple() {
   enable4(false);
 
   if (!coupledLimitReached) {
-    Serial.println("ERROR: couple timeout; COUPLED switch not reached, but will try settling first.");
+    Serial.println("WARN: couple timeout; COUPLED switch not reached, but will try settling first.");
   }
 
   
