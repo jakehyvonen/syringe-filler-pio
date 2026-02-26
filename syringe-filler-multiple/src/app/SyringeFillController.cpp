@@ -1118,6 +1118,7 @@ void SyringeFillController::runRecipe() {
     Serial.print("[SFC] runRecipe(): toolhead current mL=");
     Serial.println(m_toolhead.currentMl, 3);
   }
+  Toolhead::raise();
   dbg("runRecipe() done");
 }
 
