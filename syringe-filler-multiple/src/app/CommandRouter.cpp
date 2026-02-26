@@ -469,6 +469,74 @@ void handleSfcStatus(const String &args) {
   printStructured("sfc.status", res, data);
 }
 
+// Handle "initializeall" command to run the common startup sequence.
+void handleInitializeAll(const String &args) {
+  (void)args;
+
+  ActionResult homeRes = homeGantry();
+  ActionResult toolScanRes = sfcScanTool(g_sfc);
+  ActionResult baseScanRes = sfcScanBases(g_sfc);
+
+  String recipesData;
+  ActionResult recipesRes{true, "recipes listed"};
+  if (!Util::listRecipes(recipesData)) {
+    recipesRes = {false, "unable to list recipes"};
+  }
+
+  String statusData;
+  ActionResult statusRes = sfcStatus(g_sfc, statusData);
+
+  String errors = "[";
+  bool hasErrors = false;
+  if (!homeRes.ok) {
+    errors += "\"home: " + homeRes.message + "\"";
+    hasErrors = true;
+  }
+  if (!toolScanRes.ok) {
+    if (hasErrors) errors += ",";
+    errors += "\"scantool: " + toolScanRes.message + "\"";
+    hasErrors = true;
+  }
+  if (!baseScanRes.ok) {
+    if (hasErrors) errors += ",";
+    errors += "\"sfc.scanall: " + baseScanRes.message + "\"";
+    hasErrors = true;
+  }
+  if (!recipesRes.ok) {
+    if (hasErrors) errors += ",";
+    errors += "\"recipe.list: " + recipesRes.message + "\"";
+    hasErrors = true;
+  }
+  if (!statusRes.ok) {
+    if (hasErrors) errors += ",";
+    errors += "\"sfc.status: " + statusRes.message + "\"";
+    hasErrors = true;
+  }
+  errors += "]";
+
+  String warnings = "[]";
+  if (recipesRes.ok && recipesData == "[]") {
+    warnings = "[\"no recipes found\"]";
+  }
+
+  String summary = (!hasErrors && warnings == "[]") ? "we're good to go" : "initialization completed with issues";
+  ActionResult initRes{!hasErrors, summary};
+
+  String data = "{";
+  data += "\"steps\":{";
+  data += "\"home\":{\"ok\":" + String(homeRes.ok ? "true" : "false") + ",\"message\":\"" + homeRes.message + "\"},";
+  data += "\"scantool\":{\"ok\":" + String(toolScanRes.ok ? "true" : "false") + ",\"message\":\"" + toolScanRes.message + "\"},";
+  data += "\"sfc.scanall\":{\"ok\":" + String(baseScanRes.ok ? "true" : "false") + ",\"message\":\"" + baseScanRes.message + "\"},";
+  data += "\"recipe.list\":{\"ok\":" + String(recipesRes.ok ? "true" : "false") + ",\"message\":\"" + recipesRes.message + "\",\"recipes\":" + (recipesRes.ok ? recipesData : "[]") + "},";
+  data += "\"sfc.status\":{\"ok\":" + String(statusRes.ok ? "true" : "false") + ",\"message\":\"" + statusRes.message + "\",\"data\":" + (statusRes.ok ? statusData : "{}") + "}";
+  data += "},";
+  data += "\"errors\":" + errors + ",";
+  data += "\"warnings\":" + warnings;
+  data += "}";
+
+  printStructured("initializeall", initRes, data);
+}
+
 // Handle "sfc.scanbase" command to scan a single base slot.
 void handleSfcScanBase(const String &args) { printStructured("sfc.scanbase", sfcScanBase(g_sfc, (uint8_t)args.toInt())); }
 
@@ -925,6 +993,7 @@ const CommandDescriptor COMMANDS[] = {
     {"sfc.load", "load recipe by recipe ID", handleSfcLoad},
     {"sfc.save", "save recipe by recipe ID", handleSfcSave},
     {"sfc.status", "sfc status", handleSfcStatus},
+    {"initializeall", "home, scan tool, scan bases, list recipes, and summarize status", handleInitializeAll},
     {"sfc.scanbase", "scan a base slot", handleSfcScanBase},
     {"scantool", "scan toolhead syringe", handleSfcScanTool},
     {"transfer", "transfer <slot> <ml> from base to toolhead", handleTransfer},
