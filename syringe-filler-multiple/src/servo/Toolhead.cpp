@@ -208,8 +208,10 @@ bool homeRaised(uint16_t timeout_ms) {
     return true;
   }
 
-  setAngle(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS);
 
+  setAngleSlow(COUPLING_SERVO, COUPLING_SERVO_DECOUPLED_POS, 3);
+  delay(150);
+  
   const unsigned long start = millis();
   enable4(true);
   delayMicroseconds(300);
