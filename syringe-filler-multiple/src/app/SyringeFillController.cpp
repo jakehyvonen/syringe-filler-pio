@@ -1070,7 +1070,7 @@ void SyringeFillController::runRecipe() {
       if (DEBUG_FLAG) {
         Serial.println("[SFC] runRecipe(): retracting between steps");
       }
-      if (!retractToolhead(kRetractionMl) && DEBUG_FLAG) {
+      if (!retractPair(step.baseSlot, kRetractionMl) && DEBUG_FLAG) {
         Serial.println("[SFC] WARN: retraction failed between steps");
       }
     }
@@ -1079,7 +1079,8 @@ void SyringeFillController::runRecipe() {
     if (DEBUG_FLAG) {
       Serial.println("[SFC] runRecipe(): retracting after recipe");
     }
-    if (!retractToolhead(kRetractionMl) && DEBUG_FLAG) {
+    const auto& lastStep = m_recipe.steps[m_recipe.count - 1];
+    if (!retractPair(lastStep.baseSlot, kRetractionMl) && DEBUG_FLAG) {
       Serial.println("[SFC] WARN: retraction failed after recipe");
     }
   }
@@ -1257,6 +1258,13 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
 
   Toolhead::couple();
 
+  if (!unretractForTransfer(slot)) {
+    if (DEBUG_FLAG) {
+      Serial.println("[SFC] transferFromBase(): unretract failed");
+    }
+    return false;
+  }
+
   const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
   const float baseStepsPerMl = resolveStepsPerMl(m_bases[slot].cal.steps_mL, kBaseStepsPerMl);
   const long toolSteps = -stepsForMl(ml, toolStepsPerMl);
@@ -1277,18 +1285,28 @@ bool SyringeFillController::transferFromBase(uint8_t slot, float ml) {
   return true;
 }
 
-// Retract a small volume on the toolhead to reduce drips between actions.
-bool SyringeFillController::retractToolhead(float ml) {
+// Retract a small volume on toolhead + active base to reduce drips between actions.
+bool SyringeFillController::retractPair(uint8_t slot, float ml) {
+  if (slot >= Bases::kCount) {
+    if (DEBUG_FLAG) {
+      Serial.print("[SFC] retractPair(): slot out of range: ");
+      Serial.println(slot);
+    }
+    return false;
+  }
+
   if (!isfinite(ml) || ml <= 0.0f) {
     if (DEBUG_FLAG) {
-      Serial.print("[SFC] retractToolhead(): invalid mL: ");
+      Serial.print("[SFC] retractPair(): invalid mL: ");
       Serial.println(ml, 3);
     }
     return false;
   }
 
-  if (m_toolhead.rfid == 0) {
-    if (DEBUG_FLAG) Serial.println("[SFC] retractToolhead(): no toolhead syringe loaded");
+  if (m_toolhead.rfid == 0 || m_bases[slot].rfid == 0) {
+    if (DEBUG_FLAG) {
+      Serial.println("[SFC] retractPair(): missing toolhead or base syringe");
+    }
     return false;
   }
 
@@ -1297,19 +1315,65 @@ bool SyringeFillController::retractToolhead(float ml) {
   }
 
   const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
-  const long retractSteps = -stepsForMl(ml, toolStepsPerMl);
-  if (retractSteps == 0) {
+  const float baseStepsPerMl = resolveStepsPerMl(m_bases[slot].cal.steps_mL, kBaseStepsPerMl);
+  const long toolSteps = -stepsForMl(ml, toolStepsPerMl);
+  const long baseSteps = -stepsForMl(ml, baseStepsPerMl);
+  if (toolSteps == 0 && baseSteps == 0) {
     return true;
   }
 
   if (DEBUG_FLAG) {
-    Serial.print("[SFC] retractToolhead(ml=");
+    Serial.print("[SFC] retractPair(slot=");
+    Serial.print(slot);
+    Serial.print(", ml=");
     Serial.print(ml, 3);
-    Serial.print(") steps=");
-    Serial.println(retractSteps);
+    Serial.print(") steps tool=");
+    Serial.print(toolSteps);
+    Serial.print(" base=");
+    Serial.println(baseSteps);
   }
 
-  AxisPair::move2(retractSteps);
+  AxisPair::moveSync(toolSteps, baseSteps);
+  m_toolheadRetractedMl += ml;
+  m_baseRetractedMl[slot] += ml;
+  return true;
+}
+
+// Undo prior retraction before next transfer motion.
+bool SyringeFillController::unretractForTransfer(uint8_t slot) {
+  if (slot >= Bases::kCount) {
+    return false;
+  }
+
+  const float toolMl = m_toolheadRetractedMl;
+  const float baseMl = m_baseRetractedMl[slot];
+  if (toolMl <= 0.0f && baseMl <= 0.0f) {
+    return true;
+  }
+
+  const float toolStepsPerMl = resolveStepsPerMl(m_toolhead.cal.steps_mL, kToolStepsPerMl);
+  const float baseStepsPerMl = resolveStepsPerMl(m_bases[slot].cal.steps_mL, kBaseStepsPerMl);
+  const long toolSteps = stepsForMl(toolMl, toolStepsPerMl);
+  const long baseSteps = stepsForMl(baseMl, baseStepsPerMl);
+
+  if (DEBUG_FLAG) {
+    Serial.print("[SFC] unretractForTransfer(slot=");
+    Serial.print(slot);
+    Serial.print(") ml tool=");
+    Serial.print(toolMl, 3);
+    Serial.print(" base=");
+    Serial.print(baseMl, 3);
+    Serial.print(" steps tool=");
+    Serial.print(toolSteps);
+    Serial.print(" base=");
+    Serial.println(baseSteps);
+  }
+
+  if (toolSteps != 0 || baseSteps != 0) {
+    AxisPair::moveSync(toolSteps, baseSteps);
+  }
+  m_toolheadRetractedMl = 0.0f;
+  m_baseRetractedMl[slot] = 0.0f;
   return true;
 }
 

@@ -61,7 +61,8 @@ public:
 
 private:
   bool     goToBase(uint8_t slot, Axis::MoveHook hook = nullptr, void* context = nullptr);
-  bool     retractToolhead(float ml);
+  bool     retractPair(uint8_t slot, float ml);
+  bool     unretractForTransfer(uint8_t slot);
   uint32_t readRFIDNow();
   uint32_t readBaseRFIDBlocking(uint32_t timeoutMs);
   uint32_t readToolheadRFIDBlocking(uint32_t timeoutMS);
@@ -73,6 +74,8 @@ private:
   uint8_t  m_baseToPot[Bases::kCount];
   int8_t  m_currentSlot = -1;
   bool m_breakpointsEnabled = true;
+  float m_toolheadRetractedMl = 0.0f;
+  float m_baseRetractedMl[Bases::kCount] = {0.0f};
   SyringeCalibration m_calibration;
   Util::RecipeDTO m_recipe;
 };
