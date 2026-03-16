@@ -36,7 +36,7 @@ struct PotCalibration {
   // Current multi-point model
   uint8_t          pointCount = 0;
   CalibrationPoint points[kMaxPoints];
-  float            steps_mL   = 1.01f; // calibrated steps per mL
+  float            steps_mL   = 0.0f; // calibrated steps per mL (0 => role default)
 
   // Add or update a calibration point for the given ratio.
   bool addPoint(float volume_ml, float ratio) {
