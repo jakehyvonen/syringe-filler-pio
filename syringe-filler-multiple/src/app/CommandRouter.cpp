@@ -15,7 +15,6 @@
 #include "hw/Pins.hpp"
 #include "hw/Pots.hpp"
 #include "util/Storage.hpp"
-#include "servo/Toolhead.hpp"
 
 namespace CommandRouter {
 
@@ -71,9 +70,6 @@ using App::DeviceActions::selectedBase;
 using App::DeviceActions::selectBase;
 using App::DeviceActions::setAxis23Speed;
 using App::DeviceActions::setGantrySpeed;
-using App::DeviceActions::setServoAngle;
-using App::DeviceActions::setServoAngleSlow;
-using App::DeviceActions::setServoPulseRaw;
 
 // ADC/pot and bus diagnostics.
 using App::DeviceActions::readBasePot;
@@ -201,7 +197,7 @@ void handleWifiScan(const String &args) {
 }
 
 // ------------------------------------------------------------
-// Motion, base selection, and servo command handlers
+// Motion and base selection command handlers
 // ------------------------------------------------------------
 
 // Handle "speed" command for gantry speed changes.
@@ -256,126 +252,8 @@ void handleGoBase(const String &args) {
   printStructured("gobase", res, data);
 }
 
-namespace {
-int parseServoNameToChannel(const String &name) {
-  if (name == "coupler") return 1;
-  return -1;
-}
-
-int parseLegacyServoChannel(const String &raw) {
-  int ch = raw.toInt();
-  if (ch == 1 || ch == 5) return 1;
-  return -1;
-}
-
-const char *servoVerbForChannel(int channel) {
-  if (channel == 1) return "servo.coupler";
-  return "servo";
-}
-}  // namespace
-
-// Handle "servo.raw" command to set raw servo pulse width.
-void handleServoRaw(const String &args) {
-  int sp = args.indexOf(' ');
-  if (sp <= 0) {
-    printStructured("servo.raw", {false, "usage: servo.raw <coupler> <us>"});
-    return;
-  }
-  String which = args.substring(0, sp);
-  which.trim();
-  int channel = parseServoNameToChannel(which);
-  if (channel < 0) {
-    printStructured("servo.raw", {false, "servo must be coupler"});
-    return;
-  }
-  int us = args.substring(sp + 1).toInt();
-  printStructured("servo.raw", setServoPulseRaw(channel, us));
-}
-
-// Handle "servo.toolhead" command.
-void handleServoToolhead(const String &args) {
-  (void)args;
-  printStructured("servo.toolhead", {false, "toolhead servo removed; use move4/home4"});
-}
-
-// Handle "servo.coupler" command.
-void handleServoCoupler(const String &args) {
-  if (args.length() == 0) {
-    printStructured("servo.coupler", {false, "usage: servo.coupler <angle>"});
-    return;
-  }
-  printStructured("servo.coupler", setServoAngle(1, args.toInt()));
-}
-
-// Handle deprecated "servo" command (legacy wrapper).
-void handleServo(const String &args) {
-  int sp = args.indexOf(' ');
-  if (sp <= 0) {
-    printStructured("servo", {false, "deprecated: use servo.coupler <angle>"});
-    return;
-  }
-
-  int channel = parseLegacyServoChannel(args.substring(0, sp));
-  if (channel < 0) {
-    printStructured("servo", {false, "deprecated: channel must map to coupler(1/5)"});
-    return;
-  }
-
-  int angle = args.substring(sp + 1).toInt();
-  ActionResult res = setServoAngle(channel, angle);
-  if (res.ok) {
-    res.message = "deprecated wrapper; " + res.message;
-  }
-  printStructured(servoVerbForChannel(channel), res);
-}
-
 // Handle "raise" command to lift the toolhead.
 void handleRaise(const String &args) { printStructured("raise", raiseToolhead()); }
-
-// Handle "servoslow" command for slow servo sweeps.
-void handleServoSlow(const String &args) {
-  int sp = args.indexOf(' ');
-  if (sp <= 0) {
-    printStructured("servoslow", {false, "usage: servoslow <ch> <angle> [delay]"});
-    return;
-  }
-
-  int channel = parseLegacyServoChannel(args.substring(0, sp));
-  if (channel < 0) {
-    printStructured("servoslow", {false, "channel must map to coupler(1/5)"});
-    return;
-  }
-
-  String rest = args.substring(sp + 1);
-  int sp2 = rest.indexOf(' ');
-  int angle = 0;
-  int delayMs = 15;
-  if (sp2 > 0) {
-    angle = rest.substring(0, sp2).toInt();
-    delayMs = rest.substring(sp2 + 1).toInt();
-  } else {
-    angle = rest.toInt();
-  }
-  printStructured("servoslow", setServoAngleSlow(channel, angle, delayMs));
-}
-
-
-// Handle "servo.ramp.slow" command to set/query slow ramp delay used by raise/couple sequences.
-void handleServoRampSlow(const String &args) {
-  if (args.length() == 0) {
-    printStructured("servo.ramp.slow", {true, ""}, "{\"RAMP_MS_SLOW\":" + String(Toolhead::getSlowRampMs()) + "}");
-    return;
-  }
-
-  int rampMs = args.toInt();
-  if (rampMs <= 0) {
-    printStructured("servo.ramp.slow", {false, "usage: servo.ramp.slow [ms>0]"});
-    return;
-  }
-
-  Toolhead::setSlowRampMs(rampMs);
-  printStructured("servo.ramp.slow", {true, "updated"}, "{\"RAMP_MS_SLOW\":" + String(Toolhead::getSlowRampMs()) + "}");
-}
 
 // Handle "couple" command for toolhead coupling sequence.
 void handleCouple(const String &args) { printStructured("couple", coupleSyringes()); }
@@ -957,7 +835,7 @@ const CommandDescriptor COMMANDS[] = {
     {"wifi.ap", "start access point for setup", handleWifiAp},
     {"wifi.scan", "scan for nearby WiFi networks", handleWifiScan},
 
-    // Core gantry/base/servo motion.
+    // Core gantry/base/toolhead motion.
     {"speed", "set gantry speed (steps/sec)", handleSpeed},
     {"home", "home gantry", handleHome},
     {"pos", "report gantry position", handlePos},
@@ -966,13 +844,7 @@ const CommandDescriptor COMMANDS[] = {
     {"base", "select base", handleBase},
     {"whichbase", "report selected base", handleWhichBase},
     {"gobase", "move to base", handleGoBase},
-    {"servo.toolhead", "DEPRECATED: toolhead servo removed", handleServoToolhead},
-    {"servo.coupler", "set coupler servo angle", handleServoCoupler},
-    {"servo.raw", "set raw servo pulse (coupler)", handleServoRaw},
-    {"servo", "DEPRECATED: use servo.coupler", handleServo},
     {"raise", "raise toolhead", handleRaise},
-    {"servoslow", "set servo slowly", handleServoSlow},
-    {"servo.ramp.slow", "set/get slow ramp delay used by raise/couple", handleServoRampSlow},
     {"couple", "couple syringes", handleCouple},
     {"move2", "move axis2", handleMove2},
     {"move3", "move axis3", handleMove3},
