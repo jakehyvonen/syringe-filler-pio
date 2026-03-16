@@ -3,7 +3,7 @@
  * @brief Timer-driven motion control for the main axis.
  */
 #include "motion/Axis.hpp"
-#include "servo/Toolhead.hpp"
+#include "toolhead/Toolhead.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Drivers.hpp"
 #include "hw/Encoder.hpp"

@@ -33,10 +33,7 @@ ActionResult selectBase(uint8_t idx0);
 int8_t selectedBase();
 ActionResult moveToBase(uint8_t idx0, long &targetSteps);
 
-// Servos / toolhead
-ActionResult setServoPulseRaw(int channel, int us);
-ActionResult setServoAngle(int channel, int angle);
-ActionResult setServoAngleSlow(int channel, int angle, int delayMs);
+// Toolhead
 ActionResult raiseToolhead();
 ActionResult coupleSyringes();
 

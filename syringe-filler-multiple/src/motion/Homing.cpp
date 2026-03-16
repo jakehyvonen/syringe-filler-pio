@@ -4,7 +4,7 @@
  */
 #include "motion/Homing.hpp"
 #include "motion/Axis.hpp"
-#include "servo/Toolhead.hpp"
+#include "toolhead/Toolhead.hpp"
 #include "hw/Pins.hpp"
 #include "hw/Encoder.hpp"
 #include <Arduino.h>

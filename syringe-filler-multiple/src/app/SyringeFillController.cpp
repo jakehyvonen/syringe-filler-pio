@@ -10,7 +10,7 @@
 #include "hw/RFID.hpp"
 #include "hw/BaseRFID.hpp"
 #include "util/Storage.hpp"   // Util::loadBase, Util::saveBase, Util::loadRecipe, ...
-#include "servo/Toolhead.hpp"
+#include "toolhead/Toolhead.hpp"
 #include <Arduino.h>
 #include <math.h>
 #include <stdlib.h>

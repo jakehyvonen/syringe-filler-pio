@@ -10,7 +10,7 @@
 #include "hw/Pots.hpp"
 #include "motion/Axis.hpp"
 #include "motion/AxisPair.hpp"
-#include "servo/Toolhead.hpp"
+#include "toolhead/Toolhead.hpp"
 #include "util/Storage.hpp"
 #include "app/CommandRouter.hpp"
 #include "app/WebUI.hpp"
@@ -64,14 +64,12 @@ void setup() {
   }
 
   Toolhead::init();
-  if (!Toolhead::isReady()) {
-    Serial.println("WARN: coupler servo unavailable; toolhead raise check skipped.");
-  } else if (!Toolhead::ensureRaised()) {
+  if (!Toolhead::ensureRaised()) {
     Serial.println("ERROR: toolhead not raised.");
     //while (true) delay(1000);
   }
 
-  Serial.println("Setup complete. Type commands: on/off, home, move, servo, enc ...");
+  Serial.println("Setup complete. Type commands: on/off, home, move, couple, raise, enc ...");
 }
 
 // Dispatch serial commands and periodic device services.

@@ -1,16 +1,16 @@
 # Syringe Filler Control (PlatformIO)
 
 Firmware and helper sketches for a syringe filling system using stepper drivers,
-limit switches, and optional I2C peripherals (PCA9685 + ADS1115).
+limit switches, and optional I2C peripherals (ADS1115).
 
 ## Repository Layout
 
 - `HandheldStepperControl/HandheldStepperControl.ino`: Handheld, hold-to-run
   stepper controller for quick manual movement.
 - `SyringeFillControl/SyringeFillControl.ino`: Primary ESP32 firmware with
-  multi-axis motion, servo control, and pot feedback.
+  multi-axis motion, toolhead coupling/raise control on axis 4, and pot feedback.
 - `SyringeFillControl/test.ino`: Bench-test sketch for steppers, homing, and
-  servo control.
+  toolhead control.
 - `firmware/multi-syringe/platformio.ini`: PlatformIO configuration for the
   ESP32 build.
 - `firmware/shared/lib/`: Shared PlatformIO libraries available to firmware
@@ -59,8 +59,8 @@ The main firmware prints a command list at startup. Common commands include:
 - `goto <steps>`, `gotomm <mm>`: Absolute moves on the main axis.
 - `move2 <steps>`, `move3 <steps>`: Single-axis moves for auxiliaries.
 - `m23 <steps2> <steps3>` / `link <steps>`: Synchronized auxiliary moves.
-- `servo <channel> <angle>`: Servo angle control via PCA9685.
-- `servoslow <channel> <angle> [delay_ms]`: Slow servo sweep.
+- `raise`: Raise the toolhead using stepper axis 4.
+- `couple`: Couple syringes using the axis-4-only coupling sequence.
 - `potmove <target_adc> <sps>`: Pot-driven move on axis 2.
 
 ## License

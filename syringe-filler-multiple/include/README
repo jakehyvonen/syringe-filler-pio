@@ -1,5 +1,5 @@
 This directory contains public headers for the syringe filler firmware
-modules (hardware drivers, motion control, servo tooling, and application
+modules (hardware drivers, motion control, toolhead control, and application
 logic).
 
 This directory is intended for project header files.
