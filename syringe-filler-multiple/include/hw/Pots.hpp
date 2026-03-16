@@ -12,6 +12,9 @@ namespace Pots {
   void init();
   void poll();
 
+  // Sample ADS0:A0 (VREF/3.3V rail) and emit structured WARN logs on low-rail events.
+  void monitorVref(const char *context = nullptr);
+
   // ADS native counts (0..32767 at GAIN_ONE)
   uint16_t raw(uint8_t i);
   uint16_t filt(uint8_t i);
