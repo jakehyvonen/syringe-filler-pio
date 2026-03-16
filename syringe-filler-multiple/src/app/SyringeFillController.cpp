@@ -24,13 +24,8 @@ namespace {
   constexpr bool DEBUG_FLAG = true;
   constexpr long kBaseRfidScanErrorThreshold = 1700;
   constexpr uint32_t kBaseRfidScanIntervalMs = 75;
-  constexpr float kMicrosteps = 2.0f; // half-step microstepping
-  constexpr float kBaseStepsPerMm = (200.0f * kMicrosteps) / 1.75f;
-  constexpr float kBaseMmPerMl = 1.5f;
-  constexpr float kBaseStepsPerMl = kBaseStepsPerMm * kBaseMmPerMl; // ~343 steps/mL @ half-step
-  constexpr float kToolStepsPerMm = (200.0f * kMicrosteps) / 1.25f;
-  constexpr float kToolMmPerMl = 3.45f;
-  constexpr float kToolStepsPerMl = kToolStepsPerMm * kToolMmPerMl; // ~1104 steps/mL @ half-step
+  constexpr float kBaseStepsPerMl = 343.0f;
+  constexpr float kToolStepsPerMl = 1104.0f;
   constexpr float kRetractionMl = 0.17f;
   constexpr float kBaseTransferMinRemainingMl = 0.7f;
 
