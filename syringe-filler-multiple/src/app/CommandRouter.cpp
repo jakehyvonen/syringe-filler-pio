@@ -935,7 +935,11 @@ void handleSerial() {
 
       const CommandDescriptor *cmd = lookupCommand(verb);
       if (cmd) {
+        String beforeContext = "cmd.pre " + verb;
+        String afterContext = "cmd.post " + verb;
+        Pots::monitorVref(beforeContext.c_str());
         cmd->handler(args);
+        Pots::monitorVref(afterContext.c_str());
       } else {
         ActionResult res{false, "unknown command"};
         printStructured(verb.c_str(), res);

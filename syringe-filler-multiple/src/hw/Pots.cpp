@@ -19,6 +19,9 @@ static constexpr adsGain_t PGA = GAIN_ONE; // ±4.096 V
 static constexpr uint8_t VREF_ADS = 0; // ADS0
 static constexpr uint8_t VREF_CH  = 0; // A0
 static constexpr uint8_t TOOL_POT_IDX = 2; // ADS0, A3
+static constexpr float ADS_FULL_SCALE_VOLTS = 4.096f;
+static constexpr float VREF_WARN_THRESHOLD_VOLTS = 3.0f;
+static constexpr float VREF_LOG_DELTA_VOLTS = 0.05f;
 
 struct Chan { uint8_t ads; uint8_t ch; };
 static constexpr Chan POT_MAP[] = {
@@ -38,6 +41,9 @@ static const uint8_t s_addr[2] = { ADS0_ADDR, ADS1_ADDR };
 static uint8_t s_last_ch[2] = {0xFF, 0xFF};
 
 static bool     inited = false;
+static bool     s_vref_was_low = false;
+static float    s_vref_low_min_volts = ADS_FULL_SCALE_VOLTS;
+static float    s_vref_last_logged_low_volts = ADS_FULL_SCALE_VOLTS;
 static uint16_t pot_raw[NUM_POTS];
 static uint16_t pot_filt[NUM_POTS];
 static uint16_t pot_last_reported[NUM_POTS];
@@ -60,6 +66,62 @@ static inline int16_t read_counts(uint8_t ads_idx, uint8_t ch) {
 
 static inline uint16_t read_vref_counts() {
   return read_counts(VREF_ADS, VREF_CH);
+}
+
+static inline float counts_to_volts(uint16_t counts) {
+  return (float(counts) * ADS_FULL_SCALE_VOLTS) / 32768.0f;
+}
+
+static void monitor_vref(uint16_t vref_counts, const char *context) {
+  if (!s_ads_present[VREF_ADS]) return;
+
+  const float vref_volts = counts_to_volts(vref_counts);
+  const bool vref_low = (vref_volts < VREF_WARN_THRESHOLD_VOLTS);
+
+  auto print_context = [&]() {
+    if (context && context[0] != '\0') {
+      Serial.print(", context=");
+      Serial.print(context);
+    }
+  };
+
+  if (vref_low) {
+    if (!s_vref_was_low) {
+      s_vref_low_min_volts = vref_volts;
+      s_vref_last_logged_low_volts = vref_volts;
+      Serial.print("WARN: 3.3V rail low (VREF=");
+      Serial.print(vref_volts, 3);
+      Serial.print("V, threshold=3.000V");
+      print_context();
+      Serial.println(")");
+    } else {
+      if (vref_volts < s_vref_low_min_volts) {
+        s_vref_low_min_volts = vref_volts;
+      }
+      if ((s_vref_last_logged_low_volts - vref_volts) >= VREF_LOG_DELTA_VOLTS) {
+        s_vref_last_logged_low_volts = vref_volts;
+        Serial.print("WARN: 3.3V rail sag worsened (VREF=");
+        Serial.print(vref_volts, 3);
+        Serial.print("V, min=");
+        Serial.print(s_vref_low_min_volts, 3);
+        Serial.print("V");
+        print_context();
+        Serial.println(")");
+      }
+    }
+  } else if (s_vref_was_low) {
+    Serial.print("INFO: 3.3V rail recovered (VREF=");
+    Serial.print(vref_volts, 3);
+    Serial.print("V, low_min=");
+    Serial.print(s_vref_low_min_volts, 3);
+    Serial.print("V");
+    print_context();
+    Serial.println(")");
+    s_vref_low_min_volts = ADS_FULL_SCALE_VOLTS;
+    s_vref_last_logged_low_volts = ADS_FULL_SCALE_VOLTS;
+  }
+
+  s_vref_was_low = vref_low;
 }
 
 static inline float ratio_percent(uint16_t pot_counts, uint16_t vref_counts) {
@@ -110,6 +172,7 @@ void poll() {
   if (!inited) init();
 
   const uint16_t vref = read_vref_counts();
+  monitor_vref(vref, "pots.poll");
   for (uint8_t i = 0; i < NUM_POTS; ++i) {
     uint16_t r = read_counts(POT_MAP[i].ads, POT_MAP[i].ch);
     pot_raw[i] = r;
@@ -125,6 +188,12 @@ void poll() {
       Serial.println(ratio_percent(pot_filt[i], vref), 2);
     }
   }
+}
+
+
+void monitorVref(const char *context) {
+  if (!inited) init();
+  monitor_vref(read_vref_counts(), context);
 }
 
 // Return the last raw counts for a pot index.
