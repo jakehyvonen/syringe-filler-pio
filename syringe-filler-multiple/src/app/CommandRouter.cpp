@@ -8,6 +8,7 @@
 #include "app/CommandRouter.hpp"
 #include "app/DeviceActions.hpp"
 #include "app/SyringeFillController.hpp"
+#include "app/WebUI.hpp"
 #include <WifiCredentials.hpp>
 #include <WifiManager.hpp>
 
@@ -118,6 +119,7 @@ void printStructured(const char *cmd, const ActionResult &res, const String &dat
     line += formattedData;
   }
   line += "}";
+  App::WebUI::pushSerialLine(line);
   if (g_responseSink) {
     *g_responseSink = line;
     return;
