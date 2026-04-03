@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <WebServer.h>
+#include <stdarg.h>
 
 #include <WifiCredentials.hpp>
 #include <WifiManager.hpp>
@@ -21,7 +22,48 @@ namespace {
 WebServer server(80);
 
 constexpr size_t kMaxRecipeList = 64;
+constexpr size_t kSerialLogCapacity = 257;
+constexpr size_t kSerialPollBatch = 89;
 Shared::WifiManager g_wifi;
+
+struct SerialLogEntry {
+  uint32_t seq;
+  String line;
+};
+
+SerialLogEntry g_serialLog[kSerialLogCapacity];
+size_t g_serialLogStart = 0;
+size_t g_serialLogCount = 0;
+uint32_t g_serialLogNextSeq = 1;
+
+void appendSerialLog(const String &line) {
+  const size_t idx = (g_serialLogStart + g_serialLogCount) % kSerialLogCapacity;
+  g_serialLog[idx].seq = g_serialLogNextSeq++;
+  g_serialLog[idx].line = line;
+  if (g_serialLogCount < kSerialLogCapacity) {
+    ++g_serialLogCount;
+  } else {
+    g_serialLogStart = (g_serialLogStart + 1) % kSerialLogCapacity;
+  }
+}
+
+void serialPrintfAndLog(const char *fmt, ...) {
+  char buffer[256];
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(buffer, sizeof(buffer), fmt, args);
+  va_end(args);
+  Serial.print(buffer);
+  String msg = String(buffer);
+  msg.replace("\r", "");
+  msg.replace("\n", "");
+  if (msg.length() > 0) appendSerialLog(msg);
+}
+
+void serialPrintlnAndLog(const String &line) {
+  Serial.println(line);
+  appendSerialLog(line);
+}
 
 const char kIndexHtml[] PROGMEM = R"HTML(
 <!DOCTYPE html>
@@ -47,6 +89,8 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     .chip { display: inline-block; border-radius: 999px; padding: 4px 10px; margin: 0 6px 6px 0; background: #ececec; color: #444; }
     .chip.ok { background: #d8f6e4; color: #186a3b; }
     .chip.bad { background: #ffe0e0; color: #9b2226; }
+    .console { background: #111; color: #e8e8e8; font-family: monospace; padding: 12px; border-radius: 8px; min-height: 180px; max-height: 320px; overflow-y: auto; white-space: pre-wrap; }
+    .consoleLine { margin: 0; }
   </style>
 </head>
 <body>
@@ -87,6 +131,9 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       <label>Run repeats</label>
       <input id="repeatCount" type="number" min="1" value="5" />
       <div class="muted">run repeats execute the currently loaded recipe count times.</div>
+      <label>Raw command</label>
+      <input id="rawCommand" type="text" placeholder="e.g. sfc.run 3" />
+      <button id="cmdSendRaw">Send</button>
       <div id="commandStatus" class="muted"></div>
     </div>
 
@@ -98,6 +145,14 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     </div>
   </div>
 
+  <div class="row" style="margin-top: 16px;">
+    <div class="col panel">
+      <h3>Serial Console</h3>
+      <div class="muted">Shows recent serial-style output for commands executed via Web UI.</div>
+      <div id="serialConsole" class="console"></div>
+    </div>
+  </div>
+
   <script>
     const listEl = document.getElementById('recipeList');
     const stepsEl = document.getElementById('steps');
@@ -106,6 +161,20 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     const commandStatusEl = document.getElementById('commandStatus');
     const initIndicatorsEl = document.getElementById('initIndicators');
     const vrefStatusEl = document.getElementById('vrefStatus');
+    const rawCommandEl = document.getElementById('rawCommand');
+    const serialConsoleEl = document.getElementById('serialConsole');
+    let serialCursor = 0;
+
+    function appendConsoleLine(line) {
+      const row = document.createElement('div');
+      row.className = 'consoleLine';
+      row.textContent = line;
+      serialConsoleEl.appendChild(row);
+      while (serialConsoleEl.childNodes.length > 257) {
+        serialConsoleEl.removeChild(serialConsoleEl.firstChild);
+      }
+      serialConsoleEl.scrollTop = serialConsoleEl.scrollHeight;
+    }
 
     function setStatus(msg, ok = true) {
       statusEl.textContent = msg;
@@ -169,6 +238,17 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       } catch (err) {
         vrefStatusEl.textContent = `telemetry error: ${err.message}`;
         vrefStatusEl.style.color = '#c33';
+      }
+    }
+
+    async function refreshSerialConsole() {
+      try {
+        const resp = await fetch(`/api/serial?since=${serialCursor}`);
+        const data = await resp.json();
+        (data.lines || []).forEach(entry => appendConsoleLine(entry.text));
+        serialCursor = Number(data.next_seq || serialCursor);
+      } catch (err) {
+        appendConsoleLine(`[web] serial poll error: ${err.message}`);
       }
     }
 
@@ -282,10 +362,27 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       setCommandStatus(r.message || 'run complete', r.status === 'ok');
       refreshVref();
     };
+    document.getElementById('cmdSendRaw').onclick = async () => {
+      const raw = rawCommandEl.value.trim();
+      if (!raw) {
+        setCommandStatus('Raw command is required.', false);
+        return;
+      }
+      const r = await sendCommand(raw);
+      setCommandStatus(r.message || `${raw} complete`, r.status === 'ok');
+      refreshVref();
+    };
+    rawCommandEl.addEventListener('keydown', async (evt) => {
+      if (evt.key !== 'Enter') return;
+      evt.preventDefault();
+      document.getElementById('cmdSendRaw').click();
+    });
 
     refreshList();
     refreshVref();
+    refreshSerialConsole();
     setInterval(refreshVref, 2053);
+    setInterval(refreshSerialConsole, 2053);
   </script>
 </body>
 </html>
@@ -331,9 +428,32 @@ void handleCommandApi() {
     return;
   }
 
+  appendSerialLog(String("> ") + command);
   String responseJson;
   CommandRouter::executeCommandLine(command, responseJson);
   server.send(200, "application/json", responseJson);
+}
+
+void handleSerialApi() {
+  uint32_t since = 0;
+  if (server.hasArg("since")) {
+    since = static_cast<uint32_t>(strtoul(server.arg("since").c_str(), nullptr, 10));
+  }
+
+  JsonDocument doc;
+  JsonArray lines = doc["lines"].to<JsonArray>();
+  size_t emitted = 0;
+  for (size_t i = 0; i < g_serialLogCount && emitted < kSerialPollBatch; ++i) {
+    const size_t idx = (g_serialLogStart + i) % kSerialLogCapacity;
+    const SerialLogEntry &entry = g_serialLog[idx];
+    if (entry.seq <= since) continue;
+    JsonObject row = lines.add<JsonObject>();
+    row["seq"] = entry.seq;
+    row["text"] = entry.line;
+    ++emitted;
+  }
+  doc["next_seq"] = g_serialLogNextSeq;
+  sendJson(doc);
 }
 
 void handleTelemetryApi() {
@@ -343,11 +463,11 @@ void handleTelemetryApi() {
 }
 
 void handleListRecipes() {
-  Serial.printf("[WebUI] GET /api/recipes\n");
+  serialPrintfAndLog("[WebUI] GET /api/recipes\n");
   uint32_t ids[kMaxRecipeList];
   size_t count = 0;
   if (!Util::listRecipeIds(ids, kMaxRecipeList, count)) {
-    Serial.println("[WebUI] listRecipeIds() failed");
+    serialPrintlnAndLog("[WebUI] listRecipeIds() failed");
     server.send(500, "text/plain", "Failed to list recipes");
     return;
   }
@@ -361,10 +481,10 @@ void handleListRecipes() {
 }
 
 void handleGetRecipe(uint32_t recipeId) {
-  Serial.printf("[WebUI] GET /api/recipes/%08X\n", recipeId);
+  serialPrintfAndLog("[WebUI] GET /api/recipes/%08X\n", recipeId);
   Util::Recipe recipe;
   if (!Util::loadRecipe(recipeId, recipe)) {
-    Serial.printf("[WebUI] loadRecipe() failed for %08X\n", recipeId);
+    serialPrintfAndLog("[WebUI] loadRecipe() failed for %08X\n", recipeId);
     server.send(404, "text/plain", "Recipe not found");
     return;
   }
@@ -377,18 +497,18 @@ void handleGetRecipe(uint32_t recipeId) {
 }
 
 void handlePutRecipe(uint32_t recipeId) {
-  Serial.printf("[WebUI] PUT /api/recipes/%08X\n", recipeId);
+  serialPrintfAndLog("[WebUI] PUT /api/recipes/%08X\n", recipeId);
   if (!server.hasArg("plain")) {
-    Serial.println("[WebUI] PUT missing body");
+    serialPrintlnAndLog("[WebUI] PUT missing body");
     server.send(400, "text/plain", "Missing body");
     return;
   }
 
-  Serial.printf("[WebUI] PUT payload: %s\n", server.arg("plain").c_str());
+  serialPrintfAndLog("[WebUI] PUT payload: %s\n", server.arg("plain").c_str());
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, server.arg("plain"));
   if (err) {
-    Serial.printf("[WebUI] PUT JSON parse error: %s\n", err.c_str());
+    serialPrintfAndLog("[WebUI] PUT JSON parse error: %s\n", err.c_str());
     server.send(400, "text/plain", "Invalid JSON");
     return;
   }
@@ -401,7 +521,7 @@ void handlePutRecipe(uint32_t recipeId) {
   }
 
   if (arr.isNull()) {
-    Serial.println("[WebUI] PUT missing steps array");
+    serialPrintlnAndLog("[WebUI] PUT missing steps array");
     server.send(400, "text/plain", "Missing steps array");
     return;
   }
@@ -409,18 +529,18 @@ void handlePutRecipe(uint32_t recipeId) {
   Util::Recipe recipe;
   recipe.fromJson(arr);
   if (recipe.isEmpty()) {
-    Serial.println("[WebUI] PUT recipe invalid or empty after parsing");
+    serialPrintlnAndLog("[WebUI] PUT recipe invalid or empty after parsing");
     server.send(400, "text/plain", "Recipe invalid or empty");
     return;
   }
 
-  Serial.printf("[WebUI] PUT parsed %u step(s)\n", recipe.count);
+  serialPrintfAndLog("[WebUI] PUT parsed %u step(s)\n", recipe.count);
   for (uint8_t i = 0; i < recipe.count; ++i) {
-    Serial.printf("[WebUI] step %u: volume_ml=%.3f base_slot=%d\n",
-                  i, recipe.steps[i].volumeMl, recipe.steps[i].baseSlot);
+    serialPrintfAndLog("[WebUI] step %u: volume_ml=%.3f base_slot=%d\n",
+                       i, recipe.steps[i].volumeMl, recipe.steps[i].baseSlot);
   }
   if (!Util::saveRecipe(recipeId, recipe)) {
-    Serial.printf("[WebUI] saveRecipe() failed for %08X\n", recipeId);
+    serialPrintfAndLog("[WebUI] saveRecipe() failed for %08X\n", recipeId);
     server.send(500, "text/plain", "Save failed");
     return;
   }
@@ -429,9 +549,9 @@ void handlePutRecipe(uint32_t recipeId) {
 }
 
 void handleDeleteRecipe(uint32_t recipeId) {
-  Serial.printf("[WebUI] DELETE /api/recipes/%08X\n", recipeId);
+  serialPrintfAndLog("[WebUI] DELETE /api/recipes/%08X\n", recipeId);
   if (!Util::deleteRecipe(recipeId)) {
-    Serial.printf("[WebUI] deleteRecipe() failed for %08X\n", recipeId);
+    serialPrintfAndLog("[WebUI] deleteRecipe() failed for %08X\n", recipeId);
     server.send(404, "text/plain", "Delete failed");
     return;
   }
@@ -439,7 +559,7 @@ void handleDeleteRecipe(uint32_t recipeId) {
 }
 
 void handleApiRecipes() {
-  Serial.printf("[WebUI] %s /api/recipes\n", server.method() == HTTP_GET ? "GET" : "OTHER");
+  serialPrintfAndLog("[WebUI] %s /api/recipes\n", server.method() == HTTP_GET ? "GET" : "OTHER");
   if (server.method() == HTTP_GET) {
     handleListRecipes();
     return;
@@ -451,7 +571,7 @@ void handleApiRecipeItem() {
   String uri = server.uri();
   const String prefix = "/api/recipes/";
   if (!uri.startsWith(prefix)) {
-    Serial.printf("[WebUI] Not found: %s\n", uri.c_str());
+    serialPrintfAndLog("[WebUI] Not found: %s\n", uri.c_str());
     server.send(404, "text/plain", "Not found");
     return;
   }
@@ -459,7 +579,7 @@ void handleApiRecipeItem() {
   String hexStr = uri.substring(prefix.length());
   uint32_t recipeId = 0;
   if (!parseRecipeId(hexStr, recipeId)) {
-    Serial.printf("[WebUI] Invalid recipe ID from URI: %s\n", uri.c_str());
+    serialPrintfAndLog("[WebUI] Invalid recipe ID from URI: %s\n", uri.c_str());
     server.send(400, "text/plain", "Invalid recipe ID");
     return;
   }
@@ -471,7 +591,7 @@ void handleApiRecipeItem() {
   } else if (server.method() == HTTP_DELETE) {
     handleDeleteRecipe(recipeId);
   } else {
-    Serial.printf("[WebUI] Method not allowed for %s\n", uri.c_str());
+    serialPrintfAndLog("[WebUI] Method not allowed for %s\n", uri.c_str());
     server.send(405, "text/plain", "Method not allowed");
   }
 }
@@ -483,12 +603,12 @@ void startWiFi() {
     if (g_wifi.connect(ssid, password)) {
       return;
     }
-    Serial.println("[WebUI] Falling back to AP mode.");
+    serialPrintlnAndLog("[WebUI] Falling back to AP mode.");
   } else {
-    Serial.println("[WebUI] No saved WiFi credentials found.");
+    serialPrintlnAndLog("[WebUI] No saved WiFi credentials found.");
   }
   g_wifi.startAccessPoint();
-  Serial.println("[WebUI] Open http://192.168.4.1/ to configure.");
+  serialPrintlnAndLog("[WebUI] Open http://192.168.4.1/ to configure.");
 }
 
 } // namespace
@@ -507,15 +627,20 @@ void begin() {
   });
   server.on("/api/recipes", HTTP_ANY, handleApiRecipes);
   server.on("/api/command", HTTP_ANY, handleCommandApi);
+  server.on("/api/serial", HTTP_GET, handleSerialApi);
   server.on("/api/telemetry", HTTP_GET, handleTelemetryApi);
   server.onNotFound(handleApiRecipeItem);
 
   server.begin();
-  Serial.println("[WebUI] HTTP server started on port 80.");
+  serialPrintlnAndLog("[WebUI] HTTP server started on port 80.");
 }
 
 void handle() {
   server.handleClient();
+}
+
+void pushSerialLine(const String &line) {
+  appendSerialLog(line);
 }
 
 } // namespace WebUI
