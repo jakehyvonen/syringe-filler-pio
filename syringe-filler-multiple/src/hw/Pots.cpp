@@ -20,7 +20,7 @@ static constexpr uint8_t VREF_ADS = 0; // ADS0
 static constexpr uint8_t VREF_CH  = 0; // A0
 static constexpr uint8_t TOOL_POT_IDX = 2; // ADS0, A3
 static constexpr float ADS_FULL_SCALE_VOLTS = 4.096f;
-static constexpr float VREF_WARN_THRESHOLD_VOLTS = 3.0f;
+static constexpr float VREF_WARN_THRESHOLD_VOLTS = 2.9f;
 static constexpr float VREF_LOG_DELTA_VOLTS = 0.05f;
 
 struct Chan { uint8_t ads; uint8_t ch; };
@@ -85,6 +85,9 @@ static void monitor_vref(uint16_t vref_counts, const char *context) {
     }
   };
 
+  Serial.print("VREF=");
+  Serial.println(vref_volts, 3);
+
   if (vref_low) {
     if (!s_vref_was_low) {
       s_vref_low_min_volts = vref_volts;
@@ -95,6 +98,7 @@ static void monitor_vref(uint16_t vref_counts, const char *context) {
       print_context();
       Serial.println(")");
     } else {
+      
       if (vref_volts < s_vref_low_min_volts) {
         s_vref_low_min_volts = vref_volts;
       }
