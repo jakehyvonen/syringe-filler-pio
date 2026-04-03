@@ -11,6 +11,8 @@
 #include <WifiCredentials.hpp>
 #include <WifiManager.hpp>
 
+#include "app/CommandRouter.hpp"
+#include "hw/Pots.hpp"
 #include "util/Recipe.hpp"
 #include "util/Storage.hpp"
 
@@ -42,6 +44,9 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     input[type="number"], input[type="text"] { width: 100%; padding: 6px; }
     button { margin: 4px 4px 4px 0; padding: 6px 10px; }
     .muted { color: #666; font-size: 0.9em; }
+    .chip { display: inline-block; border-radius: 999px; padding: 4px 10px; margin: 0 6px 6px 0; background: #ececec; color: #444; }
+    .chip.ok { background: #d8f6e4; color: #186a3b; }
+    .chip.bad { background: #ffe0e0; color: #9b2226; }
   </style>
 </head>
 <body>
@@ -69,15 +74,47 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       <div id="status" class="muted"></div>
     </div>
   </div>
+
+  <div class="row" style="margin-top: 16px;">
+    <div class="col panel">
+      <h3>Machine Controls</h3>
+      <button id="cmdHome">home</button>
+      <button id="cmdScanAll">scanall</button>
+      <button id="cmdScanTool">scantool</button>
+      <button id="cmdInitAll">initializeall</button>
+      <button id="cmdLoad">load</button>
+      <button id="cmdRun">run</button>
+      <label>Run repeats</label>
+      <input id="repeatCount" type="number" min="1" value="5" />
+      <div class="muted">run repeats execute the currently loaded recipe count times.</div>
+      <div id="commandStatus" class="muted"></div>
+    </div>
+
+    <div class="col panel">
+      <h3>Init Status</h3>
+      <div id="initIndicators" class="muted">Not initialized yet.</div>
+      <h3>Latest VREF</h3>
+      <div id="vrefStatus" class="muted">--</div>
+    </div>
+  </div>
+
   <script>
     const listEl = document.getElementById('recipeList');
     const stepsEl = document.getElementById('steps');
     const recipeIdEl = document.getElementById('recipeId');
     const statusEl = document.getElementById('status');
+    const commandStatusEl = document.getElementById('commandStatus');
+    const initIndicatorsEl = document.getElementById('initIndicators');
+    const vrefStatusEl = document.getElementById('vrefStatus');
 
     function setStatus(msg, ok = true) {
       statusEl.textContent = msg;
       statusEl.style.color = ok ? '#2b6' : '#c33';
+    }
+
+    function setCommandStatus(msg, ok = true) {
+      commandStatusEl.textContent = msg;
+      commandStatusEl.style.color = ok ? '#2b6' : '#c33';
     }
 
     function addRow(step = { volume_ml: 1, base_slot: 0 }) {
@@ -89,6 +126,50 @@ const char kIndexHtml[] PROGMEM = R"HTML(
       `;
       tr.querySelector('.remove').onclick = () => tr.remove();
       stepsEl.appendChild(tr);
+    }
+
+    function renderInitIndicators(result) {
+      const steps = result?.data?.steps;
+      if (!steps) {
+        initIndicatorsEl.innerHTML = '<span class="chip">No init data yet</span>';
+        return;
+      }
+      const order = ['home', 'scantool', 'sfc.scanall', 'recipe.list', 'sfc.status'];
+      initIndicatorsEl.innerHTML = order.map(key => {
+        const entry = steps[key] || { ok: false, message: 'missing' };
+        const cls = entry.ok ? 'chip ok' : 'chip bad';
+        return `<span class="${cls}">${key}: ${entry.ok ? 'ok' : 'error'} (${entry.message || ''})</span>`;
+      }).join('');
+    }
+
+    async function sendCommand(command) {
+      const resp = await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command })
+      });
+      if (!resp.ok) {
+        const txt = await resp.text();
+        throw new Error(txt || 'command failed');
+      }
+      return resp.json();
+    }
+
+    async function refreshVref() {
+      try {
+        const resp = await fetch('/api/telemetry');
+        const data = await resp.json();
+        const vref = Number(data.latest_vref_volts);
+        if (Number.isFinite(vref)) {
+          vrefStatusEl.textContent = `${vref.toFixed(3)} V`;
+          vrefStatusEl.style.color = vref >= 3.0 ? '#2b6' : '#c33';
+        } else {
+          vrefStatusEl.textContent = '--';
+        }
+      } catch (err) {
+        vrefStatusEl.textContent = `telemetry error: ${err.message}`;
+        vrefStatusEl.style.color = '#c33';
+      }
     }
 
     async function refreshList() {
@@ -163,7 +244,48 @@ const char kIndexHtml[] PROGMEM = R"HTML(
     document.getElementById('save').onclick = saveRecipe;
     document.getElementById('del').onclick = deleteRecipe;
 
+    document.getElementById('cmdHome').onclick = async () => {
+      const r = await sendCommand('home');
+      setCommandStatus(r.message || 'home complete', r.status === 'ok');
+      refreshVref();
+    };
+    document.getElementById('cmdScanAll').onclick = async () => {
+      const r = await sendCommand('sfc.scanall');
+      setCommandStatus(r.message || 'scanall complete', r.status === 'ok');
+      refreshVref();
+    };
+    document.getElementById('cmdScanTool').onclick = async () => {
+      const r = await sendCommand('scantool');
+      setCommandStatus(r.message || 'scantool complete', r.status === 'ok');
+      refreshVref();
+    };
+    document.getElementById('cmdInitAll').onclick = async () => {
+      const r = await sendCommand('initializeall');
+      setCommandStatus(r.message || 'initializeall complete', r.status === 'ok');
+      renderInitIndicators(r);
+      refreshVref();
+    };
+    document.getElementById('cmdLoad').onclick = async () => {
+      const recipeId = recipeIdEl.value.trim();
+      if (!recipeId) return setCommandStatus('Recipe ID is required for load.', false);
+      const r = await sendCommand(`sfc.load ${recipeId}`);
+      setCommandStatus(r.message || 'load complete', r.status === 'ok');
+      refreshVref();
+    };
+    document.getElementById('cmdRun').onclick = async () => {
+      const repeats = parseInt(document.getElementById('repeatCount').value || '1', 10);
+      if (!Number.isFinite(repeats) || repeats < 1) {
+        setCommandStatus('Repeat count must be >= 1', false);
+        return;
+      }
+      const r = await sendCommand(`sfc.run ${repeats}`);
+      setCommandStatus(r.message || 'run complete', r.status === 'ok');
+      refreshVref();
+    };
+
     refreshList();
+    refreshVref();
+    setInterval(refreshVref, 2053);
   </script>
 </body>
 </html>
@@ -185,6 +307,39 @@ void sendJson(const JsonDocument& doc) {
   String body;
   serializeJson(doc, body);
   server.send(200, "application/json", body);
+}
+
+void handleCommandApi() {
+  if (server.method() != HTTP_POST) {
+    server.send(405, "text/plain", "Method not allowed");
+    return;
+  }
+  if (!server.hasArg("plain")) {
+    server.send(400, "text/plain", "Missing body");
+    return;
+  }
+  JsonDocument requestDoc;
+  DeserializationError err = deserializeJson(requestDoc, server.arg("plain"));
+  if (err) {
+    server.send(400, "text/plain", "Invalid JSON");
+    return;
+  }
+  String command = requestDoc["command"].as<String>();
+  command.trim();
+  if (command.length() == 0) {
+    server.send(400, "text/plain", "Missing command");
+    return;
+  }
+
+  String responseJson;
+  CommandRouter::executeCommandLine(command, responseJson);
+  server.send(200, "application/json", responseJson);
+}
+
+void handleTelemetryApi() {
+  JsonDocument doc;
+  doc["latest_vref_volts"] = Pots::latestVrefVolts();
+  sendJson(doc);
 }
 
 void handleListRecipes() {
@@ -351,6 +506,8 @@ void begin() {
     server.send_P(200, "text/html", kIndexHtml);
   });
   server.on("/api/recipes", HTTP_ANY, handleApiRecipes);
+  server.on("/api/command", HTTP_ANY, handleCommandApi);
+  server.on("/api/telemetry", HTTP_GET, handleTelemetryApi);
   server.onNotFound(handleApiRecipeItem);
 
   server.begin();
