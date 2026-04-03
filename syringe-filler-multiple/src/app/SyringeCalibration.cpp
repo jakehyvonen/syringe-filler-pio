@@ -14,6 +14,8 @@ namespace App {
 
 namespace {
   constexpr bool CAL_DBG = true;
+  constexpr float kDefaultToolheadStepsPerMl = 1104.0f;
+  constexpr float kDefaultBaseStepsPerMl = 343.0f;
 
   uint8_t toolheadPotIndex() {
     return Pots::toolPotIndex();
@@ -60,6 +62,10 @@ void SyringeCalibration::initializeBaseFromTag(uint8_t slot, uint32_t tag) {
   if (Util::loadBase(tag, meta, cal, points)) {
     s.cal = cal;
     s.calPoints = points;
+    if (s.cal.steps_mL <= 0.0f) {
+      s.cal.steps_mL = kDefaultBaseStepsPerMl;
+      Util::saveBase(tag, meta, s.cal, s.calPoints);
+    }
     if (CAL_DBG) {
       Serial.print("[SFC] scanBaseSyringe(): existing base loaded from NVS for tag 0x");
       Serial.println(tag, HEX);
@@ -71,6 +77,7 @@ void SyringeCalibration::initializeBaseFromTag(uint8_t slot, uint32_t tag) {
     }
     memset(&meta, 0, sizeof(meta));
     s.calPoints.count = 0;
+    s.cal.steps_mL = kDefaultBaseStepsPerMl;
     Util::saveBase(tag, meta, s.cal, s.calPoints);
   }
 }
@@ -83,12 +90,20 @@ bool SyringeCalibration::initializeToolheadFromTag(uint32_t tag) {
   PotCalibration cal;
   if (Util::loadCalibration(tag, cal)) {
     m_toolhead.cal = cal;
+    if (m_toolhead.cal.steps_mL <= 0.0f) {
+      m_toolhead.cal.steps_mL = kDefaultToolheadStepsPerMl;
+      Util::saveCalibration(tag, m_toolhead.cal);
+    }
     if (CAL_DBG) {
       Serial.print("[SFC] loaded toolhead cal for 0x");
       Serial.println(tag, HEX);
     }
     return true;
   }
+
+  m_toolhead.cal = PotCalibration{};
+  m_toolhead.cal.steps_mL = kDefaultToolheadStepsPerMl;
+  Util::saveCalibration(tag, m_toolhead.cal);
 
   if (CAL_DBG) {
     Serial.print("[SFC] no toolhead cal for 0x");
@@ -183,8 +198,19 @@ bool SyringeCalibration::setToolheadStepsPermL(float stepsPermL, String& message
 
   m_toolhead.cal.steps_mL = stepsPermL;
   bool ok = Util::saveCalibration(m_toolhead.rfid, m_toolhead.cal);
-  message = ok ? "toolhead steps_mL updated" : "failed to update toolhead steps_mL";
-  return ok;
+  if (!ok) {
+    message = "failed to update toolhead steps_mL";
+    return false;
+  }
+
+  if (stepsPermL <= 1.0f) {
+    Serial.print("[SFC] WARN: toolhead steps_mL is very small: ");
+    Serial.println(stepsPermL, 3);
+    message = "toolhead steps_mL updated (WARN: value is very small)";
+  } else {
+    message = "toolhead steps_mL updated";
+  }
+  return true;
 }
 
 // Set steps-per-mL for a base syringe slot.
@@ -214,8 +240,21 @@ bool SyringeCalibration::setBaseStepsPermL(uint8_t slot, float stepsPermL, Strin
   (void)cal;
   (void)savedPoints;
   bool ok = Util::saveBase(sy.rfid, meta, sy.cal, sy.calPoints);
-  message = ok ? "base steps_mL updated" : "failed to update base steps_mL";
-  return ok;
+  if (!ok) {
+    message = "failed to update base steps_mL";
+    return false;
+  }
+
+  if (stepsPermL <= 1.0f) {
+    Serial.print("[SFC] WARN: base steps_mL is very small (slot ");
+    Serial.print(slot);
+    Serial.print("): ");
+    Serial.println(stepsPermL, 3);
+    message = "base steps_mL updated (WARN: value is very small)";
+  } else {
+    message = "base steps_mL updated";
+  }
+  return true;
 }
 
 // Clear calibration points for the current base slot.
