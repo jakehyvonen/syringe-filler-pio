@@ -93,6 +93,7 @@ struct CommandDescriptor {
 static String input;
 static App::SyringeFillController g_sfc;
 static Shared::WifiManager g_wifi;
+static String *g_responseSink = nullptr;
 
 // ------------------------------------------------------------
 // Shared command utilities
@@ -100,23 +101,28 @@ static Shared::WifiManager g_wifi;
 
 // Emit a JSON response for a simple action result.
 void printStructured(const char *cmd, const ActionResult &res, const String &data = "") {
-  Serial.print("{\"cmd\":\"");
-  Serial.print(cmd);
-  Serial.print("\",\"status\":\"");
-  Serial.print(res.ok ? "ok" : "error");
-  Serial.print("\"");
+  String line = "{\"cmd\":\"";
+  line += cmd;
+  line += "\",\"status\":\"";
+  line += (res.ok ? "ok" : "error");
+  line += "\"";
   if (res.message.length()) {
-    Serial.print(",\"message\":\"");
-    Serial.print(res.message);
-    Serial.print("\"");
+    line += ",\"message\":\"";
+    line += res.message;
+    line += "\"";
   }
   if (data.length()) {
     String formattedData = data;
     formattedData.replace("},{", "},\n{");
-    Serial.print(",\"data\":");
-    Serial.print(formattedData);
+    line += ",\"data\":";
+    line += formattedData;
   }
-  Serial.println("}");
+  line += "}";
+  if (g_responseSink) {
+    *g_responseSink = line;
+    return;
+  }
+  Serial.println(line);
 }
 
 // Emit a JSON response for a position result with steps/mm.
@@ -317,7 +323,26 @@ void handleSfcScanAllBaseSyringes(const String &args) {
 }
 
 // Handle "sfc.run" command to execute the recipe.
-void handleSfcRun(const String &args) { printStructured("sfc.run", sfcRunRecipe(g_sfc)); }
+void handleSfcRun(const String &args) {
+  String trimmed = args;
+  trimmed.trim();
+  uint16_t repeats = 1;
+  if (trimmed.length() > 0) {
+    long parsed = trimmed.toInt();
+    if (parsed <= 0 || parsed > 997) {
+      printStructured("sfc.run", {false, "usage: sfc.run [repeat_count 1..997]"});
+      return;
+    }
+    repeats = static_cast<uint16_t>(parsed);
+  }
+  ActionResult lastRes{true, "recipe completed"};
+  for (uint16_t i = 0; i < repeats; ++i) {
+    lastRes = sfcRunRecipe(g_sfc);
+    if (!lastRes.ok) break;
+  }
+  String data = "{\"repeatCount\":" + String(repeats) + "}";
+  printStructured("sfc.run", lastRes, data);
+}
 
 // Handle "sfc.load" command to load a recipe.
 void handleSfcLoad(const String &args) {
@@ -915,6 +940,25 @@ const CommandDescriptor *lookupCommand(const String &verb) {
   return nullptr;
 }
 
+void executeCommand(const String &verb, const String &args, String *responseJson) {
+  const CommandDescriptor *cmd = lookupCommand(verb);
+  if (responseJson) {
+    g_responseSink = responseJson;
+    *responseJson = "";
+  }
+  if (cmd) {
+    String beforeContext = "cmd.pre " + verb;
+    String afterContext = "cmd.post " + verb;
+    Pots::monitorVref(beforeContext.c_str());
+    cmd->handler(args);
+    Pots::monitorVref(afterContext.c_str());
+  } else {
+    ActionResult res{false, "unknown command"};
+    printStructured(verb.c_str(), res);
+  }
+  g_responseSink = nullptr;
+}
+
 }  // namespace
 
 // Read serial input and dispatch the matching command handler.
@@ -932,24 +976,28 @@ void handleSerial() {
       String verb = (spaceIndex > 0) ? input.substring(0, spaceIndex) : input;
       String args = (spaceIndex > 0) ? input.substring(spaceIndex + 1) : "";
       args.trim();
-
-      const CommandDescriptor *cmd = lookupCommand(verb);
-      if (cmd) {
-        String beforeContext = "cmd.pre " + verb;
-        String afterContext = "cmd.post " + verb;
-        Pots::monitorVref(beforeContext.c_str());
-        cmd->handler(args);
-        Pots::monitorVref(afterContext.c_str());
-      } else {
-        ActionResult res{false, "unknown command"};
-        printStructured(verb.c_str(), res);
-      }
+      executeCommand(verb, args, nullptr);
 
       input = "";
     } else if (c != '\r') {
       input += c;
     }
   }
+}
+
+bool executeCommandLine(const String &line, String &responseJson) {
+  String command = line;
+  command.trim();
+  if (command.length() == 0) {
+    responseJson = "{\"cmd\":\"\",\"status\":\"error\",\"message\":\"empty command\"}";
+    return false;
+  }
+  int spaceIndex = command.indexOf(' ');
+  String verb = (spaceIndex > 0) ? command.substring(0, spaceIndex) : command;
+  String args = (spaceIndex > 0) ? command.substring(spaceIndex + 1) : "";
+  args.trim();
+  executeCommand(verb, args, &responseJson);
+  return responseJson.indexOf("\"status\":\"ok\"") >= 0;
 }
 
 }  // namespace CommandRouter

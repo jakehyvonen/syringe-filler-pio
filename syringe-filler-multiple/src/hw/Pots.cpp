@@ -44,6 +44,7 @@ static bool     inited = false;
 static bool     s_vref_was_low = false;
 static float    s_vref_low_min_volts = ADS_FULL_SCALE_VOLTS;
 static float    s_vref_last_logged_low_volts = ADS_FULL_SCALE_VOLTS;
+static float    s_vref_latest_volts = ADS_FULL_SCALE_VOLTS;
 static uint16_t pot_raw[NUM_POTS];
 static uint16_t pot_filt[NUM_POTS];
 static uint16_t pot_last_reported[NUM_POTS];
@@ -76,6 +77,7 @@ static void monitor_vref(uint16_t vref_counts, const char *context) {
   if (!s_ads_present[VREF_ADS]) return;
 
   const float vref_volts = counts_to_volts(vref_counts);
+  s_vref_latest_volts = vref_volts;
   const bool vref_low = (vref_volts < VREF_WARN_THRESHOLD_VOLTS);
 
   auto print_context = [&]() {
@@ -198,6 +200,11 @@ void poll() {
 void monitorVref(const char *context) {
   if (!inited) init();
   monitor_vref(read_vref_counts(), context);
+}
+
+float latestVrefVolts() {
+  if (!inited) init();
+  return s_vref_latest_volts;
 }
 
 // Return the last raw counts for a pot index.
